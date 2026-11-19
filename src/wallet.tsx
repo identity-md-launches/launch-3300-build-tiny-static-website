@@ -1,0 +1,131 @@
+/** Wallets, the network's one way: EIP-6963 extensions, "Open in" links on phones, Coinbase Smart Wallet. No relay, no project ID. */
+import { useEffect, useRef, useState } from "react";
+import { createConfig, http, useAccount, useConnect, useDisconnect, useSwitchChain, type Connector } from "wagmi";
+import { coinbaseWallet, injected } from "wagmi/connectors";
+import { CHAIN, CHAIN_ID, RPCS, SITE_NAME } from "./config";
+import { WALLET_ICONS } from "./wallet-icons";
+
+export const config = createConfig({
+  chains: [CHAIN],
+  // EIP-6963 discovery lists every installed extension under its own name
+  multiInjectedProviderDiscovery: true,
+  connectors: [injected(), coinbaseWallet({ appName: SITE_NAME })],
+  transports: { [CHAIN.id]: http(RPCS[0]!.url) },
+});
+
+/** Each link opens this page inside a wallet's own browser, where the wallet is injected. */
+export const OPEN_IN: ReadonlyArray<{ id: string; name: string; href: (url: string) => string }> = [
+  // https://docs.metamask.io/metamask-connect/evm/guides/metamask-exclusive/use-deeplinks
+  { id: "metamask", name: "MetaMask", href: (url) => `https://link.metamask.io/dapp/${url.replace(/^https?:\/\//, "")}` },
+  // https://docs.cdp.coinbase.com/wallet-sdk/docs/deep-link
+  { id: "coinbase", name: "Coinbase Wallet", href: (url) => `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(url)}` },
+  // Rabby publishes no documented link: the row opens Rabby's own page, the reference's stated fallback.
+  { id: "rabby", name: "Rabby", href: () => "https://rabby.io/" },
+  // https://docs.phantom.com/phantom-deeplinks/other-methods/browse
+  { id: "phantom", name: "Phantom", href: (url) => `https://phantom.app/ul/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(new URL(url).origin)}` },
+];
+
+export const isMobileBrowser = () =>
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && !(window as unknown as { ethereum?: unknown }).ethereum;
+
+const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+/** The connect control and its sheet. */
+export function ConnectSheet() {
+  const mobile = isMobileBrowser();
+  const { address, isConnected, chainId } = useAccount();
+  const { connectors, connect, isPending, variables, error, reset } = useConnect();
+  const { disconnect } = useDisconnect();
+  const { switchChain, isPending: switching } = useSwitchChain();
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+
+  const close = () => {
+    setOpen(false);
+    reset();
+    trigger.current?.focus();
+  };
+  useEffect(() => {
+    if (!open) return;
+    sheet.current?.querySelector<HTMLElement>("button, a")?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    addEventListener("keydown", onKey);
+    // The pay dialog may already hold the page inert; only undo what this sheet did.
+    const main = document.getElementById("root-main");
+    const already = main?.hasAttribute("inert") ?? true;
+    if (!already) main?.setAttribute("inert", "");
+    return () => {
+      removeEventListener("keydown", onKey);
+      if (!already) main?.removeAttribute("inert");
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  useEffect(() => {
+    if (isConnected) setOpen(false);
+  }, [isConnected]);
+
+  const named = connectors.some((c) => c.type === "injected" && c.id !== "injected");
+  const listed = [...connectors.filter((c) => c.type === "injected"), ...connectors.filter((c) => c.type !== "injected")].filter(
+    (c) => !(c.id === "injected" && named),
+  );
+  const label = (c: Connector) =>
+    c.id === "injected" ? "Browser wallet" : c.id === "coinbaseWalletSDK" && mobile ? "Coinbase Smart Wallet" : c.name;
+  const icon = (c: Connector) => c.icon ?? WALLET_ICONS[c.id];
+
+  if (isConnected && address) {
+    if (chainId !== CHAIN_ID)
+      return (
+        <button className="btn btn-primary" onClick={() => switchChain({ chainId: CHAIN_ID })} disabled={switching}>
+          {switching ? "Switching…" : "Switch to Ethereum"}
+        </button>
+      );
+    return (
+      <button className="btn" onClick={() => disconnect()} title="Disconnect this wallet">
+        <span className="mono">{short(address)}</span> · Disconnect
+      </button>
+    );
+  }
+  return (
+    <>
+      <button ref={trigger} className="btn btn-primary" onClick={() => setOpen(true)} aria-haspopup="dialog">
+        Connect
+      </button>
+      {open && (
+        <div className="sheet-bg" onClick={close}>
+          <div ref={sheet} className="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" onClick={(e) => e.stopPropagation()}>
+            <div className="sheet-head">
+              <h2 id="sheet-title">Connect a wallet</h2>
+              <button className="x" aria-label="Close" onClick={close}>
+                ×
+              </button>
+            </div>
+            {mobile &&
+              OPEN_IN.map((w) => (
+                <a key={w.id} className="row" href={w.href(location.href)}>
+                  <img className="ic" width={28} height={28} src={WALLET_ICONS[w.id]} alt="" />
+                  <span>Open in {w.name}</span>
+                </a>
+              ))}
+            {listed
+              .filter((c) => !mobile || c.type !== "injected")
+              .map((c) => (
+                <button key={c.uid} className="row" onClick={() => connect({ connector: c, chainId: CHAIN_ID })} disabled={isPending}>
+                  {icon(c) ? <img className="ic" width={28} height={28} src={icon(c)} alt="" /> : <span className="ic" aria-hidden="true" />}
+                  <span>
+                    {label(c)}
+                    {isPending && variables?.connector === c ? " · opening…" : ""}
+                  </span>
+                </button>
+              ))}
+            <p className="note" role="status">
+              {error ? "The wallet did not connect. Try again or pick another wallet." : ""}
+            </p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

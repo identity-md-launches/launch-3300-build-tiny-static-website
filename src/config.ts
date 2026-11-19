@@ -1,0 +1,134 @@
+/** Every address, chain id, route, ABI and RPC the site uses, in one place. */
+import { mainnet } from "viem/chains";
+
+export const SITE_NAME = "IMD on the record";
+export const SITE_DESCRIPTION =
+  "A public record page for IMD (imd.fun). Every line shows who said it, its source and how it was checked.";
+
+export const CHAIN = mainnet; // Ethereum mainnet, chain 1, only
+export const CHAIN_ID = 1 as const;
+
+/** IMD Intake v2: the only contract the site sends a transaction to, apart from IMD's approve. */
+export const INTAKE = "0xa43e6f75ee006411f79ac1c84120606c2330de82" as const;
+/** IMD on Ethereum: the asset every request pays in. */
+export const IMD = "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7" as const;
+export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+export const EMPTY_SELECTOR = "0x00000000" as const;
+
+/** The block this site launched at: the activity scan starts here. No tagged request exists before it. */
+export const LAUNCH_BLOCK = 26445600n;
+
+/** Every request this site makes carries this tag, so it can be found again from chain logs. */
+export const APP_TAG = "rec-test-1";
+export const TAG_NEEDLE = `"app":"${APP_TAG}"`;
+
+export const ACTIONS = {
+  research: "job.open@job-1",
+  oracle: "oracle.request@oracle-1",
+} as const;
+
+/** Public RPCs that answer eth_getLogs from a browser. The first serves 49,000-block ranges, the rest less. */
+export const RPCS: ReadonlyArray<{ url: string; span: bigint }> = [
+  { url: "https://gateway.tenderly.co/public/mainnet", span: 49_000n },
+  { url: "https://ethereum-rpc.publicnode.com", span: 9_000n },
+  { url: "https://rpc.mevblocker.io", span: 9_000n },
+];
+
+export const API = "https://api.imd.fun";
+export const EXPLORER = "https://explorer.imd.fun";
+export const ETHERSCAN = "https://etherscan.io";
+export const IPFS_GATEWAYS = ["https://dweb.link/ipfs/", "https://ipfs.io/ipfs/"];
+
+/** keccak256 of the Intake's event signatures, read from its logs on mainnet. */
+export const TOPIC_REQUESTED =
+  "0x1c521a43c9b0f72a335bc80a6918abce08af7949ebbd1c41fe2a576074379063" as const; // Requested(bytes32,address,bytes32,bytes,address,bytes4,address,uint256)
+export const TOPIC_COMPLETED =
+  "0xd4ad2d2ef4e8ea9995103f34e322dbefb2534f3a52984a308f7db8e257b76fa1" as const; // Completed(bytes32,uint8,bytes32,string,bool)
+
+export const INTAKE_ABI = [
+  {
+    type: "function",
+    name: "priceOf",
+    stateMutability: "view",
+    inputs: [
+      { name: "action", type: "bytes32" },
+      { name: "asset", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "request",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "action", type: "bytes32" },
+      { name: "body", type: "bytes" },
+      {
+        name: "callback",
+        type: "tuple",
+        components: [
+          { name: "target", type: "address" },
+          { name: "selector", type: "bytes4" },
+        ],
+      },
+      { name: "asset", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "requestId", type: "bytes32" }],
+  },
+  {
+    type: "event",
+    name: "Requested",
+    inputs: [
+      { name: "requestId", type: "bytes32", indexed: true },
+      { name: "payer", type: "address", indexed: true },
+      { name: "action", type: "bytes32", indexed: true },
+      { name: "body", type: "bytes", indexed: false },
+      { name: "callbackTarget", type: "address", indexed: false },
+      { name: "callbackSelector", type: "bytes4", indexed: false },
+      { name: "asset", type: "address", indexed: false },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "Completed",
+    inputs: [
+      { name: "requestId", type: "bytes32", indexed: true },
+      { name: "status", type: "uint8", indexed: false },
+      { name: "resultHash", type: "bytes32", indexed: false },
+      { name: "uri", type: "string", indexed: false },
+      { name: "delivered", type: "bool", indexed: false },
+    ],
+  },
+] as const;
+
+export const ERC20_ABI = [
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+] as const;
