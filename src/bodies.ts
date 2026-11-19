@@ -1,10 +1,14 @@
 /** The exact request bodies the site sends. Pure functions, so tests can pin every byte. */
 import objective from "../templates/research.txt?raw";
 import sourceTemplate from "../templates/source.txt?raw";
+import rebuildTemplate from "../templates/rebuild.txt?raw";
+import editTemplate from "../templates/edit.txt?raw";
 import { APP_TAG } from "./config";
 
 export const RESEARCH_OBJECTIVE = objective.trim();
 export const SOURCE_TEMPLATE = sourceTemplate.trim();
+export const REBUILD_TEMPLATE = rebuildTemplate.trim();
+export const EDIT_TEMPLATE = editTemplate.trim();
 
 export type Kind = "proof" | "statement" | "claim";
 
@@ -203,3 +207,117 @@ export function planSources(text: string, channels: ChannelTie[], main: string):
 
 /** Compact UTF-8 JSON, exactly the bytes the Intake receives. */
 export const encodeBody = (body: unknown) => JSON.stringify(body);
+
+/* ---------- <PRIOR>: the earlier results a rebuild or an edit starts from ---------- */
+
+/** One completed panel answer, as it is listed in <PRIOR>. */
+export interface PriorAnswer {
+  title: string;
+  answer: string;
+  agreed: number | null;
+  size: number | null;
+  url: string;
+}
+export interface Prior {
+  /** F1 is the page result shown now, F2... every sources or edit result completed after it. Artifact URLs. */
+  files: string[];
+  answers: PriorAnswer[];
+}
+export const artifactUrl = (hash: string) => `https://api.imd.fun/artifacts/${hash}`;
+
+/** "[F1] https://api.imd.fun/artifacts/<hash>; [F2] …; [A1] <title> = true, 5 of 5, <request URL>", or "none" with no page. */
+export function priorText(p: Prior): string {
+  if (!p.files.length) return "none";
+  const f = p.files.map((u, i) => `[F${i + 1}] ${u}`);
+  const a = p.answers.map((x, i) => `[A${i + 1}] ${x.title} = ${x.answer}, ${x.agreed ?? "?"} of ${x.size ?? "?"}, ${x.url}`);
+  return [...f, ...a].join("; ");
+}
+
+/** Reads a <PRIOR> list back out of an objective this site sent, so F and A numbers can be resolved later. */
+export function parsePrior(objective: unknown): { files: { n: number; url: string; hash: string }[]; answers: { n: number; text: string; url: string }[] } {
+  const out = { files: [] as { n: number; url: string; hash: string }[], answers: [] as { n: number; text: string; url: string }[] };
+  if (typeof objective !== "string") return out;
+  const m = /(?:Start from the earlier results: |The record so far: )([\s\S]*?)\. (?:Fetch each file\.|Extra sources from the visitor:)/.exec(objective);
+  if (!m || m[1] === "none") return out;
+  const re = /\[(F|A)(\d+)\] ([\s\S]*?)(?=; \[[FA]\d+\] |$)/g;
+  for (const x of m[1]!.matchAll(re)) {
+    const n = Number(x[2]);
+    const body = x[3]!.trim();
+    if (x[1] === "F") {
+      const h = /\/artifacts\/([0-9a-f]{64})$/.exec(body);
+      out.files.push({ n, url: body, hash: h ? h[1]! : "" });
+    } else {
+      const i = body.lastIndexOf(", ");
+      out.answers.push({ n, text: i > 0 ? body.slice(0, i) : body, url: i > 0 ? body.slice(i + 2) : "" });
+    }
+  }
+  return out;
+}
+
+/** The objective must stay under this many characters, as for Add sources. */
+export const MAX_OBJECTIVE = 7500;
+
+export const rebuildObjective = (p: Prior) => REBUILD_TEMPLATE.replace("<PRIOR>", () => priorText(p));
+
+/** "Rebuild the page": the research action and tag, with the earlier results filled in. */
+export function rebuildBody(p: Prior) {
+  return {
+    tag: { app: APP_TAG, kind: "add" },
+    skill: "research-report",
+    outputs: [{ name: "page", path: "artifacts/page.json", mediaType: "application/json" }],
+    objective: rebuildObjective(p),
+  };
+}
+
+/* ---------- Suggest an edit ---------- */
+
+export const EDIT_MAX_TEXT = 1500;
+export const EDIT_MAX_LINKS = 5;
+
+export function editObjective(text: string, p: Prior, urls: string[]) {
+  return EDIT_TEMPLATE.replace("<TEXT>", () => text)
+    .replace("<PRIOR>", () => priorText(p))
+    .replace("<URLS>", () => (urls.length ? numberLinks(urls) : "none"));
+}
+
+export function editBody(text: string, p: Prior, urls: string[]) {
+  return {
+    tag: { app: APP_TAG, kind: "edit" },
+    skill: "research-report",
+    outputs: [{ name: "edit", path: "artifacts/edit.json", mediaType: "application/json" }],
+    objective: editObjective(text, p, urls),
+  };
+}
+
+/** The proposed text as sent: trimmed, spaces inside lines collapsed, paragraphs kept as one blank line. */
+export const cleanEditText = (t: string) =>
+  t
+    .replace(/\r\n?/g, "\n")
+    .split(/\n\s*\n+/)
+    .map((p) => p.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n");
+
+/** The edit's links: the Add sources rules, at most 5. */
+export function planEditLinks(text: string): { links: string[]; rejected: { line: string; why: string }[] } {
+  const links: string[] = [];
+  const seen = new Set<string>();
+  const rejected: { line: string; why: string }[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const why = linkProblem(line);
+    if (why) {
+      rejected.push({ line, why });
+      continue;
+    }
+    const key = new URL(line).href;
+    if (seen.has(key)) rejected.push({ line, why: "already listed" });
+    else if (links.length >= EDIT_MAX_LINKS) rejected.push({ line, why: `past the limit of ${EDIT_MAX_LINKS} links` });
+    else {
+      seen.add(key);
+      links.push(line);
+    }
+  }
+  return { links, rejected };
+}

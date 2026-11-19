@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeAbiParameters, keccak256, pad, stringToHex, toHex, type Hex } from "viem";
 import { readFileSync } from "node:fs";
+import { rebuildBody, editBody, EDIT_TEMPLATE } from "../src/bodies";
 import { researchBody, oracleBody, oracleShortForm, PRESETS, Q_P1, Q_P2, Q_P3, questionP4, validateP4, encodeBody, matchOracleQuestion, sourceBody, sourceObjective, planSources, numberLinks, SOURCE_TEMPLATE } from "../src/bodies";
 import { decodeRequested, decodeCompleted, stateOf } from "../src/chain";
 import { parsePage, orderAll, safeHref, parseLines, mergeRecord, allSources, outcomeOf, outcomeText, countKinds, channelFor, underChannel, chainAndBlock } from "../src/page";
@@ -256,7 +257,7 @@ describe("add sources", () => {
     expect(p.lines.map((l) => [l.id, l.kind])).toEqual([["a", "statement"], ["b", "statement"], ["c", "claim"], ["d", "claim"], ["e", "proof"], ["f", "proof"], ["g", "proof"]]);
     expect(p.lines.find((l) => l.id === "c")!.labelNote).toContain("has tie none");
     expect(p.main).toBe("0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7");
-    expect(p.summary).toEqual([{ text: "IMD is a paid swarm.", lines: ["a", "b"] }]);
+    expect(p.summary).toEqual([{ paragraph: null, text: "IMD is a paid swarm.", lines: ["a", "b"] }]);
     expect(p.sources[3]!.readVia).toBe("archive.org");
     expect(p.lines.find((l) => l.id === "e")!.fact).toEqual({ name: "Total supply", value: "4,000", unit: "IMD", chain: "Ethereum", block: "26445903" });
     expect(p.lines.find((l) => l.id === "f")!.fact).toMatchObject({ chain: "Base", block: "59310707" });
@@ -283,8 +284,11 @@ describe("add sources", () => {
 
 describe("agents.md", () => {
   const md = readFileSync("public/agents.md", "utf8");
-  it("publishes the exact research body, the source template, the tag-free oracle body and every preset question", () => {
-    expect(md).toContain(encodeBody(researchBody()));
+  it("publishes the rebuild body, the edit template, the source template, the tag-free oracle body and every preset question", () => {
+    expect(md).toContain(encodeBody(rebuildBody({ files: [], answers: [] })));
+    expect(md).toContain(EDIT_TEMPLATE);
+    expect(md).toContain(encodeBody({ ...editBody("x", { files: [], answers: [] }, []), objective: "<EDIT_OBJECTIVE>" }));
+    expect(md).toContain("[F1] https://api.imd.fun/artifacts/");
     expect(md).toContain(SOURCE_TEMPLATE);
     expect(md).toContain(encodeBody(oracleBody(Q_P1, "panel")));
     for (const p of PRESETS) expect(md).toContain(p.question);
@@ -292,7 +296,8 @@ describe("agents.md", () => {
     expect(md).toContain("priceOf");
     expect(md).toContain("`<MAIN>`");
     expect(md).toContain("url (tie: strong|weak|none)");
-    expect(md).toContain("summary[{text,lines[]}]");
+    expect(md).toContain("summary[{text,lines[],paragraph}]");
+    expect(md).toContain("accepted_summary[{text,lines[],paragraph}]");
     expect(md).toContain("about_subject,about_why");
   });
 });

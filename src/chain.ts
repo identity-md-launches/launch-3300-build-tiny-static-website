@@ -126,6 +126,9 @@ export interface Completion {
   reason: string;
   uri: string;
   transactionHash: Hex;
+  /** Where the completion sits on chain, so results can be ordered by when they completed. */
+  blockNumber: bigint;
+  logIndex: number;
 }
 
 export function decodeCompleted(log: RawLog): Completion | null {
@@ -147,7 +150,7 @@ export function decodeCompleted(log: RawLog): Completion | null {
       reason = "";
     }
   }
-  return { requestId: log.topics[1]!, status, resultHash, reason, uri, transactionHash: log.transactionHash };
+  return { requestId: log.topics[1]!, status, resultHash, reason, uri, transactionHash: log.transactionHash, blockNumber: BigInt(log.blockNumber ?? "0x0"), logIndex: Number(log.logIndex ?? "0x0") };
 }
 
 /** Every tagged request since launch, with its completion if one was written. Newest first. */
@@ -172,4 +175,10 @@ export async function loadTaggedRequests(): Promise<{ requests: TaggedRequest[];
 export function stateOf(c: Completion | undefined): "pending" | "completed" | "refused" | "failed" {
   if (!c) return "pending";
   return c.status === 0 ? "completed" : c.status === 1 ? "refused" : "failed";
+}
+
+/** Orders completions: negative when a completed before b. */
+export function completedBefore(a: Completion, b: Completion): number {
+  if (a.blockNumber !== b.blockNumber) return a.blockNumber < b.blockNumber ? -1 : 1;
+  return a.logIndex - b.logIndex;
 }

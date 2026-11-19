@@ -73,6 +73,16 @@ async function fetchVerified(file: ResultFile): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
+/** One artifact by its SHA-256, checked and cached: the files a rebuild was given. */
+export async function fetchArtifact(hash: string): Promise<string> {
+  const key = `artifact:${hash}`;
+  const cached = cacheGet<string>(key);
+  if (cached) return cached;
+  const text = await fetchVerified({ name: "", hash });
+  cacheSet(key, text);
+  return text;
+}
+
 /** Reason and detail of a refused or failed request, as plain text from GET /intake/1/:transactionHash. */
 export interface Refusal {
   reason: string;
@@ -88,6 +98,8 @@ export function refusalOf(entry: IntakeEntry | null): Refusal | null {
 
 export interface PageFetch {
   text: string;
+  /** SHA-256 of the file's bytes: its artifact id at api.imd.fun/artifacts/<hash>. */
+  hash?: string;
   jobId: string | null;
   path: "api" | "ipfs";
 }
@@ -100,14 +112,17 @@ export interface PageFetch {
 export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHint: string | null, fileName = "page"): Promise<PageFetch> {
   const key = `${fileName}:${r.requestId}`;
   const cached = cacheGet<PageFetch>(key);
-  if (cached) return cached;
+  if (cached) {
+    if (!cached.hash) cached.hash = await sha256Hex(new TextEncoder().encode(cached.text).buffer as ArrayBuffer);
+    return cached;
+  }
   let firstError: unknown = null;
   if (jobIdHint) {
     try {
       const result = await getJson<JobResult>(`${API}/jobs/${jobIdHint}/result`);
       const file = result.files?.find((f) => f.name === fileName);
       if (!file) throw new Error(`The job result has no file named "${fileName}"`);
-      const out: PageFetch = { text: await fetchVerified(file), jobId: jobIdHint, path: "api" };
+      const out: PageFetch = { text: await fetchVerified(file), hash: file.hash, jobId: jobIdHint, path: "api" };
       cacheSet(key, out);
       return out;
     } catch (e) {
@@ -125,7 +140,7 @@ export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHi
         const result = JSON.parse(new TextDecoder().decode(bytes)) as JobResult;
         const file = result.files?.find((f) => f.name === fileName);
         if (!file) continue;
-        const out: PageFetch = { text: await fetchVerified(file), jobId: result.jobId ?? jobIdHint, path: "ipfs" };
+        const out: PageFetch = { text: await fetchVerified(file), hash: file.hash, jobId: result.jobId ?? jobIdHint, path: "ipfs" };
         cacheSet(key, out);
         return out;
       } catch (e) {

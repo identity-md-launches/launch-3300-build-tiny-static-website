@@ -1,35 +1,26 @@
-/** The record: summary, filter, one row per line with details, on-chain facts as a table, and one source list. */
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { ACTIONS, EXPLORER } from "./config";
+/** The record's tabs: Overview (key facts, summary, panel), Record (filter, sections, one facts table) and Sources. */
+import { Fragment, useEffect } from "react";
+import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, TIE_WORDS, tieWord } from "./format";
-import {
-  allSources,
-  countKinds,
-  hostOf,
-  mergeRecord,
-  safeHref,
-  SECTION_TITLES,
-  type Kind,
-  type ListedSource,
-  type Page,
-  type RecordRow,
-  type SourceJob,
-  type SourceLine,
-} from "./page";
-import { isSourceJob, type Activity } from "./useActivity";
+import { hostOf, paragraphsOf, safeHref, SECTION_TITLES, SECTIONS, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
+import type { RecordModel } from "./model";
+import type { Activity } from "./useActivity";
 
-export interface RecordState {
-  latest: Activity | undefined;
-  page: Page | null;
-  via: { jobId: string | null; path: string } | null;
-  error: string | null;
-  ready: boolean;
-  channels: { url: string; tie: "strong" | "weak" | "none" }[];
-  main: string;
-}
-
-type Filter = Kind | "all";
+export type Filter = Kind | "all";
 const FILTERS: Filter[] = ["all", "proof", "statement", "claim"];
+const KINDS: Kind[] = ["proof", "statement", "claim"];
+
+/** Shared view state: the filter and which rows are open live in App, so they survive tab changes. */
+export interface Ui {
+  filter: Filter;
+  setFilter: (f: Filter) => void;
+  openSet: Set<string>;
+  toggle: (id: string) => void;
+  /** Opens these lines in the Record tab and moves to the first. */
+  openLines: (ids: string[]) => void;
+  /** The element the current link points at, inside the current tab. */
+  target: string | null;
+}
 
 export function KindMark({ kind }: { kind: string }) {
   return (
@@ -51,10 +42,201 @@ export function ExtLink({ url, children, className }: { url: string; children: R
   );
 }
 
-/** Context every row needs: source numbers, who paid for the research, and how to open another row. */
+const panelAnchor = (a: Activity) => `panel-${a.req.requestId.slice(2, 14)}`;
+
+/* ---------- Overview ---------- */
+
+function Infobox({ m, ui }: { m: RecordModel; ui: Ui }) {
+  const rows = m.page?.infobox ?? [];
+  if (!rows.length) return null;
+  return (
+    <aside className="infobox" aria-labelledby="infobox-title">
+      <h2 id="infobox-title">Key facts</h2>
+      <table>
+        <tbody>
+          {rows.map((r, i) => {
+            const known = r.lines.filter((id) => m.resolve(id, ""));
+            return (
+              <tr key={i}>
+                <th scope="row">{r.label}</th>
+                <td>
+                  {safeHref(r.url) ? <ExtLink url={r.url} className="break">{r.value}</ExtLink> : <span className="break">{r.value}</span>}
+                  {known.length > 0 && (
+                    <>
+                      {" "}
+                      <a
+                        className="rests"
+                        href={`#${lineAnchor(known[0]!)}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          ui.openLines(known.map((id) => m.resolve(id, "")!.id));
+                        }}
+                        aria-label={`${r.label}: open the ${known.length === 1 ? "line" : `${known.length} lines`} it rests on`}
+                      >
+                        {known.length === 1 ? "line" : `${known.length} lines`}
+                      </a>
+                    </>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </aside>
+  );
+}
+
+/** After each sentence, one small coloured dot per kind among its lines; a dot opens those lines in Record. */
+function SentenceDots({ ids, m, ui }: { ids: string[]; m: RecordModel; ui: Ui }) {
+  const lines = ids.map((id) => m.resolve(id)).filter((l): l is Line => !!l);
+  const kinds = KINDS.filter((k) => lines.some((l) => l.kind === k));
+  if (!kinds.length) return null;
+  return (
+    <span className="sdots">
+      {kinds.map((k) => {
+        const of = lines.filter((l) => l.kind === k);
+        const label = `${of.length} ${kindName(k).toLowerCase()} line${of.length === 1 ? "" : "s"}`;
+        return (
+          <a
+            key={k}
+            className={`sdot kind-${k}`}
+            href={`#${lineAnchor(of[0]!.id)}`}
+            title={label}
+            aria-label={`Open ${label} in Record`}
+            onClick={(e) => {
+              e.preventDefault();
+              ui.openLines(of.map((l) => l.id));
+            }}
+          >
+            <span className="dot" aria-hidden="true" />
+          </a>
+        );
+      })}
+    </span>
+  );
+}
+
+function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
+  if (!m.summary.length) return null;
+  return (
+    <div className="summary">
+      <div className="section-head">
+        <h2>Summary</h2>
+        <a className="btn btn-small" href="#suggest-edit">
+          Edit
+        </a>
+      </div>
+      {paragraphsOf(m.summary).map((p, i) => (
+        <p key={i} className="prose">
+          {p.map((s, j) => (
+            <Fragment key={j}>
+              {s.text}
+              <SentenceDots ids={s.lines} m={m} ui={ui} />{" "}
+            </Fragment>
+          ))}
+        </p>
+      ))}
+      <p className="small">
+        {m.edit ? (
+          <>
+            Edited by <span className="mono">{payerName(m.edit.activity)}</span>, checked by a research job. Not itself a checked line.
+          </>
+        ) : (
+          "Written by the research job from the lines in Record. Not itself a checked line."
+        )}{" "}
+        Each dot opens the proof, statement or claim lines behind a sentence.
+      </p>
+    </div>
+  );
+}
+
+function PanelChecks({ m }: { m: RecordModel }) {
+  if (!m.panel.length) return null;
+  return (
+    <div className="card">
+      <h2>Checked by a panel</h2>
+      <ul className="lines">
+        {[...m.panel].reverse().map((a) => (
+          <li key={a.req.requestId} className="panel-row" id={panelAnchor(a)} tabIndex={-1}>
+            <p className="row-text">{a.req.title || String(a.req.bodyJson?.question ?? "").slice(0, 120)}</p>
+            <div className="row-meta">
+              <span className={`answer answer-${a.oracle?.answer ?? "none"}`}>{a.oracle?.answer ?? "no answer"}</span>
+              <span className="small">
+                panel, {a.oracle?.agreed ?? "?"} of {a.oracle?.panelSize ?? "?"} agreed
+              </span>
+              <KindMark kind={a.req.kind} />
+              <a className="small" href={jobLink(a.jobId, a.req.transactionHash)} target="_blank" rel="noopener noreferrer">
+                {a.jobId ? "Open the request" : "Open the transaction"}
+              </a>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function OverviewTab({ m, ui, items, price, onRebuild }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; onRebuild: () => void }) {
+  const { page, latest, error } = m;
+  return (
+    <section className="tab" aria-labelledby="record-title">
+      <h1 id="record-title" tabIndex={-1}>{page?.name || "IMD (imd.fun)"}</h1>
+      <p className="lead">{page?.oneLine || "A public record of imd.fun. Every line shows who said it, its source and how it was checked."}</p>
+      <div className="row-actions">
+        <button className="btn btn-primary" onClick={onRebuild}>
+          Rebuild the page
+        </button>
+        <a className="btn" href="#contribute">
+          Contribute
+        </a>
+        <span className="price mono">{price}</span>
+      </div>
+
+      {!page ? (
+        <div className="card empty">
+          <h2>{items === null ? "Reading the record…" : latest && !error ? "Downloading the record…" : "No page yet"}</h2>
+          <p>
+            {latest && !error
+              ? "The page job finished. Downloading and checking its file…"
+              : "The record is written by the IMD swarm. Pay for one page job with Rebuild the page and its result appears here."}
+          </p>
+          {error && <p className="error">Unable to read the page: {error}</p>}
+        </div>
+      ) : (
+        <div className={`overview${page.infobox.length ? " has-infobox" : ""}`}>
+          <Infobox m={m} ui={ui} />
+          <Summary m={m} ui={ui} />
+          {!m.summary.length && (
+            <p className="small">
+              This page has no summary yet. <a href="#suggest-edit">Suggest one</a> or read the lines in <a href="#record">Record</a>.
+            </p>
+          )}
+        </div>
+      )}
+
+      <PanelChecks m={m} />
+
+      <div className="card">
+        <h2>Help build this record</h2>
+        <p>Pay the swarm from your own wallet to check one fact, add sources, or propose better summary text. Every result is read back from Ethereum.</p>
+        <div className="row-actions">
+          <a className="btn" href="#contribute">Confirm a fact</a>
+          <a className="btn" href="#add-sources">Add sources</a>
+          <a className="btn" href="#suggest-edit">Suggest an edit</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ---------- Record ---------- */
+
 interface Ctx {
   numbers: Map<string, ListedSource>;
   research: { payer: string; href: string } | null;
+  m: RecordModel;
+  ui: Ui;
 }
 
 function SourceNumbers({ keys, numbers }: { keys: string[]; numbers: Map<string, ListedSource> }) {
@@ -87,7 +269,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
       : line.kind === "statement"
         ? `Statement: published on ${line.channel?.label || line.channel?.url || "a channel of the subject"}, whose tie is “${tieWord(line.channel?.tie ?? "none")}”.`
         : `Claim: said by ${line.by || "someone other than the subject"}, not on a tied channel of the subject. Nobody has confirmed it.`;
-  const job = origin ? { what: "A source job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The research job", payer: ctx.research.payer, href: ctx.research.href } : null;
+  const job = origin ? { what: "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
   return (
     <div className="details" id={id}>
       <dl className="facts">
@@ -114,6 +296,12 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
           {checked}
           {line.labelNote && <span className="block small">{line.labelNote}</span>}
         </dd>
+        {line.from.length > 0 && (
+          <>
+            <dt>Carried from</dt>
+            <dd className="mono">{line.from.join(", ")}</dd>
+          </>
+        )}
         <dt>Added by</dt>
         <dd>
           {job ? (
@@ -135,7 +323,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
             {job && (
               <li>
                 <a href={job.href} target="_blank" rel="noopener noreferrer">
-                  {origin ? "Source job" : "Research job"} on {job.href.startsWith(EXPLORER) ? "explorer.imd.fun" : "Etherscan"}
+                  {origin ? "Its job" : "Page job"} on {job.href.startsWith(EXPLORER) ? "explorer.imd.fun" : "Etherscan"}
                 </a>
               </li>
             )}
@@ -146,12 +334,46 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
   );
 }
 
-function DiffersNote({ row }: { row: RecordRow }) {
+/** "Confirmed by" in green or "Contradicted by" in red, each opening the linked proof line or panel answer. */
+function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
+  if (!line.links.length) return null;
+  return (
+    <ul className="settled">
+      {line.links.map((k, i) => {
+        const word = k.type === "confirms" ? "Confirmed by" : "Contradicted by";
+        const target = ctx.m.resolve(k.target, "");
+        const answer = target ? null : ctx.m.answerRef(k.target);
+        let body: React.ReactNode = <span className="mono">{k.target}</span>;
+        if (target)
+          body = (
+            <a
+              href={`#${lineAnchor(target.id)}`}
+              onClick={(e) => {
+                e.preventDefault();
+                ctx.ui.openLines([target.id]);
+              }}
+            >
+              {target.text}
+            </a>
+          );
+        else if (answer) body = answer.activity ? <a href={`#${panelAnchor(answer.activity)}`}>{answer.text}</a> : <span>{answer.text}</span>;
+        return (
+          <li key={i} className={`settled-${k.type}`}>
+            <span className="settled-word">{word}:</span> {body}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function DiffersNote({ row, facts }: { row: RecordRow; facts: Set<string> }) {
   if (!row.differsWith) return null;
   const conflict = row.level === "conflict";
+  const where = facts.has(row.differsWith) ? "the fact in the table above" : "the line above";
   return (
     <p className={`differs ${conflict ? "differs-conflict" : "differs-question"}`}>
-      {conflict ? "Conflicts with the line above" : "Compare with the line above"}
+      {conflict ? `Conflicts with ${where}` : `Compare with ${where}`}
       {row.why ? `: ${row.why}` : ""}
     </p>
   );
@@ -164,13 +386,15 @@ const onRowClick = (toggle: () => void) => (e: React.MouseEvent) => {
   toggle();
 };
 
-function LineRow({ row, ctx, open, toggle }: { row: RecordRow; ctx: Ctx; open: boolean; toggle: () => void }) {
+function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<string> }) {
   const { line } = row;
   const anchor = lineAnchor(line.id || line.text.slice(0, 40));
   const showBy = line.kind !== "proof" && line.by;
+  const open = ctx.ui.openSet.has(line.id);
+  const toggle = () => ctx.ui.toggle(line.id);
   return (
     <li className={`row${row.differsWith ? ` row-differs row-${row.level}` : ""}${open ? " is-open" : ""}`} id={anchor}>
-      <DiffersNote row={row} />
+      <DiffersNote row={row} facts={facts} />
       <div className="row-main" onClick={onRowClick(toggle)}>
         <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={toggle}>
           <span className="chev" aria-hidden="true" />
@@ -182,16 +406,17 @@ function LineRow({ row, ctx, open, toggle }: { row: RecordRow; ctx: Ctx; open: b
         </button>
         <SourceNumbers keys={line.srcKeys} numbers={ctx.numbers} />
       </div>
+      <LinkNotes line={line} ctx={ctx} />
       {open && <Details row={row} ctx={ctx} id={`${anchor}-d`} />}
     </li>
   );
 }
 
-/** A section's proof lines that carry "fact", as a table: name, value, chain and block. A row opens to the sentence and re-run steps. */
-function FactTable({ section, rows, ctx, openSet, toggle }: { section: string; rows: RecordRow[]; ctx: Ctx; openSet: Set<string>; toggle: (id: string) => void }) {
+/** Every proof line that carries "fact", in one table under On chain: name, value with unit, chain and block. */
+function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
   return (
     <table className="fact-table">
-      <caption className="sr-only">On-chain facts in {SECTION_TITLES[section] ?? section}</caption>
+      <caption className="sr-only">On-chain facts</caption>
       <thead>
         <tr>
           <th scope="col">Name</th>
@@ -203,12 +428,13 @@ function FactTable({ section, rows, ctx, openSet, toggle }: { section: string; r
         {rows.map((row) => {
           const f = row.line.fact!;
           const anchor = lineAnchor(row.line.id || f.name);
-          const open = openSet.has(row.line.id);
+          const open = ctx.ui.openSet.has(row.line.id);
+          const toggle = () => ctx.ui.toggle(row.line.id);
           return (
             <Fragment key={row.line.id || f.name}>
-              <tr id={anchor} className={`fact-row${open ? " is-open" : ""}`} onClick={onRowClick(() => toggle(row.line.id))}>
+              <tr id={anchor} className={`fact-row${open ? " is-open" : ""}`} onClick={onRowClick(toggle)}>
                 <th scope="row">
-                  <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={() => toggle(row.line.id)}>
+                  <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={toggle}>
                     <span className="chev" aria-hidden="true" />
                     <span className="row-text">{f.name}</span>
                   </button>
@@ -243,206 +469,137 @@ function FactTable({ section, rows, ctx, openSet, toggle }: { section: string; r
   );
 }
 
-/** A fact row goes in the table only when it is not one half of a differs pair, so pairs stay together. */
-function splitFacts(rows: RecordRow[]) {
-  const paired = new Set<string>();
-  rows.forEach((r, i) => {
-    if (r.differsWith) {
-      paired.add(r.line.id);
-      paired.add(rows[i - 1]?.line.id ?? "");
-    }
-  });
-  const facts = rows.filter((r) => r.line.kind === "proof" && r.line.fact && !r.origin && !paired.has(r.line.id));
-  const rest = rows.filter((r) => !facts.includes(r));
-  return { facts, rest };
-}
-
-function Summary({ page, onOpen }: { page: Page; onOpen: (id: string) => void }) {
-  const ids = new Set(page.lines.map((l) => l.id));
+function Accounting({ m }: { m: RecordModel }) {
+  const a = m.accounting;
+  const dropped = m.page?.dropped ?? [];
   return (
-    <div className="card summary">
-      <h2>Summary</h2>
-      <p className="small">Written by the research job from the lines below. Not itself a checked line.</p>
-      <ul className="plain">
-        {page.summary.map((s, i) => (
-          <li key={i}>
-            {s.text}{" "}
-            <span className="nums">
-              {s.lines.map((id) =>
-                ids.has(id) ? (
-                  <a
-                    key={id}
-                    className="chip mono"
-                    href={`#${lineAnchor(id)}`}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      onOpen(id);
-                    }}
-                  >
-                    {id}
-                  </a>
-                ) : (
-                  <span key={id} className="chip mono" title="Not a line of this record">
-                    {id}
-                  </span>
-                ),
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function SourceList({ list, via }: { list: ListedSource[]; via: RecordState["via"] }) {
-  return (
-    <div className="card">
-      <h2>Sources</h2>
-      <ol className="sources">
-        {list.map((s) => (
-          <li key={s.key} id={`source-${s.n}`}>
-            <span className="chip mono">{s.n}</span>
-            <span className="source-ref">
-              <ExtLink url={s.url}>{s.url || "no address given"}</ExtLink>
-              {s.readVia && <span className="via"> read via {s.readVia}</span>}
-            </span>
-            <span className="small">
-              {[
-                s.type || "source",
-                s.publisher ? `published by ${s.publisher}` : "",
-                `read ${s.readAt || "at an unknown time"}`,
-                s.couldOpen === false ? "could not open" : "",
-                s.outcome?.kind === "off" ? "not about this subject" : "",
-                s.addedBy ? `added by ${s.addedBy}` : "research",
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
-          </li>
-        ))}
-      </ol>
-      {via && <p className="small">The research page was read through {via.path === "api" ? "api.imd.fun" : "an IPFS gateway"}; its bytes matched the listed SHA-256.</p>}
-    </div>
-  );
-}
-
-function PanelChecks({ items }: { items: Activity[] }) {
-  const panel = items.filter((a) => a.req.action === ACTIONS.oracle && a.state === "completed");
-  if (!panel.length) return null;
-  return (
-    <div className="card">
-      <h2>Checked by a panel</h2>
-      <ul className="lines">
-        {panel.map((a) => (
-          <li key={a.req.requestId} className="panel-row">
-            <p className="row-text">{a.req.title || String(a.req.bodyJson?.question ?? "").slice(0, 120)}</p>
-            <div className="row-meta">
-              <span className={`answer answer-${a.oracle?.answer ?? "none"}`}>{a.oracle?.answer ?? "no answer"}</span>
-              <span className="small">
-                panel, {a.oracle?.agreed ?? "?"} of {a.oracle?.panelSize ?? "?"} agreed
-              </span>
-              <KindMark kind={a.req.kind} />
-              <a className="small" href={jobLink(a.jobId, a.req.transactionHash)} target="_blank" rel="noopener noreferrer">
-                {a.jobId ? "Open the request" : "Open the transaction"}
-              </a>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-export function Record({ items, rec, onResearch, price }: { items: Activity[] | null; rec: RecordState; onResearch: () => void; price: string }) {
-  const { latest, page, via, error } = rec;
-  const sourceJobs: SourceJob[] = useMemo(
-    () =>
-      (items ?? [])
-        .filter((a) => isSourceJob(a.req) && a.state === "completed" && a.sources)
-        .reverse()
-        .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash) })),
-    [items],
-  );
-  const sections = useMemo(() => mergeRecord(page, sourceJobs), [page, sourceJobs]);
-  const list = useMemo(() => allSources(page, sourceJobs), [page, sourceJobs]);
-  const counts = useMemo(() => countKinds(sections), [sections]);
-  const [filter, setFilter] = useState<Filter>("all");
-  const [openSet, setOpenSet] = useState<Set<string>>(() => new Set());
-  const [focusId, setFocusId] = useState<string | null>(null);
-  const ctx: Ctx = {
-    numbers: new Map(list.map((s) => [s.key, s])),
-    research: latest ? { payer: payerName(latest), href: jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash) } : null,
-  };
-  const toggle = (id: string) =>
-    setOpenSet((s) => {
-      const n = new Set(s);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
-  /** Opens a line from a summary link: shows all kinds, opens it, then scrolls to it and focuses its button. */
-  const openLine = (id: string) => {
-    setFilter("all");
-    setOpenSet((s) => new Set(s).add(id));
-    setFocusId(id);
-  };
-  useEffect(() => {
-    if (!focusId) return;
-    const el = document.getElementById(lineAnchor(focusId));
-    el?.scrollIntoView?.({ block: "start" });
-    el?.querySelector<HTMLElement>(".row-toggle")?.focus({ preventScroll: true });
-    if (el && history.replaceState) history.replaceState(null, "", `#${lineAnchor(focusId)}`);
-    setFocusId(null);
-  }, [focusId]);
-  useEffect(() => {
-    const m = /^#line-(.+)$/.exec(location.hash);
-    const id = m && page?.lines.find((l) => lineAnchor(l.id) === `line-${m[1]}`)?.id;
-    if (id) openLine(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
-
-  const shown = sections
-    .map((s) => ({ ...s, rows: filter === "all" ? s.rows : s.rows.filter((r) => r.line.kind === filter) }))
-    .filter((s) => s.rows.length > 0);
-
-  return (
-    <section id="record" aria-labelledby="record-title">
-      <h1 id="record-title">{page?.name || "IMD (imd.fun)"}</h1>
-      <p className="lead">{page?.oneLine || "A public record of imd.fun. Every line shows who said it, its source and how it was checked."}</p>
-
-      {!page ? (
-        <div className="card empty">
-          <h2>{items === null ? "Reading the record…" : latest && !error ? "Downloading the record…" : "No research yet"}</h2>
-          <p>
-            {latest && !error
-              ? "Research finished. Downloading and checking the page…"
-              : "The record is written by the IMD swarm. Pay for one research job and its page appears here."}
-          </p>
-          {error && <p className="error">Unable to read the page: {error}</p>}
-          <div className="row-actions">
-            <button className="btn btn-primary" onClick={onResearch}>
-              Research this page
-            </button>
-            <span className="price mono">{price}</span>
-          </div>
-        </div>
-      ) : (
-        <div className="row-actions">
-          <button className="btn btn-primary" onClick={onResearch}>
-            Research again
-          </button>
-          <a className="btn" href="#actions">
-            Confirm a fact
-          </a>
-          <a className="btn" href="#add-sources">
-            Add sources
-          </a>
+    <>
+      {a.state === "loading" && <p className="small">Checking the last rebuild against the {a.files} earlier files it was given…</p>}
+      {a.state === "error" && <p className="small">Unable to check the last rebuild against its earlier files: {a.error}</p>}
+      {a.state === "done" && a.missing.length > 0 && (
+        <div className="warn-box" id="unaccounted" role="note">
+          <h2>
+            {a.missing.length} earlier line{a.missing.length === 1 ? " is" : "s are"} unaccounted for
+          </h2>
+          <p className="small">The last rebuild neither carried these lines forward nor listed them as dropped.</p>
+          <ul className="plain small">
+            {a.missing.map((x) => (
+              <li key={x.ref}>
+                <span className="mono">{x.ref}</span> {x.text}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
+      {dropped.length > 0 && (
+        <details className="dropped" id="dropped">
+          <summary>
+            Dropped in the last rebuild <span className="count num">{dropped.length}</span>
+          </summary>
+          <ul className="plain small">
+            {dropped.map((d, i) => (
+              <li key={i}>
+                <span className="mono">{d.id}</span> {d.why || "no reason given"}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
+  );
+}
 
-      {page && page.summary.length > 0 && <Summary page={page} onOpen={openLine} />}
+export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
+  const { latest, via, sections, counts, page } = m;
+  const ctx: Ctx = {
+    numbers: new Map(m.sourceList.map((s) => [s.key, s])),
+    research: latest ? { payer: payerName(latest), href: jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash) } : null,
+    m,
+    ui,
+  };
+  const { filter } = ui;
+  // A link to one line opens it when the tab is reached by that link.
+  useEffect(() => {
+    if (!ui.target?.startsWith("line-")) return;
+    const row = sections.flatMap((s) => s.rows).find((r) => lineAnchor(r.line.id) === ui.target);
+    if (row && !ui.openSet.has(row.line.id)) ui.toggle(row.line.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ui.target, sections]);
 
+  const all = sections.flatMap((s) => s.rows);
+  const factRows = all.filter((r) => r.line.kind === "proof" && r.line.fact && !r.origin);
+  const facts = new Set(factRows.map((r) => r.line.id));
+  const keep = (r: RecordRow) => filter === "all" || r.line.kind === filter;
+  const shownFacts = factRows.filter(keep);
+  const named = new Set(sections.map((s) => s.section));
+  if (shownFacts.length) named.add("on_chain");
+  const order = [...SECTIONS.filter((s) => named.has(s)), ...[...named].filter((s) => !(SECTIONS as readonly string[]).includes(s))];
+  const shown = order
+    .map((section) => ({
+      section,
+      rows: (sections.find((s) => s.section === section)?.rows ?? []).filter((r) => !facts.has(r.line.id) && keep(r)),
+      table: section === "on_chain" ? shownFacts : [],
+    }))
+    .filter((s) => s.rows.length > 0 || s.table.length > 0);
+
+  return (
+    <section className="tab" aria-labelledby="record-tab-title">
+      <h1 id="record-tab-title" tabIndex={-1} className="tab-title">Record</h1>
+      {!page && !m.jobs.length ? (
+        <div className="card empty">
+          <p>No lines yet. Lines appear here once a page job, a sources job or an edit has completed.</p>
+          <a className="btn" href="#contribute">Contribute</a>
+        </div>
+      ) : (
+        <>
+          <Accounting m={m} />
+          {counts.all > 0 && (
+            <div className="filter" role="group" aria-label="Show lines of kind">
+              {FILTERS.map((f) => (
+                <button key={f} type="button" className="btn btn-filter" aria-pressed={filter === f} onClick={() => ui.setFilter(f)}>
+                  {f === "all" ? "All" : <KindMark kind={f} />}
+                  <span className="count num">{counts[f]}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {shown.map(({ section, rows, table }) => (
+            <div key={section} className="card">
+              <h2>{SECTION_TITLES[section] ?? section}</h2>
+              {table.length > 0 && <FactTable rows={table} ctx={ctx} />}
+              {rows.length > 0 && (
+                <ul className="lines">
+                  {rows.map((row) => (
+                    <LineRow key={row.line.id || row.line.text} row={row} ctx={ctx} facts={facts} />
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+          {counts.all > 0 && shown.length === 0 && <p className="small">No lines of this kind.</p>}
+          {page && page.openQuestions.length > 0 && (
+            <div className="card">
+              <h2>Not known yet</h2>
+              <ul className="plain">
+                {page.openQuestions.map((q, i) => (
+                  <li key={i}>{q}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/* ---------- Sources ---------- */
+
+export function SourcesTab({ m }: { m: RecordModel }) {
+  const { page, via, sourceList: list } = m;
+  return (
+    <section className="tab" aria-labelledby="sources-title">
+      <h1 id="sources-title" tabIndex={-1} className="tab-title">Sources</h1>
       {page && page.channels.length > 0 && (
         <div className="channels-block">
           <h2>Channels</h2>
@@ -460,50 +617,39 @@ export function Record({ items, rec, onResearch, price }: { items: Activity[] | 
           </p>
         </div>
       )}
-
-      <PanelChecks items={items ?? []} />
-
-      {counts.all > 0 && (
-        <div className="filter" role="group" aria-label="Show lines of kind">
-          {FILTERS.map((f) => (
-            <button key={f} type="button" className="btn btn-filter" aria-pressed={filter === f} onClick={() => setFilter(f)}>
-              {f === "all" ? "All" : <KindMark kind={f} />}
-              <span className="count num">{counts[f]}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {shown.map(({ section, rows }) => {
-        const { facts, rest } = splitFacts(rows);
-        return (
-          <div key={section} className="card">
-            <h2>{SECTION_TITLES[section] ?? section}</h2>
-            {facts.length > 0 && <FactTable section={section} rows={facts} ctx={ctx} openSet={openSet} toggle={toggle} />}
-            {rest.length > 0 && (
-              <ul className="lines">
-                {rest.map((row) => (
-                  <LineRow key={row.line.id || row.line.text} row={row} ctx={ctx} open={openSet.has(row.line.id)} toggle={() => toggle(row.line.id)} />
-                ))}
-              </ul>
-            )}
-          </div>
-        );
-      })}
-      {counts.all > 0 && shown.length === 0 && <p className="small">No lines of this kind.</p>}
-
-      {page && page.openQuestions.length > 0 && (
+      {list.length > 0 ? (
         <div className="card">
-          <h2>Not known yet</h2>
-          <ul className="plain">
-            {page.openQuestions.map((q, i) => (
-              <li key={i}>{q}</li>
+          <h2>Every source, numbered</h2>
+          <ol className="sources">
+            {list.map((s) => (
+              <li key={s.key} id={`source-${s.n}`}>
+                <span className="chip mono">{s.n}</span>
+                <span className="source-ref">
+                  <ExtLink url={s.url}>{s.url || "no address given"}</ExtLink>
+                  {s.readVia && <span className="via"> read via {s.readVia}</span>}
+                </span>
+                <span className="small">
+                  {[
+                    s.type || "source",
+                    s.publisher ? `published by ${s.publisher}` : "",
+                    `read ${s.readAt || "at an unknown time"}`,
+                    s.couldOpen === false ? "could not open" : "",
+                    s.outcome?.kind === "off" ? "not about this subject" : "",
+                    s.addedBy ? `added by ${s.addedBy}` : "page job",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </li>
             ))}
-          </ul>
+          </ol>
+          {via && <p className="small">The page file was read through {via.path === "api" ? "api.imd.fun" : "an IPFS gateway"}; its bytes matched the listed SHA-256.</p>}
+        </div>
+      ) : (
+        <div className="card empty">
+          <p>No sources yet. They are listed here once a page job or a sources job has completed.</p>
         </div>
       )}
-
-      {list.length > 0 && <SourceList list={list} via={via} />}
     </section>
   );
 }

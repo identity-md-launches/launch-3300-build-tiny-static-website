@@ -1,89 +1,88 @@
-# Validation: reading the record, label rule, new templates (job 3)
+# Validation: tabs, key facts, rebuild and Suggest an edit
 
-## Scope and assumptions
+Run on 2026-11-19 on this machine, after the last source change.
 
-- Changed surfaces: the record (rows with details, filter, Summary, on-chain fact tables, differs levels, one
-  source list), the Activity row for source jobs, the source and research templates, `public/agents.md`.
-  The wallet code, request bodies' fields, oracle questions and the pay dialog are unchanged.
-- Export: `dist/`, built by `npm run build` (Vite, `base: "./"`).
-- Inferred choices: a research line's publisher is its `by` (matched to a channel label) or its sources' URLs
-  (a URL at or under a channel URL); a source line's publisher is its source's `publisher` or URL. The job's own
-  `publisher_is_subject_channel` is not trusted. Chain and block in the fact table come from `fact.chain` /
-  `fact.block` if a result gives them, else from the line's text and re-run steps. `<MAIN>` reads "not known" and
-  `<CHANNELS>` "none known" when there is no record.
-
-## Verification (commands run on this machine, 2026-11-19)
+## Commands and results
 
 | Command | Result |
 | --- | --- |
-| `npm run typecheck` | exit 0 |
-| `npm test` | 22 of 22 pass |
+| `npm ci` | exit 0 |
+| `npm run typecheck` (`tsc --noEmit`, covers `src`, `tests`, `vite.config.ts`) | exit 0 |
+| `npm test` (vitest) | 34 of 34 pass: 22 in `tests/unit.test.ts`, 12 in `tests/rebuild.test.ts` |
 | `npm run build` | exit 0; `dist/index.html` uses only `./` URLs |
-| `POST https://api.imd.fun/requests/check` (research and source bodies) | both 200, `blockers: []`, `suggestions: []`, `judged: true` (README has details) |
-| `node tests/e2e.mjs test/scratch/e2e test/scratch/harness-dist` (Chromium 1248 headless shell, live chain and api.imd.fun) | 44 of 44 pass |
-| `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` | 16 of 16 pass |
+| `npx vite-node tests/make-fixture.ts test/scratch/fx.json` then `node tests/e2e.mjs test/scratch/fx.json test/scratch/e2e` (headless Chromium 1248) | 118 of 118 pass at 390, 1440 and 320 wide |
+| `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` (live chain) | 15 of 16; `copy-budget` fails, see below |
+| `POST https://api.imd.fun/requests/check` with the rebuild, sources and edit bodies | 200, `blockers: []`, `suggestions: []`, `judged: true` for all, see README |
 
-Browser setup: this machine's Chromium lacked system libraries (`libnspr4.so` and others). I extracted them from
-Ubuntu packages into `test/scratch/libs` and ran with `LD_LIBRARY_PATH`. A shim in `test/scratch/pw` points
-Playwright's `chromium.launch` at the cached headless shell. Neither is part of the repository.
+`tests/rebuild.test.ts` pins `templates/rebuild.txt` (the research text plus the brief's insertion before
+"Sections:" and the new keys), the rebuild body's tag, output and `<PRIOR>` list, `parsePrior` reading it
+back, the edit body and `templates/edit.txt`, the edit links rule (at most 5), `edit.json` verdicts and
+accepted summary, `infobox`, `from`, `links`, `dropped` and `paragraph`, the paragraph fallback, the
+unaccounted-lines check and completion ordering.
 
-**Interaction checks (e2e), at 390 and 1440 wide, against the live record** (60 lines: 40 from research, 20 from
-the completed source job). Rows render closed. Clicking a row opens Checked and Added by. Enter on the row
-button closes it and opens it again. The filter counts add up (All 60 = Proof 14 + Statement 11 + Claim 35),
-and each filter shows only its kind. The source list is numbered 1 to 25 across research and added sources.
-Activity lists every source of the source job with "N lines" or "could not open". There is no horizontal scroll
-and no console or page error.
+## What the interaction test covers
 
-**With fixture data** (`test/scratch/harness`: the live page plus a summary, four `fact`s, a conflict and a
-question pair, a `read_via`, and one source marked not about the subject), at 390 and 1440:
-- The Summary has its heading and note. A line-id link switches the filter to All, opens that line and focuses
-  it.
-- Both differs wordings show.
-- The fact table shows 4 rows with "Ethereum, block 26,445,903", and a table row opens to the sentence and
-  re-run steps.
-- "read via web.archive.org" shows.
-- "read, not about this subject: …" shows.
+`tests/e2e.mjs` serves `dist/` and answers every JSON-RPC and api.imd.fun read from a fixture built with the
+site's own body functions: an old page, a sources result, a panel answer, a rebuild of those (its `<PRIOR>`
+names them as F1, F2 and A1), then a sources result and an edit completed after the rebuild. At each width:
 
-Screenshots I looked at: `live-390.png`, `live-1440.png`, `fixture-390-facts.png`, `fixture-1440-facts.png`,
-`fixture-390-differs.png`, `fixture-1440-differs.png` and the probe's `390.png`, `1440.png` (all under
-`test/scratch/`, not submitted). At 390 the first screen shows the title, the one-line description and the
-Research again / Confirm a fact / Add sources buttons.
+- Overview is the default tab; the key facts box is above the summary at 390 and 320 and beside it at 1440;
+  values with a url are links; the accepted edit is the summary, in two paragraphs, marked
+  "Edited by 0x0085…059e, checked by a research job"; "Checked by a panel" is on Overview; at 390 the
+  Rebuild button is on the first screen.
+- A summary dot opens its line in the Record tab, open.
+- Record has exactly one facts table, in "On chain", with name, value with unit, chain and block.
+- "Confirmed by: <proof line>" is green (rgb 20,108,54), "Contradicted by: <panel answer A1>" red
+  (rgb 161,35,27); Confirmed by opens the proof line.
+- The accounting warning reads "1 earlier line is unaccounted for" and lists `F2:E2`; "Dropped in the last
+  rebuild" is closed and lists `F2:E1x` with its reason.
+- Lines from the later sources result and the edit join the record; the old sources result folded into the
+  rebuild does not show. The Proof filter shows only the fact row.
+- `#actions`, `#add-sources`, `#activity`, `#sources`, `#source-1` open the right tab.
+- Activity lists each edit sentence with its verdict and reason, and says which results are shown now,
+  replaced or folded.
+- The rebuild dialog body has kind `add`, `artifacts/page.json` and
+  `Start from the earlier results: [F1] <shown page>; [F2] <later sources>; [F3] <later edit>; [A1] … = true, 5 of 5, <request URL>.`
+- The edit box holds the current summary; 1,501 characters is flagged and does not open the dialog; a
+  non-https link is left out; the edit dialog body has kind `edit`, `artifacts/edit.json`, the text, the prior
+  list and the numbered link. The Edit button beside the summary moves focus to the edit form.
+- No horizontal scroll on any tab; at 390 and 1440 all five tabs fit without scrolling the tab bar (at 320 the
+  tab bar scrolls inside itself); no console errors.
 
-**Probe (taste@1), final export:**
-- render, layout, targets, contrast, casing, tracking, eyebrows: pass.
-- type-sizes: 4 sizes used more than once, 5 counting one-offs.
-- type-faces: 2 families, 2 weights.
-- glyphs, slogans, repetition: pass.
-- copy-budget: 57 words of prose on the first screen at 390 (bar 60).
-- chrome, motion: pass.
-- share: title, favicon, og:title, og:image and description all present.
+## Better Interface review
 
-## Better Interface review (six domains)
+Guide: `.imd/reads/skills/better-interface/REFERENCE.md`, workflow section and the core principles of all six
+domains, applied while building. Coverage: accessibility, layout, writing, typography, colours, UI. Rendered
+checks were made with the headless Chromium above (screenshots in `test/scratch`, not submitted); contrast
+was measured by the taste probe's `contrast` check, not by hand.
 
-| Domain | Coverage |
-| --- | --- |
-| Accessibility | Checked. Each row toggle is a native `<button>` with `aria-expanded`/`aria-controls`. Clicking the row is an extra pointer shortcut, and its links stay separate tab stops. The filter is `role="group"` with `aria-pressed`. The fact table has a caption and row headers. A Summary link moves focus to the opened row. Kinds are shown by dot plus word, never colour alone. The chevron transition is off under reduced motion. Keyboard Enter was tested in Chromium. Not verified: a screen-reader session, forced-colours mode, native 200% zoom. |
-| Layout | Checked at 320 (probe), 390 and 1440. The sentence comes first and evidence is behind disclosure, with a chevron to show there is more. Differs pairs stay together. Fact rows that are part of a differs pair stay as rows. |
-| Writing | Checked. Labels are worded as the brief asks. The Checked text says why a marked statement is shown as a claim. Outcome text is "N lines", "could not open" or "read, not about this subject: why". |
-| Typography | Checked. The existing five-size scale and two weights are kept. Counts and table numbers use tabular numbers. Long URLs wrap. |
-| Colors | Checked. Existing tokens are reused, plus `--red-800` for conflicts. The probe measured contrast: all text passes 4.5:1. |
-| UI | Checked. States: closed, open, pressed filter, hover gated by `(hover: hover)`, empty filter result ("No lines of this kind."). There is no `transition: all`. |
+| Domain | Finding | Fix |
+| --- | --- | --- |
+| Layout | `src/styles.css` tabs: at 390 the fifth tab ("Contribute") was cut off at 16px (first probe screenshot) | Below 512px tabs use `--text-nav` 14px and spread across the width; e2e checks they fit at 390 |
+| UI | `src/Record.tsx` Overview: price sat between the two buttons and wrapped them onto two rows | Buttons first, price after |
+| Typography | summary dots sat below the baseline and pushed line height (`.sdots` vertical-align -7px) | `vertical-align: middle` with negative block margin |
+| Accessibility | tabs are links with their own URLs, so they use `nav` + `aria-current="page"`, not `role=tablist`; after a link, focus moves to the tab heading or the target (`src/App.tsx`, route effect) | Done in source |
+| Accessibility | summary dots carry `aria-label` "Open N proof lines in Record" and a 24px target; infobox line links name the row | Done in source |
+| Writing | "Research again" renamed "Rebuild the page"; empty states say what to do ("Pay for one page job with Rebuild the page") | Done |
+| Colours | link notes use the proof green and the error red, and always carry the words "Confirmed by"/"Contradicted by", so colour is never the only signal | Done |
 
-## Findings and fixes
+Remaining finding, not fixed: the probe's `copy-budget` counts 104 words of prose on the first screen at 390
+(bar 60) and 129 at 1440 (bar 90). The brief makes the summary "the main text" of the default tab, so it is
+on the first screen by design. On the live chain the shown page predates the rebuild, so it has no key facts
+box; after a rebuild the box sits above the summary on phones and pushes most of the summary below the first
+screen.
 
-1. **MEDIUM, layout:** at 390 the row chevron wrapped onto its own line above the sentence (`src/styles.css`
-   `.row-toggle`, first version: flex-wrap with a 20rem text basis). This was seen in
-   `fixture-390-facts.png`. Fix: the toggle is now a grid (`auto | 1fr`, plus `auto` above 40rem), and the
-   chevron is aligned to the first line. Rechecked in `fixture-390-differs.png`: fixed.
-2. **LOW, test race:** the e2e first read the filter counts while only the source-job lines had loaded (3 fails at
-   390). This was a test problem, not a site bug: until the research page arrives, source lines show as claims
-   because there are no channels yet. Fix: `tests/e2e.mjs` now waits for the research page's Channels block.
-   Rerun: 44 of 44.
+## Limitations
 
-## Completion
-
-Complete for the stated scope. Limits:
-- Paying, approving and connecting were not run, because there is no wallet on this machine.
-- No live result has `summary`, `fact` or `level` yet, so those were checked with fixture data in the real
-  browser.
-- No screen-reader or physical-device session was run.
+- Paying, approving and connecting a wallet were not tested: there is no wallet on this machine.
+- In this sandbox's browser the price read (`priceOf` through wagmi's transport, `gateway.tenderly.co`, which
+  the brief keeps unchanged with the wallet code) fails its CORS preflight, so the live page and the probe show
+  "Price unavailable". The record itself loads, through the other public RPCs `src/chain.ts` falls back to.
+  The pay dialog reads the price again before paying and does not allow payment without it.
+- No rebuild or edit has run on chain yet, so the key facts box, links, accounting and edit display were
+  checked only against the fixture, not against a real job result.
+- The rebuild objective keeps the research text verbatim, including its "Write summary: 3 to 5 plain
+  sentences"; the added text then asks for "5 to 9 plain sentences in 2 or 3 paragraphs". IMD's check raised
+  no blocker or suggestion for it.
+- With many panel answers `<PRIOR>` grows; the rebuild dialog warns and the edit form refuses when the
+  objective would reach 7,500 characters.

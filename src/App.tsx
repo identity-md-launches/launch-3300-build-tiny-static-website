@@ -1,16 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, pad, stringToHex, type Hex } from "viem";
 import { useAccount } from "wagmi";
 import { readContract, waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import { ACTIONS, CHAIN_ID, EMPTY_SELECTOR, ERC20_ABI, ETHERSCAN, IMD, INTAKE, INTAKE_ABI, ZERO_ADDRESS } from "./config";
-import { PRESETS, RESEARCH_OBJECTIVE, SOURCE_MAX_LINKS, encodeBody, oracleBody, planSources, questionP4, researchBody, sourceBody, validateP4 } from "./bodies";
-import { fetchResearchPage } from "./api";
-import { parsePage, safeHref, type Page } from "./page";
-import { Record, type RecordState } from "./Record";
+import {
+  EDIT_MAX_LINKS,
+  EDIT_MAX_TEXT,
+  MAX_OBJECTIVE,
+  PRESETS,
+  SOURCE_MAX_LINKS,
+  cleanEditText,
+  editBody,
+  encodeBody,
+  oracleBody,
+  planEditLinks,
+  planSources,
+  priorText,
+  questionP4,
+  rebuildBody,
+  sourceBody,
+  validateP4,
+} from "./bodies";
+import { OverviewTab, RecordTab, SourcesTab, type Filter, type Ui } from "./Record";
 import { ActivityList } from "./ActivityList";
 import { ConnectSheet, config } from "./wallet";
-import { rememberSent, useActivity, type Activity } from "./useActivity";
+import { rememberSent, useActivity } from "./useActivity";
+import { useRecordModel, type RecordModel } from "./model";
+import { lineAnchor } from "./format";
 
+type RecordState = RecordModel;
 const actionId = (a: string) => pad(stringToHex(a), { dir: "right", size: 32 });
 const imd = (v: bigint) => `${formatUnits(v, 18)} IMD`;
 
@@ -34,31 +52,6 @@ interface Ask {
   kind: string;
   body: Record<string, unknown>;
   warning?: string;
-}
-
-/** The newest completed research page, downloaded, hash-checked and parsed. */
-function useRecordPage(items: Activity[] | null): RecordState {
-  const latest = useMemo(() => items?.find((a) => a.req.action === ACTIONS.research && a.req.kind === "add" && a.state === "completed"), [items]);
-  const [page, setPage] = useState<Page | null>(null);
-  const [via, setVia] = useState<{ jobId: string | null; path: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!latest?.completion) return;
-    setError(null);
-    fetchResearchPage(latest.req, latest.completion, latest.jobId)
-      .then((p) => {
-        setPage(parsePage(p.text));
-        setVia({ jobId: p.jobId, path: p.path });
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "The page could not be read"));
-  }, [latest]);
-  /** Ready once the chain was read and the page, if there is one, has loaded or failed. */
-  const ready = items !== null && (!latest || page !== null || error !== null);
-  const channels = (page?.channels ?? []).flatMap((c) => {
-    const url = safeHref(c.url);
-    return url ? [{ url, tie: c.tie }] : [];
-  });
-  return { latest, page, via, error, ready, channels, main: page?.main ?? "" };
 }
 
 
@@ -118,7 +111,130 @@ function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Recor
   );
 }
 
-function Actions({ onAsk, researchPrice, rec }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState }) {
+/** "Rebuild the page": the research action, starting from the page shown now and everything completed after it. */
+function rebuildAsk(rec: RecordState): Ask {
+  const body = rebuildBody(rec.prior);
+  return {
+    title: "Rebuild the page",
+    action: ACTIONS.research,
+    kind: "add",
+    body,
+    warning: body.objective.length >= MAX_OBJECTIVE ? `The objective is ${body.objective.length.toLocaleString("en-US")} characters, over the ${MAX_OBJECTIVE.toLocaleString("en-US")} the Intake takes. It would be refused.` : undefined,
+  };
+}
+
+function RebuildCard({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: RecordState; price: string }) {
+  const ask = rebuildAsk(rec);
+  const prior = priorText(rec.prior);
+  return (
+    <div className="card" id="rebuild">
+      <h3>Rebuild the page</h3>
+      <p>
+        One page job starts from the page shown now and every sources and edit result completed after it, carries each line forward or says why it dropped it, merges
+        repeats, and then looks for what is new.
+      </p>
+      <p className="small">
+        {prior === "none"
+          ? "There is no page yet, so this job starts from nothing."
+          : `It is given ${rec.prior.files.length} earlier file${rec.prior.files.length === 1 ? "" : "s"} and ${rec.prior.answers.length} panel answer${rec.prior.answers.length === 1 ? "" : "s"}.`}
+      </p>
+      <details>
+        <summary>Read the objective</summary>
+        <p className="objective">{String(ask.body.objective)}</p>
+      </details>
+      {ask.warning && <p className="warn">{ask.warning}</p>}
+      <div className="row-actions">
+        <button className="btn btn-primary" onClick={() => (rec.ready ? onAsk(ask) : undefined)} disabled={!rec.ready}>
+          {rec.ready ? "Rebuild the page" : "Reading the record…"}
+        </button>
+        <span className="price mono">{price}</span>
+      </div>
+    </div>
+  );
+}
+
+/** The current summary as editable text: one paragraph per block, a blank line between them. */
+function summaryText(rec: RecordState) {
+  const paras: string[][] = [];
+  let last: number | null | undefined;
+  rec.summary.forEach((s, i) => {
+    if (i === 0 || (s.paragraph !== null && s.paragraph !== last)) paras.push([]);
+    paras[paras.length - 1]!.push(s.text.trim());
+    last = s.paragraph;
+  });
+  return paras.map((p) => p.join(" ")).join("\n\n");
+}
+
+function SuggestEdit({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: RecordState; price: string }) {
+  const current = useMemo(() => summaryText(rec), [rec.summary]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [text, setText] = useState<string | null>(null);
+  const [links, setLinks] = useState("");
+  const [err, setErr] = useState("");
+  const value = text ?? current;
+  const clean = cleanEditText(value);
+  const plan = useMemo(() => planEditLinks(links), [links]);
+  const over = clean.length > EDIT_MAX_TEXT;
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rec.ready) return setErr("Wait until the record has loaded, so the edit can name it.");
+    if (clean.length < 20) {
+      setErr("Write at least one full sentence.");
+      document.getElementById("edit-text")?.focus();
+      return;
+    }
+    if (over) {
+      setErr(`Shorten the text to ${EDIT_MAX_TEXT.toLocaleString("en-US")} characters.`);
+      document.getElementById("edit-text")?.focus();
+      return;
+    }
+    const body = editBody(clean, rec.prior, plan.links);
+    if (body.objective.length >= MAX_OBJECTIVE) return setErr(`The finished objective is over ${MAX_OBJECTIVE.toLocaleString("en-US")} characters. Shorten the text or drop a link.`);
+    setErr("");
+    onAsk({ title: "Suggest an edit", action: ACTIONS.research, kind: "edit", body });
+  };
+  return (
+    <div className="card" id="suggest-edit" tabIndex={-1}>
+      <h3>Suggest an edit</h3>
+      <p>Change the summary as you like. One research job checks it sentence by sentence against the record and your links; what it accepts becomes the summary shown.</p>
+      <form className="form" onSubmit={submit} noValidate>
+        <label htmlFor="edit-text">Summary text</label>
+        <textarea id="edit-text" name="summary" rows={9} value={value} onChange={(e) => setText(e.target.value)} aria-invalid={over || (!!err && clean.length < 20)} aria-describedby="edit-count" />
+        <p id="edit-count" className={over ? "error" : "small"} aria-live="polite">
+          {clean.length.toLocaleString("en-US")} of {EDIT_MAX_TEXT.toLocaleString("en-US")} characters
+          {text !== null && text !== current ? (
+            <>
+              {" · "}
+              <button type="button" className="linklike" onClick={() => setText(null)}>
+                Start again from the current summary
+              </button>
+            </>
+          ) : null}
+        </p>
+        <label htmlFor="edit-links">Links that back your text, one per line (optional)</label>
+        <textarea id="edit-links" name="links" rows={3} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/article" value={links} onChange={(e) => setLinks(e.target.value)} aria-describedby="edit-links-rule" />
+        <p id="edit-links-rule" className="small">
+          {plan.links.length} of {EDIT_MAX_LINKS} links. Only https links up to 300 characters, with no quotes or spaces. Repeats are dropped.
+        </p>
+        {plan.rejected.length > 0 && (
+          <ul className="plain small skipped" aria-label="Links left out">
+            {plan.rejected.map((r, i) => (
+              <li key={i}>
+                Left out, {r.why}: <span className="mono break">{r.line.length > 80 ? `${r.line.slice(0, 79)}…` : r.line}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {err && <p className="error" role="alert">{err}</p>}
+        <div className="row-actions">
+          <button className="btn" type="submit">Review the edit job</button>
+          <span className="price mono">{price}</span>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ContributeTab({ onAsk, researchPrice, rec }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState }) {
   const oraclePrice = usePrice(ACTIONS.oracle);
   const [p4, setP4] = useState({ url: "", handle: "", text: "" });
   const [p4Err, setP4Err] = useState<ReturnType<typeof validateP4>>({});
@@ -136,27 +252,15 @@ function Actions({ onAsk, researchPrice, rec }: { onAsk: (a: Ask) => void; resea
   };
 
   return (
-    <section id="actions" aria-labelledby="actions-title">
-      <h2 id="actions-title" className="section-title">
-        Pay the swarm
-      </h2>
+    <section className="tab" aria-labelledby="actions-title">
+      <h1 id="actions-title" className="tab-title" tabIndex={-1}>
+        Contribute
+      </h1>
+      <p className="lead">Every action is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
       <div className="grid">
-        <div className="card">
-          <h3>Research this page</h3>
-          <p>One research job reads imd.fun's own channels and contracts and writes every line of the record, with sources.</p>
-          <details>
-            <summary>Read the objective</summary>
-            <p className="objective">{RESEARCH_OBJECTIVE}</p>
-          </details>
-          <div className="row-actions">
-            <button className="btn btn-primary" onClick={() => onAsk({ title: "Research this page", action: ACTIONS.research, kind: "add", body: researchBody() })}>
-              Research this page
-            </button>
-            <span className="price mono">{researchPrice}</span>
-          </div>
-        </div>
+        <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} />
 
-        <div className="card">
+        <div className="card" id="confirm">
           <h3>Confirm a fact</h3>
           <p>
             A panel of 5 agents answers true or false; 4 must agree. Each question costs <span className="mono">{oraclePrice}</span>.
@@ -191,10 +295,12 @@ function Actions({ onAsk, researchPrice, rec }: { onAsk: (a: Ask) => void; resea
         </div>
 
         <AddSources onAsk={onAsk} rec={rec} price={researchPrice} />
+        <SuggestEdit onAsk={onAsk} rec={rec} price={researchPrice} />
       </div>
     </section>
   );
 }
+
 
 /* ---------- Pay dialog ---------- */
 
@@ -334,29 +440,107 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
     </div>
   );
 }
+/* ---------- Tabs, with their own links ---------- */
 
-/* ---------- App ---------- */
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "record", label: "Record" },
+  { id: "sources", label: "Sources" },
+  { id: "activity", label: "Activity" },
+  { id: "contribute", label: "Contribute" },
+] as const;
+type Tab = (typeof TABS)[number]["id"];
+
+/** Which tab a link opens, and the element inside it. Old links (#actions, #add-sources, #activity) still work. */
+export function routeOf(hash: string): { tab: Tab; target: string | null } {
+  const h = decodeURIComponent(hash.replace(/^#/, ""));
+  if (TABS.some((t) => t.id === h)) return { tab: h as Tab, target: null };
+  if (h === "actions") return { tab: "contribute", target: null };
+  if (h === "add-sources" || h === "suggest-edit" || h === "rebuild" || h === "confirm") return { tab: "contribute", target: h };
+  if (h.startsWith("line-") || h === "dropped" || h === "unaccounted") return { tab: "record", target: h };
+  if (h.startsWith("source-")) return { tab: "sources", target: h };
+  if (h.startsWith("panel-")) return { tab: "overview", target: h };
+  return { tab: "overview", target: null };
+}
+
+function useRoute() {
+  const [route, setRoute] = useState(() => ({ ...routeOf(location.hash), n: 0 }));
+  useEffect(() => {
+    const on = () => setRoute((r) => ({ ...routeOf(location.hash), n: r.n + 1 }));
+    addEventListener("hashchange", on);
+    return () => removeEventListener("hashchange", on);
+  }, []);
+  return route;
+}
 
 export default function App() {
   const activity = useActivity();
   const [ask, setAsk] = useState<Ask | null>(null);
   const researchPrice = usePrice(ACTIONS.research);
-  const rec = useRecordPage(activity.items);
+  const rec = useRecordModel(activity.items);
+  const route = useRoute();
+  const [filter, setFilter] = useState<Filter>("all");
+  const [openSet, setOpenSet] = useState<Set<string>>(() => new Set());
+  const toggle = useCallback(
+    (id: string) =>
+      setOpenSet((s) => {
+        const n = new Set(s);
+        if (n.has(id)) n.delete(id);
+        else n.add(id);
+        return n;
+      }),
+    [],
+  );
+  const openLines = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    setFilter("all");
+    setOpenSet((s) => new Set([...s, ...ids]));
+    const h = `#${lineAnchor(ids[0]!)}`;
+    if (location.hash === h) dispatchEvent(new HashChangeEvent("hashchange"));
+    else location.hash = h;
+  }, []);
+  const ui: Ui = { filter, setFilter, openSet, toggle, openLines, target: route.target };
+
+  // After a link: scroll to its target once it exists, else to the top of the tab; move focus there.
+  const lines = rec.sections.length;
+  useEffect(() => {
+    const t = route.target;
+    const el = t ? document.getElementById(t) : null;
+    if (t && !el) return; // not rendered yet: runs again when the record loads
+    if (el) {
+      el.scrollIntoView?.({ block: "start" });
+      const f = el.querySelector<HTMLElement>(".row-toggle") ?? (el.tabIndex >= 0 || el.hasAttribute("tabindex") ? el : el.querySelector<HTMLElement>("textarea, button, summary, a"));
+      if (route.n > 0) f?.focus({ preventScroll: true });
+      if (el instanceof HTMLDetailsElement) el.open = true;
+    } else if (route.n > 0) {
+      window.scrollTo(0, 0);
+      document.querySelector<HTMLElement>(".tab h1")?.focus({ preventScroll: true });
+    }
+  }, [route, lines, rec.page]);
+
+  const onRebuild = () => setAsk(rebuildAsk(rec));
   return (
     <>
-      <a className="skip" href="#root-main">Skip to content</a>
+      <a className="skip" href="#root-main" onClick={(e) => { e.preventDefault(); document.getElementById("root-main")?.focus(); }}>Skip to content</a>
       <header className="top">
-        <a className="brand" href="#record">IMD record</a>
-        <nav aria-label="Sections" className="nav">
-          <a href="#actions">Actions</a>
-          <a href="#activity">Activity</a>
+        <div className="top-row">
+          <a className="brand" href="#overview">IMD record</a>
+          <ConnectSheet />
+        </div>
+        <nav aria-label="Tabs" className="tabs">
+          {TABS.map((t) => (
+            <a key={t.id} href={`#${t.id}`} aria-current={route.tab === t.id ? "page" : undefined}>
+              {t.label}
+            </a>
+          ))}
         </nav>
-        <ConnectSheet />
       </header>
       <main id="root-main" tabIndex={-1}>
-        <Record items={activity.items} rec={rec} price={researchPrice} onResearch={() => setAsk({ title: "Research this page", action: ACTIONS.research, kind: "add", body: researchBody() })} />
-        <Actions onAsk={setAsk} researchPrice={researchPrice} rec={rec} />
-        <ActivityList {...activity} />
+        {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={activity.items} price={researchPrice} onRebuild={onRebuild} />}
+        {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
+        {route.tab === "sources" && <SourcesTab m={rec} />}
+        {route.tab === "activity" && <ActivityList {...activity} shown={rec} />}
+        {route.tab === "contribute" && <ContributeTab onAsk={setAsk} researchPrice={researchPrice} rec={rec} />}
         <footer className="about">
           <p>About: this is a test. Payments go to IMD and are not refunded. Nobody can edit this page by hand; every line comes from a paid research job or panel answer read from Ethereum.</p>
           <p>
@@ -368,3 +552,4 @@ export default function App() {
     </>
   );
 }
+

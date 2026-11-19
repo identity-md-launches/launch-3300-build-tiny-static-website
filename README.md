@@ -16,35 +16,41 @@ npm run preview        # serve the built dist/ locally
 npm run typecheck      # tsc --noEmit only
 npm test               # vitest unit tests (tests/unit.test.ts)
 npx vite-node scripts/agents-md.ts   # rewrite public/agents.md from src/bodies.ts, then npm run build
-# browser interaction checks on dist/ against the live chain (needs Playwright with a Chromium that can start);
-# an optional second argument is a fixture harness build to check summary, facts and differs levels:
-IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/e2e.mjs test/scratch/e2e [harness-dist]
+# browser interaction checks on dist/, with every chain and api.imd.fun read answered from a fixture
+# (needs Playwright with a Chromium that can start):
+npx vite-node tests/make-fixture.ts test/scratch/fx.json
+IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/e2e.mjs test/scratch/fx.json test/scratch/e2e
 ```
 
 `dist/` is committed and is what gets hosted. Vite's `base` is `./`, so every asset URL is relative and
-the export works under an IPFS gateway subpath or an ENS name. It is a single page with `#` anchors, so it
-needs no rewrites.
+the export works under an IPFS gateway subpath or an ENS name. It is a single page with five tabs on `#` links
+(`#overview`, the default, `#record`, `#sources`, `#activity`, `#contribute`), so it needs no rewrites. Old links
+still work: `#actions` and `#add-sources` open Contribute, `#activity` opens Activity, `#line-…` opens Record at
+that line and `#source-N` opens Sources.
 
 ## Layout
 
 | Path | What it holds |
 | --- | --- |
 | `templates/research.txt` | The research objective: the first brief's text plus this job's additions before "Sections:". Shown to the visitor and sent as `objective` |
+| `templates/rebuild.txt` | "Rebuild the page": the research text plus this job's insertion before "Sections:" and the new keys; `<PRIOR>` filled in by `src/bodies.ts` |
+| `templates/edit.txt` | "Suggest an edit", with `<TEXT>`, `<PRIOR>` and `<URLS>` filled in by `src/bodies.ts` |
 | `templates/source.txt` | The "Add sources" objective, with `<URLS>`, `<CHANNELS>` and `<MAIN>` filled in by `src/bodies.ts` |
 | `public/agents.md` | Published at the site root as `./agents.md` and linked in the footer. Written by `scripts/agents-md.ts` from the same functions the site uses, so its bodies are the site's bytes |
 | `tests/fixtures/drafted.txt` | The oracle requests IMD's free check drafted on 2026-11-19; the unit tests pin our bodies to them |
 | `src/config.ts` | Every address, chain id, action id, ABI, RPC, route and the launch block |
-| `src/bodies.ts` | The exact request bodies (research, sources, P1 to P4), the wording matcher and the link rules |
+| `src/bodies.ts` | The exact request bodies (rebuild, sources, edit, P1 to P4), `<PRIOR>` and reading it back, the wording matcher and the link rules |
+| `src/model.ts` | What the site shows: the newest completed page, the sources and edit results completed after it, the summary (an accepted edit wins), `<PRIOR>`, panel answers A1…, and the accounting check after a rebuild |
 | `src/chain.ts` | Reads `Requested` and `Completed` logs from public RPCs and decodes them |
 | `src/api.ts` | IMD API reads, SHA-256 check, IPFS fallback, localStorage cache |
 | `src/page.ts` | Parses untrusted `page.json` and `lines.json` into plain strings; the Statement label rule; facts; `differs` levels and pairs; source outcomes; merges source lines and the one numbered source list |
-| `src/Record.tsx` | The record: Summary, Channels, filter, rows with details, fact tables, Sources |
-| `src/ActivityList.tsx` | Activity, including each source job's per-source outcome |
+| `src/Record.tsx` | The Overview (key facts box, summary with kind dots, panel answers), Record (accounting, filter, sections, one facts table, Confirmed/Contradicted by) and Sources tabs |
+| `src/ActivityList.tsx` | Activity, including each source job's per-source outcome and each edit sentence's verdict |
 | `src/format.ts` | Shared display helpers (kind names, tie words, job links, line anchors) |
 | `src/useActivity.ts` | Follows every request of this site to completion; refusal reasons; source files; ENS names; polling |
 | `src/wallet.tsx`, `src/wallet-icons.ts` | wagmi config and the connect sheet (EIP-6963, "Open in" links, Coinbase Smart Wallet) |
-| `src/App.tsx`, `src/styles.css` | Page shell, actions, pay dialog and About line; all styles |
-| `tests/` | Unit tests and the Playwright interaction script |
+| `src/App.tsx`, `src/styles.css` | Tabs and their links, Contribute (rebuild, confirm, add sources, suggest an edit), pay dialog and About line; all styles |
+| `tests/` | Unit tests, the fixture builder `make-fixture.ts` and the Playwright interaction script |
 
 ## How a paid action works
 
@@ -169,50 +175,63 @@ Every value from a result file is rendered as plain React text, never as HTML. L
 `http(s)` URLs. Explorer links go to `https://explorer.imd.fun/jobs/<jobId>`; before a job id is known,
 they go to the transaction on Etherscan.
 
+## Rebuild, edit and what the site shows
+
+- **Rebuild the page** (was "Research again"): `job.open@job-1`, tag kind `add`, output `artifacts/page.json`,
+  objective `templates/rebuild.txt` with `<PRIOR>` = `[F1] https://api.imd.fun/artifacts/<hash of the page shown>;
+  [F2] …` (every sources or edit result completed after it, oldest first) `; [A1] <question title> = <answer>,
+  N of M, <request URL>; …` (every completed panel answer, oldest first). With no page yet, `none`.
+- **Suggest an edit**: `job.open@job-1`, tag kind `edit`, output `artifacts/edit.json`, objective
+  `templates/edit.txt` with the visitor's text (at most 1,500 characters), the same `<PRIOR>` and up to 5 https
+  links. From Contribute and from the Edit button beside the summary. The full body is shown before the wallet.
+- **What is shown**: the newest completed page result (by its `Completed` event), plus the sources and edit
+  results completed after it. Earlier ones are folded in and reachable from Activity ("Replaced by a newer
+  page", "Folded into a newer page", with links to the job and its result file). The newest such edit with an
+  `accepted_summary` becomes the summary, marked "Edited by <payer>, checked by a research job"; its lines join
+  the record like added-source lines; Activity lists each sentence with its verdict and reason.
+- **Accounting**: the site reads the `<PRIOR>` back from the shown rebuild's own request body, downloads each
+  `F` file (SHA-256 checked), and warns on Record "N earlier lines are unaccounted for" for every `F<n>:<id>`
+  that is in no line's `from` and not in `dropped`. `dropped` shows in a closed "Dropped in the last rebuild".
+  The same `<PRIOR>` resolves `links` targets `A<n>` to the panel answer.
+
 ## Free request check, run before building
 
-`POST https://api.imd.fun/requests/check` with `{"action":"job.open","input":<exact body>}`, run on 2026-11-19
-against this job's bodies, generated from `src/bodies.ts`:
+`POST https://api.imd.fun/requests/check` with `{"action":"job.open","input":<exact body>}`, run on 2026-11-19,
+bodies generated from `src/bodies.ts` (`test/scratch/bodies.ts`, not submitted):
 
 | Body | Result |
 | --- | --- |
-| Research, exact body (2,875-character objective, with summary, fact, statement rule, read_via, differs level and the new JSON keys) | 200, `blockers: []`, `suggestions: []`, `judged: true`, kind `report`, plan: one step "Research and write the report, with sources" (`research-report`) |
-| Sources, exact body (2,552-character objective): 3 links (an X post, `github.com/Identity-md/worker`, `imd.fun/docs/api/`), the live record's 10 channels as `url (tie: …)` and `<MAIN>` = `0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7` | 200, `blockers: []`, `suggestions: []`, `judged: true`, kind `report`, the same one-step plan |
+| Rebuild, with a `<PRIOR>` of three artifact URLs and two panel answers (4,659-character objective) | 200, `blockers: []`, `suggestions: []`, `judged: true`, kind `report`, plan: one step "Research and write the report, with sources" (`research-report`) |
+| Rebuild with no page yet, `<PRIOR>` = `none` (4,083 characters) | 200, `blockers: []`, `suggestions: []`, `judged: true`, the same plan |
+| Sources: 2 links, 2 channels with ties, `<MAIN>` = `0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7` (2,123 characters) | 200, `blockers: []`, `suggestions: []`, `judged: true`, the same plan |
+| Edit: three sentences in two paragraphs, the same `<PRIOR>`, one link (1,818 characters) | 200, `blockers: []`, `suggestions: []`, `judged: true`, the same plan |
 
-The oracle bodies and questions did not change. The earlier check results for them still hold: P1, P2 and P4
-drafted byte for byte as sent, and P3 got one non-blocking `wording` suggestion. The drafted P1 and P4 requests
-are in `tests/fixtures/drafted.txt`, and a unit test pins our bodies to them.
+The artifact hashes in the checked `<PRIOR>` were example values (no rebuild has run yet); the check judges
+the wording, not the files. The oracle bodies and questions did not change; the earlier results for them still
+hold (P1, P2 and P4 drafted byte for byte as sent, P3 one non-blocking `wording` suggestion), and a unit test
+pins our bodies to the drafted P1 and P4 in `tests/fixtures/drafted.txt`.
 
 ## Validation results
 
-Details, the design review and its limits are in `artifacts/validation.md`.
+Details, the Better Interface review and its limits are in `artifacts/validation.md`.
 
 - `npm run typecheck`: exit 0.
-- `npm test`: 22 of 22 unit tests pass. They pin these things:
-  - the research objective's additions and new keys, and the source template's new text, keys,
-    `<CHANNELS>` with ties and `<MAIN>`;
-  - the oracle bytes, which are unchanged;
-  - the link rules;
-  - the label rule on research and source lines, including a channel with tie none;
-  - `fact` with chain and block, `summary`, `read_via` as a host, and differs `level`;
-  - source outcomes (`N lines`, `could not open`, `read, not about this subject`) and the one numbered source
-    list;
-  - filter counts, `agents.md`, log decoding and the real topics.
+- `npm test`: 34 of 34 pass (22 in `tests/unit.test.ts`, 12 new in `tests/rebuild.test.ts`: rebuild template,
+  body and `<PRIOR>`, reading `<PRIOR>` back, the edit body, template and link rules, `edit.json`, `infobox`,
+  `from`, `links`, `dropped`, paragraphs, the accounting check, completion order; `agents.md` now pins the
+  rebuild and edit bodies).
 - `npm run build`: exit 0. `dist/` holds `index.html`, `agents.md`, `favicon.svg`, `og.png` and `assets/`, and
   `index.html` uses only `./` URLs.
-- `node tests/e2e.mjs` in headless Chromium against the live chain and api.imd.fun, plus a fixture harness:
-  44 of 44 pass at 390 and 1440. The checks cover:
-  - rows closed by default, opening on click, and Enter closing and reopening them;
-  - filter counts, and each kind filter showing only its kind;
-  - one numbered source list;
-  - per-source outcomes in Activity;
-  - no horizontal scroll and no console errors;
-  - with the fixture: Summary and its link opening and focusing the line, both differs wordings, the fact table
-    and its details, "read via", and "not about this subject".
-- Design probe `taste.mjs`: 16 of 16.
-- To start Chromium on this machine, I had to put libraries it was missing (`libnspr4` and others) into
-  `test/scratch`. The harness is not submitted either.
-- **Not testable here:** paying, approving and connecting, because there is no wallet on this machine.
+- `node tests/e2e.mjs` in headless Chromium with the fixture: 118 of 118 pass at 390, 1440 and 320 (tabs and
+  old links, key facts placement, summary dots, one facts table, Confirmed/Contradicted by, accounting warning
+  and dropped list, edit display and verdicts, rebuild and edit bodies, the 1,500-character limit, no
+  horizontal scroll, no console errors).
+- Design probe `taste.mjs` on the live chain: 15 of 16. `copy-budget` fails (104 prose words on the first
+  screen at 390, bar 60) because the brief makes the summary the default tab's main text; see
+  `artifacts/validation.md`.
+- **Not tested here:** paying, approving and connecting (no wallet on this machine). In this sandbox's browser
+  the price read through `gateway.tenderly.co` fails its CORS preflight, so the page shows "Price unavailable";
+  the wallet code that sets that transport is unchanged, as the brief asks.
 
 ## Limits
 

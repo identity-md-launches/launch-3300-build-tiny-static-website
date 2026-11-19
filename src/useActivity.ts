@@ -5,7 +5,7 @@ import type { Hex } from "viem";
 import { loadTaggedRequests, stateOf, getBlockTime, type Completion, type TaggedRequest } from "./chain";
 import { cacheGet, cacheSet, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
-import { parseLines, type SourceLines } from "./page";
+import { parseEdit, parseLines, type EditResult, type SourceLines } from "./page";
 import { config } from "./wallet";
 
 export interface Activity {
@@ -21,9 +21,15 @@ export interface Activity {
   /** A completed source job's lines.json, hash-checked and parsed. */
   sources: SourceLines | null;
   sourcesError: string | null;
+  /** A completed edit job's edit.json, hash-checked and parsed. */
+  edit: EditResult | null;
+  /** SHA-256 of a completed sources or edit job's result file, for <PRIOR>. */
+  fileHash: string | null;
 }
 
 export const isSourceJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "source";
+export const isEditJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "edit";
+export const isPageJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "add";
 
 export interface SentTx {
   hash: Hex;
@@ -95,17 +101,24 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
   }
   let sources: SourceLines | null = null;
   let sourcesError: string | null = null;
-  if (isSourceJob(req) && state === "completed" && completion) {
+  let edit: EditResult | null = null;
+  let fileHash: string | null = null;
+  if ((isSourceJob(req) || isEditJob(req)) && state === "completed" && completion) {
+    const name = isEditJob(req) ? "edit" : "lines";
     try {
-      const f = await fetchResearchPage(req, completion, jobId, "lines");
-      sources = parseLines(f.text);
+      const f = await fetchResearchPage(req, completion, jobId, name);
+      fileHash = f.hash ?? null;
+      if (name === "edit") {
+        edit = parseEdit(f.text);
+        sources = edit.data;
+      } else sources = parseLines(f.text);
       jobId ??= f.jobId;
     } catch (e) {
-      sourcesError = e instanceof Error ? e.message : "The lines file could not be read";
+      sourcesError = e instanceof Error ? e.message : `The ${name} file could not be read`;
     }
   }
   const [time, ens] = await Promise.all([timeOf(req), ensOf(req.payer)]);
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError };
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash };
 }
 
 export function useActivity() {

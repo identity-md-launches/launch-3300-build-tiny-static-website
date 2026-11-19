@@ -40,6 +40,25 @@ export interface Line {
   quote: string;
   rerun: string;
   fact: Fact | null;
+  /** The earlier lines a rebuilt line came from, as file number and id, such as F2:L14. */
+  from: string[];
+  /** Proof lines or panel answers (A1...) that settle this line. */
+  links: LineLink[];
+}
+export interface LineLink {
+  type: "confirms" | "contradicts";
+  target: string;
+}
+/** A row of the key facts box: label, value, an optional link and the line ids it rests on. */
+export interface InfoRow {
+  label: string;
+  value: string;
+  url: string;
+  lines: string[];
+}
+export interface Dropped {
+  id: string;
+  why: string;
 }
 export interface Source {
   id: string;
@@ -69,6 +88,8 @@ export interface Differ {
 export interface SummarySentence {
   text: string;
   lines: string[];
+  /** The paragraph number the job gave, or null. */
+  paragraph: number | null;
 }
 export interface Page {
   name: string;
@@ -78,8 +99,10 @@ export interface Page {
   /** The main contract's address, or "" when the page names none. */
   main: string;
   summary: SummarySentence[];
+  infobox: InfoRow[];
   lines: Line[];
   differs: Differ[];
+  dropped: Dropped[];
   openQuestions: string[];
   sources: Source[];
 }
@@ -110,6 +133,54 @@ function parseDiffers(v: unknown): Differ[] {
     const o = obj(d);
     return { lines: arr(o.lines).map((x) => str(x, 64)), why: str(o.why, 400), level: levelOf(o.level) };
   });
+}
+
+export function parseSummary(v: unknown): SummarySentence[] {
+  return arr(v)
+    .slice(0, 12)
+    .map((s) => {
+      const o = obj(s);
+      const p = typeof o.paragraph === "number" ? o.paragraph : typeof o.paragraph === "string" && /^\d+$/.test(o.paragraph) ? Number(o.paragraph) : null;
+      return { text: str(o.text, 600), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean), paragraph: p };
+    })
+    .filter((s) => s.text);
+}
+
+function parseLinks(v: unknown): LineLink[] {
+  return arr(v)
+    .slice(0, 10)
+    .flatMap((x) => {
+      const o = obj(x);
+      const t = str(o.type, 32).toLowerCase();
+      const target = str(o.target, 64).trim();
+      return (t === "confirms" || t === "contradicts") && target ? [{ type: t as LineLink["type"], target }] : [];
+    });
+}
+
+function parseDropped(v: unknown): Dropped[] {
+  return arr(v)
+    .slice(0, 200)
+    .map((d) => {
+      const o = obj(d);
+      return { id: str(o.id, 64).trim(), why: str(o.why, 400) };
+    })
+    .filter((d) => d.id);
+}
+
+/**
+ * Short paragraphs: by the job's paragraph numbers when it gave them (a new paragraph wherever the number
+ * changes), otherwise three sentences at a time.
+ */
+export function paragraphsOf<T extends { paragraph: number | null }>(sentences: T[]): T[][] {
+  const out: T[][] = [];
+  const numbered = sentences.some((s) => s.paragraph !== null);
+  sentences.forEach((s, i) => {
+    const prev = sentences[i - 1];
+    const start = i === 0 || (numbered ? s.paragraph !== null && s.paragraph !== prev?.paragraph : i % 3 === 0);
+    if (start) out.push([s]);
+    else out[out.length - 1]!.push(s);
+  });
+  return out;
 }
 
 /* ---------- Facts ---------- */
@@ -246,6 +317,8 @@ export function parsePage(text: string): Page {
         quote: str(o.quote, 400),
         rerun,
         fact: marked === "proof" ? parseFact(o.fact, lineText, rerun) : null,
+        from: arr(o.from).map((x) => str(x, 64).trim()).filter(Boolean).slice(0, 40),
+        links: parseLinks(o.links),
       };
       return applyLabel(line, channels, line.by, ids.map((s) => refOf.get(s) ?? ""));
     })
@@ -257,15 +330,17 @@ export function parsePage(text: string): Page {
     channels,
     contracts,
     main: /^0x[0-9a-fA-F]{40}$/.test(main) ? main : "",
-    summary: arr(j.summary)
-      .slice(0, 8)
-      .map((s) => {
-        const o = obj(s);
-        return { text: str(o.text, 600), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean) };
+    summary: parseSummary(j.summary),
+    infobox: arr(j.infobox)
+      .slice(0, 16)
+      .map((r) => {
+        const o = obj(r);
+        return { label: str(o.label, 80), value: str(o.value, 300), url: str(o.url, 400), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean) };
       })
-      .filter((s) => s.text),
+      .filter((r) => r.label && r.value),
     lines,
     differs: parseDiffers(j.differs),
+    dropped: parseDropped(j.dropped),
     openQuestions: arr(j.open_questions).map((q) => str(q, 600)).filter(Boolean),
     sources,
   };
@@ -413,6 +488,8 @@ export function parseLines(text: string): SourceLines {
         quote: str(o.quote, 400),
         rerun: "",
         fact: null,
+        from: [],
+        links: [],
         source,
       };
     })
@@ -491,4 +568,81 @@ export function countKinds(sections: { rows: { line: Line }[] }[]): Record<Kind 
       c[r.line.kind]++;
     }
   return c;
+}
+
+/* ---------- Edits (artifacts/edit.json) ---------- */
+
+export type Verdict = "supported" | "supported_by_source" | "unsupported";
+export interface EditSentence {
+  text: string;
+  verdict: Verdict;
+  lines: string[];
+  corrected: string;
+  why: string;
+}
+export interface EditResult {
+  sentences: EditSentence[];
+  accepted: SummarySentence[];
+  /** The edit's new sources and lines, read like an added-source result. */
+  data: SourceLines;
+}
+const verdictOf = (v: unknown): Verdict => {
+  const t = str(v).toLowerCase();
+  return t === "supported" || t === "supported_by_source" ? t : "unsupported";
+};
+export const VERDICT_WORDS: Record<Verdict, string> = {
+  supported: "supported by the record",
+  supported_by_source: "supported by a new source",
+  unsupported: "not supported",
+};
+
+export function parseEdit(text: string): EditResult {
+  const j = obj(JSON.parse(text));
+  return {
+    sentences: arr(j.sentences)
+      .slice(0, 40)
+      .map((s) => {
+        const o = obj(s);
+        return { text: str(o.text, 600), verdict: verdictOf(o.verdict), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean), corrected: str(o.corrected, 600), why: str(o.why, 400) };
+      })
+      .filter((s) => s.text),
+    accepted: parseSummary(j.accepted_summary),
+    data: parseLines(text),
+  };
+}
+
+/* ---------- Accounting after a rebuild ---------- */
+
+/** The line ids and texts in one earlier result file (page.json, lines.json or edit.json). */
+export function lineIdsOf(text: string): { id: string; text: string }[] {
+  try {
+    return arr(obj(JSON.parse(text)).lines)
+      .map((l) => ({ id: str(obj(l).id, 64).trim(), text: str(obj(l).text, 600) }))
+      .filter((l) => l.id);
+  } catch {
+    return [];
+  }
+}
+
+const refKey = (s: string) => s.replace(/\s+/g, "").toUpperCase();
+
+export interface Unaccounted {
+  ref: string;
+  text: string;
+}
+/**
+ * Every earlier line (file Fn, line id) that the rebuilt page neither carried (in a line's from) nor listed in
+ * dropped. A bare id in from or dropped counts for that id in any file.
+ */
+export function unaccounted(page: Pick<Page, "lines" | "dropped">, files: { n: number; lines: { id: string; text: string }[] }[]): Unaccounted[] {
+  const named = new Set<string>();
+  for (const l of page.lines) for (const f of l.from) named.add(refKey(f));
+  for (const d of page.dropped) named.add(refKey(d.id));
+  const out: Unaccounted[] = [];
+  for (const f of files)
+    for (const l of f.lines) {
+      const ref = `F${f.n}:${l.id}`;
+      if (!named.has(refKey(ref)) && !named.has(refKey(l.id))) out.push({ ref, text: l.text });
+    }
+  return out;
 }
