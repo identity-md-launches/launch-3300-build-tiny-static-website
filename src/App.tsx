@@ -289,7 +289,7 @@ const Err = ({ id, msg }: { id: string; msg?: string }) => (msg ? <p id={`${id}-
 function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState }) {
   const oraclePrice = usePrice(ACTIONS.oracle);
   const [tpl, setTpl] = useState<Template>("post");
-  const [f, setF] = useState({ url: "", handle: "", text: "", chain: String(rec.subject.chainId ?? 1), signature: "", address: rec.subject.address || rec.main, value: "" });
+  const [f, setF] = useState({ url: "", handle: "", text: "", chain: String(CHAIN_CHOICES.some((c) => c.id === rec.subject.chainId) ? rec.subject.chainId : 1), signature: "", address: rec.subject.address || rec.main, value: "" });
   const [errs, setErrs] = useState<Record<string, string | undefined>>({});
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   const sid = rec.subject.id;
@@ -623,6 +623,8 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice }: 
   );
 }
 
+export const CHAIN_READ_BLOCK = "The project list could not be read. Try again before reviewing a rebuild.";
+
 export default function App() {
   const activity = useActivity();
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -639,6 +641,8 @@ export default function App() {
   const addProject = (input: { domain: string; address: string; chain: string }): string | null => {
     if (Object.keys(validateSubject(input)).length) return "Fix the fields above.";
     if (activity.items === null) return "Wait until the list has loaded from Ethereum.";
+    // A failed read leaves no earlier files to start from; never offer a paid rebuild on an unknown record.
+    if (activity.error) return CHAIN_READ_BLOCK;
     const typed = refFromInput(input);
     const mine = activity.items.filter((a) => a.req.subject === typed.id);
     const known = subjectRefFor(typed.id, mine, null);

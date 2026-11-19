@@ -15,6 +15,8 @@ export const CHAIN_CHOICES: { id: number; name: string }[] = [
   { id: 4663, name: "Robinhood Chain" },
   { id: 11155111, name: "Sepolia" },
 ];
+/** The Add a project form's choice for a chain the list does not name; a numeric chain id is typed instead. */
+export const OTHER_CHAIN = "other";
 export const chainName = (id: number | string) => CHAIN_CHOICES.find((c) => String(c.id) === String(id))?.name ?? `chain ${id}`;
 
 const HOST = /^(?=.{3,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}[a-z0-9]$/;
@@ -53,7 +55,7 @@ export interface SubjectInput {
 export function subjectIdOf(s: SubjectInput): string {
   const d = normDomain(s.domain);
   if (d) return d;
-  if (isAddress(s.address) && /^\d+$/.test(s.chain)) return `${Number(s.chain)}:${s.address.trim().toLowerCase()}`;
+  if (isAddress(s.address) && /^\d{1,12}$/.test(s.chain.trim()) && Number(s.chain) > 0) return `${Number(s.chain)}:${s.address.trim().toLowerCase()}`;
   return "";
 }
 
@@ -64,7 +66,8 @@ export function validateSubject(s: SubjectInput): { domain?: string; address?: s
   const address = s.address.trim();
   if (domain && !normDomain(domain)) e.domain = "Write a domain such as example.com.";
   if (address && !isAddress(address)) e.address = "Use a contract address: 0x and 40 hex characters.";
-  if (address && !/^\d{1,12}$/.test(s.chain)) e.chain = "Choose the chain the contract is on.";
+  if (address && (!/^\d{1,12}$/.test(s.chain.trim()) || Number(s.chain) < 1)) e.chain = "Choose the chain the contract is on, or write its chain ID as a number, such as 137.";
+  else if (!address && s.chain.trim() && !/^\d{1,12}$/.test(s.chain.trim())) e.chain = "Write the chain ID as a number, such as 137.";
   if (!domain && !address) e.domain = "Write the project's domain, or give its main contract below if it has none.";
   return e;
 }
@@ -95,7 +98,7 @@ export function refFromInput(s: SubjectInput): SubjectRef {
   const id = subjectIdOf(s);
   const domain = normDomain(s.domain);
   const address = isAddress(s.address) ? s.address.trim() : "";
-  return { id, domain, address, chainId: address && /^\d+$/.test(s.chain) ? Number(s.chain) : null };
+  return { id, domain, address, chainId: address && /^\d{1,12}$/.test(s.chain.trim()) && Number(s.chain) > 0 ? Number(s.chain) : null };
 }
 
 /** Reads the contract back out of an objective this site sent for a domain subject. */

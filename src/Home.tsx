@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { subjectSummaries, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
-import { CHAIN_CHOICES, subjectIdOf, validateSubject } from "./subject";
+import { CHAIN_CHOICES, OTHER_CHAIN, subjectIdOf, validateSubject } from "./subject";
 import type { Activity } from "./useActivity";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
@@ -32,21 +32,24 @@ function SubjectItem({ s }: { s: SubjectSummary }) {
 }
 
 function AddProject({ onAdd, price }: { onAdd: (i: { domain: string; address: string; chain: string }) => string | null; price: string }) {
-  const [f, setF] = useState({ domain: "", address: "", chain: "1" });
+  const [f, setF] = useState({ domain: "", address: "", chain: "1", otherChain: "" });
   const [errs, setErrs] = useState<ReturnType<typeof validateSubject>>({});
   const [msg, setMsg] = useState("");
-  const id = subjectIdOf(f);
+  const other = f.chain === OTHER_CHAIN;
+  // The subject as the form describes it: a listed chain, or the chain id typed under "Other chain ID".
+  const input = { domain: f.domain, address: f.address, chain: other ? f.otherChain.trim() : f.chain };
+  const id = subjectIdOf(input);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const found = validateSubject(f);
+    const found = validateSubject(input);
     setErrs(found);
     const first = (["domain", "address", "chain"] as const).find((k) => found[k]);
     if (first) {
       setMsg("");
-      document.getElementById(`add-${first}`)?.focus();
+      document.getElementById(first === "chain" && other ? "add-chain-other" : `add-${first}`)?.focus();
       return;
     }
-    setMsg(onAdd(f) ?? "");
+    setMsg(onAdd(input) ?? "");
   };
   return (
     <section className="card add" id="add" aria-labelledby="add-title" tabIndex={-1}>
@@ -62,11 +65,22 @@ function AddProject({ onAdd, price }: { onAdd: (i: { domain: string; address: st
           value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} aria-invalid={!!errs.address} aria-describedby={errs.address ? "add-address-err" : undefined} />
         {errs.address && <p id="add-address-err" className="error">{errs.address}</p>}
         <label htmlFor="add-chain">Chain of that contract</label>
-        <select id="add-chain" name="chain" value={f.chain} onChange={(e) => setF({ ...f, chain: e.target.value })} aria-invalid={!!errs.chain}>
+        <select id="add-chain" name="chain" value={f.chain} onChange={(e) => setF({ ...f, chain: e.target.value })} aria-invalid={!!errs.chain && !other}
+          aria-describedby={errs.chain && !other ? "add-chain-err" : undefined}>
           {CHAIN_CHOICES.map((c) => (
             <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
           ))}
+          <option value={OTHER_CHAIN}>Other chain ID</option>
         </select>
+        {other && (
+          <>
+            <label htmlFor="add-chain-other">Chain ID</label>
+            <input id="add-chain-other" name="otherChain" type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" placeholder="137"
+              className="mono" value={f.otherChain} onChange={(e) => setF({ ...f, otherChain: e.target.value })}
+              aria-invalid={!!errs.chain} aria-describedby={errs.chain ? "add-chain-err" : undefined} />
+          </>
+        )}
+        {errs.chain && <p id="add-chain-err" className="error">{errs.chain}</p>}
         <p id="add-id" className="small">
           {id ? <>Its page will be <span className="mono break">{subjectHref(id)}</span></> : "Projects only: a domain, or a contract if it has no website."}
         </p>
@@ -113,8 +127,8 @@ export function Home({ items, error, loading, reload, onAdd, price, bad }: {
               <button type="button" className="linklike" onClick={() => void reload()} disabled={loading}>{loading ? "Reading chain…" : "Try again"}</button>
             </p>
           )}
-          {items === null ? (
-            <p className="small" role="status">Reading the projects from Ethereum…</p>
+          {items === null || (error && !all.length) ? (
+            items === null && <p className="small" role="status">Reading the projects from Ethereum…</p>
           ) : shown.length ? (
             <>
               <p className="small" aria-live="polite">{needle ? `${plural(shown.length, "project")} match “${q.trim()}”.` : `${plural(all.length, "project")} on the record, newest change first.`}</p>

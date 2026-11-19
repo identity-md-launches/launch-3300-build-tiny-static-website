@@ -61,7 +61,10 @@ export interface Snapshot {
 }
 
 const completionOrder = (a: Activity, b: Activity) => completedBefore(a.completion!, b.completion!);
-const isResult = (a: Activity) => (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req)) && a.state === "completed" && !!a.completion;
+const isResult = (a: Activity) => (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req)) && a.state === "completed" && !!a.completion && !a.rejected;
+/** Completed jobs whose file says found: false, oldest first. */
+export const rejectedOf = (items: Activity[]) =>
+  items.filter((a) => a.rejected && a.state === "completed" && a.completion).sort(completionOrder);
 
 /** True when this result's artifact URL appears in the objective of the request that produced the page shown. */
 export function isFoldedInto(a: Activity, latest: Activity | undefined): boolean {
@@ -119,8 +122,8 @@ export function subjectRefFor(id: string, items: Activity[], page: Page | null):
 }
 
 /**
- * Keeps <PRIOR> under 7,500 characters: F1 always, then the newest results that fit (oldest dropped first),
- * then the newest panel answers that fit. Returns which results made it in.
+ * Keeps <PRIOR> under 7,500 characters: F1 always, then the newest results that fit with no answers (oldest
+ * dropped first), then the newest panel answers that fit in the room left. Answers never push a result out. Returns which results made it in.
  */
 export function fitPrior(
   page: string | null,
@@ -128,11 +131,16 @@ export function fitPrior(
   answers: PriorAnswer[],
   measure: (p: Prior) => number,
 ): { prior: Prior; included: Set<string>; leftOut: number; answersLeftOut: number } {
+  // Files come first: F1, then the newest results that fit with no answers at all. Answers only take the room left.
   let rs = [...results];
-  let as = [...answers];
+  let as: PriorAnswer[] = [];
   const make = (): Prior => ({ files: [...(page ? [page] : []), ...rs.map((r) => r.url)], answers: as });
   while (rs.length > 0 && measure(make()) >= MAX_OBJECTIVE) rs = rs.slice(1);
-  while (as.length > 0 && measure(make()) >= MAX_OBJECTIVE) as = as.slice(1);
+  for (let k = answers.length; k > 0; k--) {
+    as = answers.slice(answers.length - k);
+    if (measure(make()) < MAX_OBJECTIVE) break;
+    as = [];
+  }
   return { prior: make(), included: new Set(rs.map((r) => r.id)), leftOut: results.length - rs.length, answersLeftOut: answers.length - as.length };
 }
 
@@ -156,11 +164,15 @@ export interface SubjectSummary {
   hasPage: boolean;
 }
 
-/** One entry per subject found on chain, newest change first. */
+/**
+ * One entry per subject found on chain, newest change first. A subject whose research came back found: false
+ * and that has no page is not a project record, so it is not listed (its link still shows why).
+ */
 export function subjectSummaries(items: Activity[]): SubjectSummary[] {
   const by = new Map<string, Activity[]>();
   for (const a of items) by.set(a.req.subject, [...(by.get(a.req.subject) ?? []), a]);
-  const out = [...by].map(([id, list]): SubjectSummary => {
+  const projects = [...by].filter(([, list]) => !rejectedOf(list).length || !!coreOf(list).page);
+  const out = projects.map(([id, list]): SubjectSummary => {
     const core = coreOf(list);
     const doneTimes = list.filter((a) => a.state === "completed").map((a) => a.doneTime ?? a.time ?? 0);
     const anyTimes = list.map((a) => a.time ?? 0);
@@ -182,6 +194,8 @@ export function subjectSummaries(items: Activity[]): SubjectSummary[] {
 export interface RecordModel {
   subject: SubjectRef;
   latest: Activity | undefined;
+  /** The newest completed job whose file said found: false, with its notes; shown on Overview when there is no page. */
+  rejected: Activity | undefined;
   page: Page | null;
   pageHash: string | null;
   via: { jobId: string | null; path: string } | null;
@@ -337,6 +351,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   return {
     subject,
     latest,
+    rejected: rejectedOf(items ?? []).at(-1),
     page,
     pageHash,
     via,

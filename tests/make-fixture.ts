@@ -53,14 +53,28 @@ const reqs = [
   { n: 5, action: "job.open@job-1", body: editBody("x", prior, [], IMD), file: ["edit", edit], cb: 105 },
 ];
 const hx = (n: number) => toHex(n) as Hex;
-const out = { head: L + 200, requests: [] as unknown[], completions: [] as unknown[], intake: {} as Record<string, unknown>, results: {} as Record<string, unknown>, files, page2, src2, edit, oracleId: "11111111-2222-4333-8444-555555555555" };
+const oracleId = "11111111-2222-4333-8444-555555555555";
+const out = { head: L + 200, requests: [] as unknown[], completions: [] as unknown[], intake: {} as Record<string, unknown>, results: {} as Record<string, unknown>, files, page2, src2, edit, oracleId, variants: {} as Record<string, unknown> };
+function fill(out: { requests: unknown[]; completions: unknown[]; intake: Record<string, unknown>; results: Record<string, unknown> }, reqs: { n: number; action: string; body: Parameters<typeof encodeBody>[0]; file: [string, string] | null; cb: number }[]) {
 for (const r of reqs) {
   const id = pad(toHex(r.n));
   const tx = pad(toHex(1000 + r.n));
   out.requests.push({ topics: [TOPIC_REQUESTED, id, pad("0x00856bd495941f3b95da5b7e374c76d822c9059e"), pad(stringToHex(r.action), { dir: "right" })], data: encodeAbiParameters([{ type: "bytes" }, { type: "address" }, { type: "bytes4" }, { type: "address" }, { type: "uint256" }], [stringToHex(encodeBody(r.body)), "0x0000000000000000000000000000000000000000", "0x00000000", "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7", 500000000000000000n]), blockNumber: hx(L + r.n), transactionHash: tx, logIndex: "0x0" });
   out.completions.push({ topics: [TOPIC_COMPLETED, id], data: encodeAbiParameters([{ type: "uint8" }, { type: "bytes32" }, { type: "string" }, { type: "bool" }], [0, pad("0x01"), "", true]), blockNumber: hx(L + r.cb), transactionHash: pad(toHex(2000 + r.n)), logIndex: "0x0" });
-  out.intake[tx] = { entries: [{ requestId: id, state: "completed", admission: { result: r.file ? { kind: "job", jobId: `job-${r.n}` } : { kind: "oracle", requestId: out.oracleId } } }] };
+  out.intake[tx] = { entries: [{ requestId: id, state: "completed", admission: { result: r.file ? { kind: "job", jobId: `job-${r.n}` } : { kind: "oracle", requestId: oracleId } } }] };
   if (r.file) out.results[`job-${r.n}`] = { jobId: `job-${r.n}`, files: [{ name: r.file[0], hash: r.file[1] }] };
 }
+}
+fill(out, reqs as Parameters<typeof fill>[1]);
+const variant = (rs: Parameters<typeof fill>[1]) => {
+  const v = { head: out.head, requests: [] as unknown[], completions: [] as unknown[], intake: {} as Record<string, unknown>, results: {} as Record<string, unknown>, files, oracleId };
+  fill(v, rs);
+  return v;
+};
+// Only the completed panel answer (request 06): Record must still list it.
+out.variants.oracleOnly = variant(reqs.filter((r) => r.n === 6) as Parameters<typeof fill>[1]);
+// A rebuild for person.example whose page says found: false.
+const rejected = put({ found: false, subject: { type: "person", name: "Sample Person" }, lines: [], notes: "The domain identifies a person, not a project." });
+out.variants.person = variant([{ n: 3, action: "job.open@job-1", body: rebuildBody({ files: [], answers: [] }, refFromId("person.example")), file: ["page", rejected], cb: 103 }]);
 writeFileSync(process.argv[2] ?? "test/scratch/fx.json", JSON.stringify(out));
 console.log("fixture", Object.keys(files).length, "files");

@@ -52,6 +52,11 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                   {a.req.action === ACTIONS.oracle && a.state === "completed" && a.oracle ? ` · answer: ${a.oracle.answer ?? "none"} (panel, ${a.oracle.agreed ?? "?"} of ${a.oracle.panelSize ?? "?"} agreed)` : ""}
                 </p>
                 {st && <p className="small">{st}</p>}
+                {a.rejected && (
+                  <p className="why rejected">
+                    Not a project record: the job set found to false, so nothing from it is shown. Its notes: {a.rejected}
+                  </p>
+                )}
                 {(a.state === "refused" || a.state === "failed") && (
                   <p className="why">
                     {a.state === "refused" ? "Refused" : "Failed"}: {a.refusal ? [a.refusal.reason, a.refusal.detail].filter(Boolean).join(": ") : a.completion?.reason || "no reason given yet"}

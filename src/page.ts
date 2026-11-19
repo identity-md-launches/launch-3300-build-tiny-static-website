@@ -299,6 +299,19 @@ export function applyLabel(line: Line, channels: Channel[], publisher: string, u
 
 /* ---------- page.json ---------- */
 
+/**
+ * The job's own refusal: a result file whose top-level "found" is false did not identify one real project
+ * (templates/*.txt). Returns its notes ("" when it gave none), or null for an ordinary result.
+ */
+export function rejectionOf(text: string): string | null {
+  try {
+    const j = obj(JSON.parse(text));
+    return j.found === false ? str(j.notes, 1200).trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function parsePage(text: string): Page {
   const j = obj(JSON.parse(text));
   const subject = obj(j.subject);

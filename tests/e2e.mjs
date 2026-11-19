@@ -213,7 +213,83 @@ try {
     await page.click("text=Review the question");
     check(`${W} the web page form asks for its fields`, (await page.locator("#q-url-err").count()) === 1 && (await page.locator("#q-text-err").count()) === 1);
     check(`${W} no horizontal scroll on Contribute`, (await overflow(page)) <= 0, await wideOf(page));
+
+    // Add a project on a chain the oracle list does not name (8aeb5d8b).
+    await page.goto(base);
+    await page.waitForSelector(".subjects .subject", { timeout: 30000 });
+    await page.fill("#add-address", "0x1111111111111111111111111111111111111111");
+    await page.selectOption("#add-chain", "other");
+    await page.fill("#add-chain-other", "polygon");
+    await page.click("text=Review the first rebuild");
+    check(`${W} Other chain ID asks for a number`, (await page.locator("#add-chain-err").count()) === 1 && (await page.locator('[role="dialog"]').count()) === 0);
+    await page.fill("#add-chain-other", "137");
+    check(`${W} Other chain ID builds the chain:address id`, /#\/s\/137:0x1111111111111111111111111111111111111111/.test(await page.locator("#add-id").innerText()));
+    await page.click("text=Review the first rebuild");
+    const d137 = await page.waitForSelector('[role="dialog"]', { timeout: 5000 }).then(() => true, () => false);
+    const b137 = d137 ? await page.locator("pre.body").innerText() : "";
+    check(`${W} a chain 137 project gets its own rebuild`, d137 && /"subject": "137:0x1111111111111111111111111111111111111111"/.test(b137) && b137.includes("one subject: the project whose main contract is 0x1111111111111111111111111111111111111111 on chain 137."), b137.slice(0, 200));
+    if (d137) await page.keyboard.press("Escape");
+
+    // Long subject ids wrap (358e18f4).
+    for (const id of ["1:0x1111111111111111111111111111111111111111", "pneumaticstatisticsandtokenregistry.example"]) {
+      await page.goto(base + "#/s/" + id);
+      await page.waitForSelector("#record-title");
+      await page.waitForSelector(".card.empty h2:not(:has-text('Reading'))", { timeout: 30000 }).catch(() => {});
+      check(`${W} no horizontal scroll on Overview of ${id}`, (await overflow(page)) <= 0, await wideOf(page));
+      check(`${W} the heading keeps the full id ${id}`, (await page.locator("#record-title").innerText()).replace(/\s/g, "") === id);
+    }
+    if (width === 390) await page.screenshot({ path: join(out, `390-contract-subject.png`) });
+
+    // Panel answers are the last thing on Record (3672d8cd).
+    await page.goto(base + "#/s/imd.fun/record");
+    await page.waitForSelector("#panel-answers", { timeout: 30000 }).catch(() => {});
+    check(`${W} Panel answers is the last section of Record`, await page.evaluate(() => { const p = document.querySelector("#panel-answers"); return !!p && p.nextElementSibling === null && p.parentElement?.classList.contains("tab"); }));
     check(`${W} no script errors`, errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  }
+  // Variants at 390: a panel answer with no page, a rejected person, and a failed chain read.
+  const variantPage = async (opts) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await ctx.newPage();
+    await mock(page, opts);
+    return { ctx, page };
+  };
+  {
+    const { ctx, page } = await variantPage({ fx: fx.variants.oracleOnly });
+    await page.goto(base + "#/s/imd.fun/activity");
+    await page.waitForSelector(".activity .act", { timeout: 30000 });
+    check("390: oracle only: Activity shows the answer", /answer: true \(panel, 5 of 5 agreed\)/.test(await page.locator(".activity").innerText()));
+    await page.goto(base + "#/s/imd.fun/record");
+    await page.waitForSelector("#panel-answers", { timeout: 30000 }).catch(() => {});
+    check("390: oracle only: Record lists the panel answer", (await page.locator("#panel-answers .panel-row").count()) === 1);
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await variantPage({ fx: fx.variants.person });
+    await page.goto(base);
+    await page.waitForSelector(".home-list p.small[aria-live]", { timeout: 30000 });
+    check("390: a found: false result is not listed as a project", (await page.locator(".subjects .subject").count()) === 0 && !/Sample Person/.test(await page.locator("main").innerText()));
+    await page.goto(base + "#/s/person.example");
+    await page.waitForSelector("#rejected", { timeout: 30000 }).catch(() => {});
+    const main = await page.locator("main").innerText();
+    check("390: its link shows the rejection reason, not the person", (await page.locator("#rejected").count()) === 1 && /identifies a person, not a project/.test(main) && !/Sample Person/.test(main) && (await page.locator("#record-title").innerText()) === "person.example");
+    await page.goto(base + "#/s/person.example/activity");
+    await page.waitForSelector(".activity .act", { timeout: 30000 });
+    check("390: Activity keeps the job and its notes", /Not a project record.*identifies a person/s.test(await page.locator(".activity").innerText()));
+    await page.screenshot({ path: join(out, `390-rejected-activity.png`) });
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await variantPage({ failBlockNumber: true });
+    await page.goto(base);
+    await page.waitForSelector("text=Unable to read the chain", { timeout: 60000 });
+    await page.click("text=Try again");
+    await page.waitForSelector("text=Try again", { timeout: 60000 });
+    check("390: failed read: no 'No projects yet'", !/No projects yet/.test(await page.locator("main").innerText()));
+    await page.fill("#add-domain", "imd.fun");
+    await page.click("text=Review the first rebuild");
+    await page.waitForTimeout(300);
+    check("390: failed read: no rebuild review, retry guidance instead", (await page.locator('[role="dialog"]').count()) === 0 && /The project list could not be read\. Try again before reviewing a rebuild\./.test(await page.locator("#add").innerText()));
     await ctx.close();
   }
 } finally {

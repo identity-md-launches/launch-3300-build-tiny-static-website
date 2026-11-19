@@ -5,6 +5,7 @@ import { artifactUrl, encodeBody, matchOracleQuestion, questionContract, questio
 import { subjectOfTag } from "../src/chain";
 import { badgeOf, keyFacts, splitAddresses } from "../src/keyfacts";
 import { coreOf, fitPrior, isFoldedInto, planRebuild, subjectRefFor, subjectSummaries } from "../src/model";
+import { rejectionOf } from "../src/page";
 import { parsePage, type Line } from "../src/page";
 import { describeSubject, isSubjectId, normDomain, refFromId, refFromInput, subjectIdOf, validateSubject } from "../src/subject";
 import type { Activity } from "../src/useActivity";
@@ -129,6 +130,7 @@ function act(kind: "add" | "source" | "edit", opts: { block: number; hash?: stri
     fileHash: opts.hash ?? null,
     page,
     via: null,
+    rejected: null,
     doneTime: (opts.block + 1) * 1000,
   };
 }
@@ -214,5 +216,58 @@ describe("key facts", () => {
     expect(k.rows.map((r) => r.badge?.text)).toEqual(["Confirmed on chain", "Reported by a blog"]);
     expect(k.otherChannels.map((c) => c.label)).toEqual(["@ex"]);
     expect(splitAddresses(`EX (${A})`)).toEqual([{ text: "EX (", address: false }, { text: A, address: true }, { text: ")", address: false }]);
+  });
+});
+
+/* ---------- Second revision: the reviewer's findings on the subjects revision ---------- */
+
+describe("panel answers never push a result file out of <PRIOR> (aa9250dc)", () => {
+  it("fits F1 and the newest result first, then the newest answers in the room left", () => {
+    const ref = refFromId("example.com");
+    const f1 = artifactUrl(h("f"));
+    const src = { id: "s", url: artifactUrl(h("a")) };
+    const answers = Array.from({ length: 20 }, (_, i) => ({ title: "A".repeat(88), answer: "true", agreed: 5, size: 5, url: `https://explorer.imd.fun/jobs/${String(i).padStart(36, "0")}` }));
+    const measure = (p: Parameters<typeof rebuildObjective>[0]) => rebuildObjective(p, ref).length;
+    expect(measure({ files: [f1, src.url], answers })).toBe(8493);
+    const fit = fitPrior(f1, [src], answers, measure);
+    expect(fit.prior.files).toEqual([f1, src.url]);
+    expect(fit.included.has("s")).toBe(true);
+    expect(fit.leftOut).toBe(0);
+    expect(fit.prior.answers).toEqual(answers.slice(6));
+    expect(fit.answersLeftOut).toBe(6);
+    expect(measure(fit.prior)).toBe(7419);
+  });
+});
+
+describe("Add a project takes any chain id (8aeb5d8b)", () => {
+  it("a domainless contract on chain 137 has its own id and description", () => {
+    const input = { domain: "", address: "0x1111111111111111111111111111111111111111", chain: "137" };
+    expect(validateSubject(input)).toEqual({});
+    expect(subjectIdOf(input)).toBe("137:0x1111111111111111111111111111111111111111");
+    expect(describeSubject(refFromInput(input))).toBe("the project whose main contract is 0x1111111111111111111111111111111111111111 on chain 137");
+    expect(validateSubject({ ...input, chain: "" }).chain).toMatch(/chain ID/);
+    expect(validateSubject({ ...input, chain: "polygon" }).chain).toMatch(/chain ID/);
+    expect(validateSubject({ ...input, chain: "0" }).chain).toBeTruthy();
+  });
+});
+
+describe("a found: false result is not a project record (21585f40)", () => {
+  const REJECT = JSON.stringify({ found: false, subject: { type: "person", name: "Sample Person" }, lines: [], notes: "The domain identifies a person, not a project." });
+  it("reads the notes of a refusal and nothing from an ordinary result", () => {
+    expect(rejectionOf(REJECT)).toBe("The domain identifies a person, not a project.");
+    expect(rejectionOf(PAGE("Ex"))).toBeNull();
+    expect(rejectionOf("not json")).toBeNull();
+  });
+  it("is never the page shown and keeps its subject off Home", () => {
+    const r = act("add", { block: 10, hash: h("9"), subject: "person.example" });
+    r.rejected = rejectionOf(REJECT);
+    const core = coreOf([r]);
+    expect(core.latest).toBeUndefined();
+    expect(core.page).toBeNull();
+    expect(core.unfolded).toEqual([]);
+    expect(subjectSummaries([r])).toEqual([]);
+    // A later real page lists the subject again.
+    const p = act("add", { block: 20, hash: h("8"), subject: "person.example", page: PAGE("Real") });
+    expect(subjectSummaries([r, p]).map((s) => s.name)).toEqual(["Real"]);
   });
 });

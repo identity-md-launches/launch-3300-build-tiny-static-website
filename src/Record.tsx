@@ -230,7 +230,17 @@ export function OverviewTab({ m, ui, items, price }: { m: RecordModel; ui: Ui; i
     <section className="tab" aria-labelledby="record-title">
       <h1 id="record-title" tabIndex={-1}>{page?.name || m.subject.id}</h1>
       <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
-      {!page && (
+      {!page && m.rejected && items !== null && !(latest && !error) && (
+        <div className="card empty" id="rejected">
+          <h2>Not a project record</h2>
+          <p>The research job for {m.subject.id} found no single real project, so this site shows no page for it. Its notes:</p>
+          <p className="why">{m.rejected.rejected}</p>
+          <p className="small">
+            See <a href={to("activity")}>Activity</a> for the job. A rebuild with a clearer description can still create the page.
+          </p>
+        </div>
+      )}
+      {!page && !(m.rejected && items !== null && !(latest && !error)) && (
         <div className="card empty">
           <h2>{items === null ? "Reading the record…" : latest && !error ? "Downloading the record…" : "No page yet"}</h2>
           <p>{latest && !error ? "The page job finished. Downloading and checking its file…" : `Run a rebuild to publish the first record of ${m.subject.id}.`}</p>
@@ -628,7 +638,6 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
             </div>
           ))}
           {counts.all > 0 && shown.length === 0 && <p className="small">No lines of this kind.</p>}
-          <PanelAnswers m={m} />
           <OtherChannels m={m} />
           {page && page.openQuestions.length > 0 && (
             <div className="card">
@@ -642,6 +651,8 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
           )}
         </>
       )}
+      {/* Always the last thing on Record, with or without a page: every completed panel answer of this subject. */}
+      <PanelAnswers m={m} />
     </section>
   );
 }

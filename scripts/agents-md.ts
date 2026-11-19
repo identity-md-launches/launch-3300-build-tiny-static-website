@@ -33,7 +33,13 @@ A subject is one project, never a person and never a name:
 
 - by its **domain**: the lowercase host without \`www.\`, such as \`imd.fun\`;
 - or, when it has no domain, by **chain id and contract address**: \`<chain id>:<address in lowercase>\`,
-  such as \`1:0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7\`.
+  such as \`1:0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7\`. Any chain id: the home page's "Add a project" form
+  names six chains and takes any other as a number under "Other chain ID" (such as \`137:0x…\`).
+
+A result file (page, lines or edit) whose top-level \`found\` is \`false\` did not identify one real project. The
+site never shows it as a page or as lines, never lists it in \`<PRIOR>\`, and does not list a subject on the
+home page when its research came back that way and it has no page; Activity shows the job with its \`notes\`,
+and the subject's link shows the notes.
 
 Routes: \`#/\` is the list of subjects; \`#/s/<subject id>\` is a subject's page, with the tabs
 \`#/s/<subject id>/record\`, \`/sources\`, \`/activity\` and \`/contribute\`. Older links (\`#record\`,
@@ -90,7 +96,8 @@ sources and edit result of the same subject that is **not folded in** (see below
 earlier pages that were replaced without being named; then \`[A1]\`... each completed panel answer of the subject
 as \`question title = answer, N of M, request URL\`; all joined with \`; \`. With nothing yet, \`<PRIOR>\` is
 \`none\`. If the list would push the objective to 7,500 characters or more, the site says so and keeps F1 and the
-newest results that fit (then the newest panel answers that fit).
+newest result files that fit with no panel answers, then adds the newest panel answers that fit in the room left:
+answers never push a result file out.
 
 **Folded in.** A result (page, sources or edit) is folded into the page shown only if its artifact URL
 (\`${API}/artifacts/<sha-256>\`) appears in the objective of the request that produced the page shown, read from
@@ -221,8 +228,8 @@ The Overview's key facts table shows \`infobox\` rows, each with a badge the sit
 row rests on: "Proven on chain" if any is a proof, else "Stated by <channel>" for a statement, else "Reported by
 <who>" for a claim; a row that is a channel shows its tie ("Confirmed on chain", "Names the contract" or "Not
 confirmed"). Until a rebuild writes \`infobox\`, the table is built from the page: channels with their tie,
-contracts (main first), and proof facts for token symbol and supply. Panel answers are listed at the bottom of
-the Record tab.
+contracts (main first), and proof facts for token symbol and supply. Every completed panel answer of the subject
+is listed under "Panel answers", always the last section of the Record tab, also before the first page.
 A line's \`links\` show as "Confirmed by" or "Contradicted by" with the linked proof line or panel answer (\`A<n>\`
 from the rebuild's \`<PRIOR>\`).
 

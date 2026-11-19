@@ -5,7 +5,7 @@ import type { Hex } from "viem";
 import { loadTaggedRequests, stateOf, getBlockTime, type Completion, type TaggedRequest } from "./chain";
 import { cacheGet, cacheSet, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
-import { parseEdit, parseLines, parsePage, type EditResult, type Page, type SourceLines } from "./page";
+import { parseEdit, parseLines, parsePage, rejectionOf, type EditResult, type Page, type SourceLines } from "./page";
 import { config } from "./wallet";
 
 export interface Activity {
@@ -29,6 +29,11 @@ export interface Activity {
   page: Page | null;
   /** Where a page file was read: the job id and the route (api.imd.fun or an IPFS gateway). */
   via: { jobId: string | null; path: "api" | "ipfs" } | null;
+  /**
+   * Set when the result file says found: false: the job did not find one real project. Holds its notes. Such a
+   * result is never shown as the page, never adds lines and never lists the subject on Home.
+   */
+  rejected: string | null;
   /** When the result was written: the completion's block time, or null while pending or unknown. */
   doneTime: number | null;
 }
@@ -111,12 +116,15 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
   let fileHash: string | null = null;
   let page: Page | null = null;
   let via: Activity["via"] = null;
+  let rejected: string | null = null;
   if ((isSourceJob(req) || isEditJob(req) || isPageJob(req)) && state === "completed" && completion) {
     const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : "lines";
     try {
       const f = await fetchResearchPage(req, completion, jobId, name);
       fileHash = f.hash ?? null;
-      if (name === "edit") {
+      rejected = rejectionOf(f.text);
+      if (rejected !== null) rejected ||= "The job found no single real project and gave no notes.";
+      else if (name === "edit") {
         edit = parseEdit(f.text);
         sources = edit.data;
       } else if (name === "page") {
@@ -129,7 +137,7 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
     }
   }
   const [time, ens, doneTime] = await Promise.all([timeOf(req), ensOf(req.payer), completion ? timeOf(completion) : Promise.resolve(null)]);
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash, page, via, doneTime };
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash, page, via, rejected, doneTime };
 }
 
 export function useActivity() {

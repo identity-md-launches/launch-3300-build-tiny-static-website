@@ -1,4 +1,60 @@
-# Validation: tabs, key facts, rebuild and Suggest an edit
+# Validation
+
+## This build: subjects, second revision (2026-11-19)
+
+Run on this machine after the last source change. Answers to the review findings are in `.imd-responses.json`.
+
+| Command | Result |
+| --- | --- |
+| `npm ci` | exit 0 |
+| `npm run typecheck` / `npm run build` (`tsc --noEmit` over `src`, `tests`, `vite.config.ts`, then `vite build`) | exit 0; `dist/index.html` uses only `./` URLs (`./favicon.svg`, `./assets/…`) |
+| `npm test` (vitest) | 66 of 66 pass: 22 `tests/unit.test.ts`, 12 `tests/rebuild.test.ts`, 13 `tests/revision.test.ts`, 19 `tests/subjects.test.ts` |
+| `npx vite-node tests/make-fixture.ts test/scratch/fx.json` then `node tests/e2e.mjs test/scratch/fx.json test/scratch/e2e` (Playwright 1.x chromium-headless-shell 1255; missing system libraries and DejaVu fonts unpacked from Ubuntu 24.04 packages under `$TMPDIR`, outside the repository) | 124 of 124 pass at 390, 1440 and 320 wide plus three 390 variants |
+| `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` (export against the live chain) | 16 of 16 pass; copy budget 36 words at 390 (bar 60), 84 at 1440 (bar 90); share: title, favicon, og:title, og:image, description |
+| `POST https://api.imd.fun/requests/check`: 7 job bodies (rebuild, sources, edit, with and without the contract, and a chain-137 contract-only first rebuild) and the 3 oracle short forms | all 200, `judged: true`, `blockers: []`; job bodies no suggestions; post `not_answerable` and contract `wording` suggestions on the sample values; all 3 drafts equal the sent bodies byte for byte (table in README) |
+
+New interaction checks for the findings (at each width unless marked 390):
+
+- Add a project: "Other chain ID" with "polygon" shows the chain error and opens no dialog; with 137 the form shows
+  `#/s/137:0x1111…1111`, and the dialog body has `"subject": "137:0x1111…"` and "the project whose main contract is
+  0x1111… on chain 137".
+- `#/s/1:0x1111111111111111111111111111111111111111` and `#/s/pneumaticstatisticsandtokenregistry.example`: no
+  horizontal scroll (scrollWidth equals clientWidth at 320, 390 and 1440) and the heading keeps the full id.
+- Record: `#panel-answers` is the last child of the tab section.
+- 390, only the completed panel answer (request 06): Activity reads "answer: true (panel, 5 of 5 agreed)" and Record
+  lists one row under Panel answers (before: no `#panel-answers`, "No lines yet").
+- 390, a `person.example` rebuild whose page file says `found: false`: Home lists no project and never shows
+  "Sample Person"; `#/s/person.example` shows "Not a project record" with the notes and `#record-title` is the id;
+  Activity keeps the job with "Not a project record … Its notes: The domain identifies a person, not a project."
+- 390, `eth_blockNumber` failing, after Try again fails too: no "No projects yet"; "Review the first rebuild" for
+  imd.fun opens no dialog and shows "The project list could not be read. Try again before reviewing a rebuild."
+- Unit test: the reviewer's size case (F1, one sources URL, 20 answers of 88-character titles) is 8,493 characters in
+  full and now fits F1, the sources file and the newest 14 answers in 7,419 characters.
+
+### Better Interface review of this revision
+
+Guide `.imd/reads/skills/better-interface/REFERENCE.md`; all six domains considered for the changed views (Home form,
+Overview empty and rejected states, Record end, Activity row). Rendered checks with the headless Chromium above;
+screenshots `390-contract-subject.png` and `390-rejected-activity.png` in `test/scratch/e2e` (not submitted) were
+looked at.
+
+| Domain | Finding | Fix |
+| --- | --- | --- |
+| Layout | `src/Record.tsx:231` / `src/styles.css:64`: an unbroken subject id in h1 and the lead made the page 946px wide at 390 | `h1–h4, p { overflow-wrap: anywhere }` (`src/styles.css:66`); the id wraps inside the column |
+| UI / writing | `src/Home.tsx:65`: no way to describe a contract on an unlisted chain | "Other chain ID" option and a numeric field with its own label, error and focus |
+| UI | `src/App.tsx:641`: a failed read still opened a paid first-rebuild review with an empty `<PRIOR>` | Review refused with a plain retry message; "No projects yet" only after a good read |
+| Writing | `src/Record.tsx`: a rejected result showed the person's name as the title | "Not a project record" card with the job's notes and a link to Activity |
+| Layout | `src/Record.tsx:631`: Panel answers sat above "Other channels" and "Not known yet", and vanished without a page | Rendered as the last child of Record in every state |
+| Accessibility | New field `#add-chain-other` has a visible label, `inputMode="numeric"`, `aria-invalid` and `aria-describedby` to its error | Done in source |
+| Colours / typography | No new tokens or sizes; the rejection text uses the existing error red and the small size | n/a |
+
+Remaining: WebKit not run; paying and wallets not tested (no wallet here); the price read through
+`gateway.tenderly.co` fails CORS in this sandbox, so screenshots say "Price unavailable".
+
+## Earlier build: tabs revision, before subjects (evidence for the previous version only)
+
+The measurements below were taken on the earlier build and are kept as its record. Where they describe placement
+or counts that changed (the panel list, 47 tests, 147 checks, the request check), the section above is current.
 
 Run on 2026-11-19 on this machine, after the last source change (the revision answering the review findings,
 see `.imd-responses.json`).
@@ -13,7 +69,7 @@ see `.imd-responses.json`).
 | `npm run build` | exit 0; `dist/index.html` uses only `./` URLs |
 | `npx vite-node tests/make-fixture.ts test/scratch/fx.json` then `node tests/e2e.mjs test/scratch/fx.json test/scratch/e2e` (Playwright chromium-headless-shell 1255; its missing system libraries and DejaVu fonts were unpacked from Ubuntu packages under `/tmp`, outside the repository) | 147 of 147 pass at 390, 1440 and 320 wide plus four 390 scenarios |
 | `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` (live chain) | 15 of 16; `copy-budget` fails (93 words at 390 and at 1440), see below |
-| `POST https://api.imd.fun/requests/check` with the rebuild, sources and edit bodies | 200, `blockers: []`, `suggestions: []`, `judged: true` for all, see README (run before this revision; templates and body shapes unchanged, not re-run) |
+| `POST https://api.imd.fun/requests/check` with the rebuild, sources and edit bodies | 200, `blockers: []`, `suggestions: []`, `judged: true` for all, see README (run for that build; superseded by the 2026-11-19 subjects-revision table in README) |
 
 `tests/rebuild.test.ts` pins `templates/rebuild.txt` (the research text plus the brief's insertion before
 "Sections:" and the new keys), the rebuild body's tag, output and `<PRIOR>` list, `parsePrior` reading it
@@ -29,7 +85,7 @@ names them as F1, F2 and A1), then a sources result and an edit completed after 
 
 - Overview is the default tab; the key facts box is above the summary at 390 and 320 and beside it at 1440;
   values with a url are links; the accepted edit is the summary, in two paragraphs, marked
-  "Edited by 0x0085…059e, checked by a research job"; "Checked by a panel" is on Overview; at 390 the
+  "Edited by 0x0085…059e, checked by a research job"; the panel list (then on Overview, now the last section of Record); at 390 the
   Rebuild button is on the first screen.
 - A summary dot opens its line in the Record tab, open.
 - Record has exactly one facts table, in "On chain", with name, value with unit, chain and block.

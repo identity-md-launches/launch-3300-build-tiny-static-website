@@ -1,6 +1,6 @@
 # Design
 
-Taken from `src/styles.css`, `src/App.tsx`, `src/Record.tsx` and `src/ActivityList.tsx` as built.
+Taken from `src/styles.css`, `src/App.tsx`, `src/Home.tsx`, `src/Record.tsx` and `src/ActivityList.tsx` as built.
 
 ## Tokens
 
@@ -28,7 +28,7 @@ amounts, ids and request bodies. Weights 400 and 600. Six sizes:
 
 | Token | Size | Use |
 | --- | --- | --- |
-| `--text-display` | 32px | The subject's name (h1 on Overview) |
+| `--text-display` | 32px | The page h1: "Projects, on the record" on Home, the subject's name (or id) on Overview |
 | `--text-title` | 22px | Tab titles, "Summary" |
 | `--text-heading` | 17px | Card headings, "Key facts" |
 | `--text-body` | 16px | Body, buttons, rows, summary paragraphs (line height 1.6, at most 68ch) |
@@ -39,58 +39,60 @@ No tracked capitals, no eyebrows above headings.
 
 ## Components
 
-- **Header**: sticky; brand and the wallet's Connect control on one row, the tab bar below. Tabs are links
-  (`#overview`, `#record`, `#sources`, `#activity`, `#contribute`) with `aria-current="page"` and a 2px accent
-  underline on the active one. Old links `#actions`, `#add-sources` and `#activity` open Contribute, Contribute
-  (scrolled to Add sources) and Activity; `#line-…`, `#source-N` and `#panel-…` open Record, Sources and Overview
-  at that item. After a link the tab's heading or the target takes focus.
-- **Overview**: h1 name, `one_line` as the lead (fallback "Public sources and checks for imd.fun."), then
-  Rebuild the page (primary, a link to the Contribute card `#rebuild`), Contribute and the price. With no page,
-  a "No page yet" card ("Run a rebuild to publish the first record.") and, if an edit was accepted, the summary.
-  The **key facts box** is a bordered `aside` with a two-column table (label in secondary 13px, value linked
-  when it has an http(s) url), each row with a small "line"/"N lines" link that opens those lines in Record.
-  The **summary** is short paragraphs (by the job's `paragraph`, else three sentences each); after each sentence
-  one 9px dot per kind among its lines inside a 24px round target; a dot opens those lines in Record. An
-  **Edit** button sits beside the "Summary" heading. The note under it reads "Written from Record by a research
-  job. Not itself a checked line. Dots open supporting lines.", or "Edited by <payer>, checked by a research
-  job. …" for an accepted edit. Then "Checked by a panel" and a "Help build this record" card with just its
-  three links to the paid actions.
-- **Record**: the accounting warning (orange left rule on orange-50, "N earlier lines are unaccounted for" and
-  the list), a closed `details` "Dropped in the last rebuild" with each reference, the earlier line's text in
-  quotes and the reason, the kind filter (All,
-  Proof, Statement, Claim with counts; pressed state is dark fill), then one card per section. "On chain"
-  starts with the one **facts table** (name, value with unit, chain and block) holding every proof line with
-  `fact`; rows open in place, and a row with links has its "Confirmed by"/"Contradicted by" notes in a row of
-  their own under it, shown while closed. A claim's "Checked" detail ends with who said it and where; the link
-  notes say what settled it. Each line row has a chevron, the sentence, a kind marker and the speaker, its
-  source number chips, and under it "Confirmed by: …" in green or "Contradicted by: …" in red, each a link to
-  the linked line or panel answer. Then "Not known yet".
+- **Header**: brand "On the record (test)" (a link to Home) and the wallet's Connect control on one row.
+- **Home** (`#/`): h1 "Projects, on the record" and one lead line, then the search row (a search input and, below
+  832px, an "Add a project" primary button that scrolls to and focuses the form), the count line and the subject
+  list. Each subject is a row with a top rule: its name as a 17px link with the id in small mono beside it, the
+  one_line (or "No page yet: …"), then the kind counts with their 9px coloured dots, "Changed <date>" and any
+  pending requests. A subject whose only research came back `found: false` is not listed. While the chain read
+  fails the list area shows only the error and "Try again"; "No projects yet" appears only after a good empty read.
+- **Add a project**: a card with Website domain, Main contract address (optional, mono) and "Chain of that
+  contract" (six named chains plus **Other chain ID**, which reveals a numeric mono "Chain ID" field). Errors
+  sit under their field in red and the first wrong field takes focus. A small line shows the page it will make
+  (`#/s/<id>`), then "Review the first rebuild" (primary) and the price. A failed chain read or an unread
+  earlier result shows a red alert line instead of opening the dialog.
+- **Subject tabs**: links `#/s/<id>/overview`, `/record`, `/sources`, `/activity`, `/contribute` with
+  `aria-current="page"` and a 2px accent underline on the active one; old links open imd.fun. After a link the
+  tab's heading or the target takes focus.
+- **Overview**: h1 name (the subject id until a page names it; headings and paragraphs use
+  `overflow-wrap: anywhere`, so a `1:0x…` id or a long domain wraps inside the column), `one_line` as the lead,
+  then **Key facts** full width: a bordered box with a table of label, value (linked when it has a url;
+  addresses mono, shortened, with a Copy button) and a badge pill ("Proven on chain", "Stated by …", "Reported
+  by …", or a channel's "Confirmed on chain" / "Names the contract" / "Not confirmed"); a badge opens the lines
+  in Record. Then the **summary** in short paragraphs with one 9px dot per kind after each sentence (24px round
+  target) and an Edit button beside its heading, then Rebuild the page / Create the page (primary), Contribute
+  and the price. With no page, a "No page yet" card; when the research said `found: false`, a "Not a project
+  record" card with the job's notes and a link to Activity instead. There is no panel box on Overview.
+- **Record**: the accounting warning (orange left rule on orange-50), a closed `details` "Dropped in the last
+  rebuild", the kind filter (All, Proof, Statement, Claim with counts; pressed state is dark fill), then one card
+  per section. "On chain" starts with the **facts table** (name, value with unit, chain and block). Each line row
+  has a chevron, the sentence, a kind marker and the speaker, source number chips, and under it "Confirmed by:
+  …" in green or "Contradicted by: …" in red, linking the line or panel answer. Then "Other channels" (channels
+  not in key facts, with tie words), "Not known yet", and **Panel answers** always last (also with no page):
+  each answer's title, a true/false pill, "panel, N of M agreed", its kind marker and a link to the request.
 - **Sources**: channels with tie words and their key, then one numbered source list.
-- **Activity**: one card per request, newest first: state pill, time, what it was (Page rebuild, Sources, Edit,
-  Question), whether it is shown now, replaced, folded into the page shown (only when that rebuild's accounting
-  covers it) or completed before the page shown, refusal reasons, panel answers, per-source outcomes, "N lines
-  added to the record" or "N lines in result", and for edits every sentence with a verdict pill (supported by
-  the record, supported by a new source, not supported), any corrected wording, the reason and "Backed by"
-  links to the lines it cites. Links to the job and the result file.
-- **Contribute**: Rebuild the page (with the filled objective under "Read the objective"; until the chain,
-  the page shown, later results and panel answers are all read, the button is disabled and a status line says
-  why, with a Refresh link after a failure), Confirm a fact,
-  Add sources, and Suggest an edit (summary textarea prefilled with the current summary, a live
-  "N of 1,500 characters" count that turns red over the limit, an optional links box under the Add sources
-  rules, up to 5). Every action opens the same pay dialog, which shows amount, Intake, action id and the full
-  body before any wallet prompt.
-- **Dialog**: bottom sheet on phones, centred above 640px; Escape and the × close it; the page behind is inert.
+- **Activity**: one card per request of the subject, newest first: state pill, time, what it was (Page rebuild,
+  Sources, Edit, Question), the label "Shown now", "Folded into the page shown" or "Not yet folded in: included
+  in the next rebuild", refusal reasons, "Not a project record: … Its notes: …" for a `found: false` result,
+  panel answers, per-source outcomes, edit verdict pills with "Backed by" links, and links to the job and result
+  file.
+- **Contribute**: Rebuild the page (filled objective under "Read the objective", "It is given N earlier files
+  and M panel answers", a left-out note past 7,500 characters; disabled with a reason until everything is read),
+  Confirm a fact (three template choices as 44px radio tiles, each with its short form; the contract template's
+  chain picker lists only chains the oracle accepts), Add sources and Suggest an edit. Every action opens the
+  same pay dialog with amount, Intake, action id and the full body before any wallet prompt.
+- **Dialog**: bottom sheet on phones, centred from 640px; Escape and the × close it; the page behind is inert.
 
 ## Responsive behaviour
 
-- Content column at most 60rem (960px), 16px side padding.
-- The tab bar wraps (`flex-wrap: wrap`) instead of scrolling: below 512px the tabs use 14px, 1px side padding
-  and spread across the width; where the five labels do not fit (320px, or wide fallback fonts) the last tab
-  moves to a second row. Every tab keeps its full label and a 44px target.
-- From 832px the Overview is two columns: summary on the left, the key facts box (20rem) on the right; below
-  that the key facts box sits above the summary.
-- From 832px Contribute's cards are two columns.
-- Below 640px the facts table becomes stacked rows (name, then value and chain and block with labels).
-- Controls are at least 44px tall, except filter buttons (40px), the Edit button (36px) and the summary dots
-  (24px targets).
+- Content column at most 60rem (960px), 16px side padding. Long ids wrap inside it at 320 and 390 wide.
+- Home: one column below 832px (list, then the Add form, with an "Add a project" button beside search on the
+  first screen); from 832px the list and a 20rem Add form side by side, and the jump button is hidden.
+- The subject tab bar wraps instead of scrolling: below 512px the tabs use 14px and spread across the width;
+  every tab keeps its full label and a 44px target.
+- Key facts: below 640px each row stacks label, value, then badge; from 640px label, value and badge are three
+  columns.
+- Below 640px the facts table becomes stacked rows. From 832px Contribute's cards are two columns.
+- Controls are at least 44px tall, except filter buttons (40px), the Edit button (36px), the Copy button and
+  badges (24px) and the summary dots (24px targets).
 - Reduced motion turns off the button press scale and the chevron rotation transition.
