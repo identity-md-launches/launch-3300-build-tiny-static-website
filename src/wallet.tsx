@@ -50,16 +50,10 @@ export function ConnectSheet() {
   useEffect(() => {
     if (!open) return;
     // Everything outside the sheet is inert and Tab cycles inside it, also when it opens over the pay dialog.
-    const release = sheet.current ? holdFocus(sheet.current) : () => undefined;
+    // Escape closes this sheet only (it is the top modal), leaving the pay dialog open behind it.
+    const release = sheet.current ? holdFocus(sheet.current, close) : () => undefined;
     sheet.current?.querySelector<HTMLElement>("button, a")?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    addEventListener("keydown", onKey);
-    return () => {
-      removeEventListener("keydown", onKey);
-      release();
-    };
+    return release;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   useEffect(() => {

@@ -89,7 +89,9 @@ export function websiteOf(channels: Channel[], domain: string): Channel | null {
 /**
  * The key facts table. With "infobox", its rows; a row's badge comes only from the kinds of the lines it rests on,
  * and only the Website and Official accounts rows also show their channel's label. Without one, at most: Website,
- * Main contract, and one token symbol proof and one supply proof. Never every channel and contract.
+ * Main contract, and one symbol proof and one supply proof of the subject's own token (provesToken): a proof of
+ * another contract's symbol or supply is left out, and so is the row when no proof establishes it for this token.
+ * Never every channel and contract.
  */
 export function keyFacts(page: Page | null, resolve: (id: string) => Line | undefined, all: Line[]): { rows: KeyRow[]; fromInfobox: boolean; otherChannels: Channel[] } {
   if (!page) return { rows: [], fromInfobox: false, otherChannels: [] };
@@ -105,7 +107,10 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       const listed = tied && /^official accounts?$/i.test(r.label.trim()) ? accountsOf(page.channels, r.value, domain) : [];
       const accounts = listed.length > 1 && listed.some((a) => a.channel) ? listed : [];
       for (const a of accounts) if (a.channel) used.add(a.channel);
-      const channel = tied && !accounts.length ? named : null;
+      // A lone account takes the channel its handle resolves to, with the row's URL or value as the fallback.
+      const lone = listed.length === 1 ? listed[0]!.channel : null;
+      const channel = tied && !accounts.length ? lone ?? named : null;
+      if (channel) used.add(channel);
       return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge: badgeOf(lines), status: channel ? statusBadge(channel, domain) : null, accounts };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
@@ -124,15 +129,36 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
     const id = chainIdOf(main.chain);
     rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines), status: null, accounts: [] });
   }
-  const token = page.contracts.filter((c) => /token|erc-?20/i.test(c.role) && /^0x[0-9a-fA-F]{40}$/.test(c.address)).map((c) => c.address.toLowerCase());
+  const token = tokenAddresses(page);
   for (const which of ["symbol", "supply"] as const) {
-    const found = all.filter((x) => x.kind === "proof" && x.fact && isTokenFact(x, which));
-    // Prefer a proof that reads the token contract itself, when the page names one.
-    const l = found.find((x) => token.some((a) => `${x.rerun} ${x.fact!.value}`.toLowerCase().includes(a))) ?? found[0];
+    const l = all.find((x) => x.kind === "proof" && !!x.fact && isTokenFact(x, which) && provesToken(x, token));
     if (!l) continue;
     rows.push({ label: l.fact!.name, value: `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l]), status: null, accounts: [] });
   }
   return { rows, fromInfobox: false, otherChannels: page.channels.filter((c) => c !== site) };
+}
+
+const ADDRESS = /0x[0-9a-fA-F]{40}/g;
+const addressesIn = (...parts: string[]) => [...parts.join(" ").matchAll(ADDRESS)].map((m) => m[0].toLowerCase());
+
+/** The subject's token: the contracts whose role says token or ERC-20, else the main contract. */
+export function tokenAddresses(page: Pick<Page, "contracts">): string[] {
+  const valid = page.contracts.filter((c) => /^0x[0-9a-fA-F]{40}$/.test(c.address));
+  const token = valid.filter((c) => /token|erc-?20/i.test(c.role) && !/erc-?(721|1155)|nft|collectible/i.test(c.role));
+  return (token.length ? token : valid.filter((c) => c.main)).map((c) => c.address.toLowerCase());
+}
+
+/**
+ * True when a symbol or supply proof is about the subject's token. With the token known, the proof must name it
+ * (in its re-run, text, quote or value) and its re-run must not read any other contract; a proof that names no
+ * contract at all does not establish which asset it measured, so it is not shown. With no contract known, a
+ * proof is taken as it is.
+ */
+export function provesToken(l: Line, token: string[]): boolean {
+  if (!token.length) return true;
+  const reads = addressesIn(l.rerun);
+  if (reads.some((a) => !token.includes(a))) return false;
+  return addressesIn(l.rerun, l.text, l.quote, l.fact?.value ?? "").some((a) => token.includes(a));
 }
 
 /**

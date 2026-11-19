@@ -201,7 +201,7 @@ describe("key facts", () => {
         },
         lines: [
           { id: "L1", section: "on_chain", text: "Symbol is EX.", kind: "proof", rerun: `call symbol() on ${A}`, fact: { name: "Token symbol", value: "EX", unit: "" }, sources: ["S1"] },
-          { id: "L2", section: "on_chain", text: "Supply is 10.", kind: "proof", rerun: "call totalSupply()", fact: { name: "Total supply", value: "10", unit: "EX" }, sources: ["S1"] },
+          { id: "L2", section: "on_chain", text: "Supply is 10.", kind: "proof", rerun: `call totalSupply() on ${A}`, fact: { name: "Total supply", value: "10", unit: "EX" }, sources: ["S1"] },
           { id: "L3", section: "on_chain", text: "Seats are 2.", kind: "proof", rerun: "call seatSupply()", fact: { name: "Seat supply", value: "2", unit: "" }, sources: ["S1"] },
           { id: "L4", section: "on_chain", text: "Old symbol is EXO.", kind: "proof", rerun: "call symbol()", fact: { name: "Old symbol", value: "EXO", unit: "" }, sources: ["S1"] },
           { id: "L5", section: "money", text: "It is free.", kind: "statement", by: "Home", sources: ["S2"] },

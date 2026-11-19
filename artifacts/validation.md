@@ -1,6 +1,43 @@
 # Validation
 
-## This build: third revision of the no-size-limit change (2026-11-19)
+## This build: fourth revision of the no-size-limit change (2026-11-19)
+
+Run on this machine after the last source change. Answers to each review finding are in `.imd-responses.json`.
+
+| Command | Result |
+| --- | --- |
+| `npm ci` | exit 0 |
+| `npx vite-node scripts/agents-md.ts` | rewrote `public/agents.md` (36,307 characters) |
+| `npm run typecheck` | exit 0 |
+| `npm test` (vitest) | 89 of 89 pass in 5 files, including 5 new in `tests/findings.test.ts` for this round's four finding ids |
+| `npm run build` | exit 0; `dist/index.html` uses only `./` URLs; `dist/` 1.5 MB |
+| Escape routing in jsdom (`test/scratch/modal.test.ts`, jsdom under `/tmp`, not a project dependency) | 1 of 1 pass: with a sheet held over the pay dialog, one Escape calls only the sheet's close; releasing it makes Connect live and focused; the next Escape closes the dialog and focus returns to its opener |
+| `node tests/e2e.mjs …` and `taste.mjs` | **Not run.** Playwright installed under `/tmp` and downloaded chromium-headless-shell 1255, but it cannot launch: 20 system libraries (`libglib-2.0`, `libnss3`, `libX11`, …) are missing and `apt-get download` finds no package source. No rendered check, screenshot or contrast figure is claimed for this round |
+
+What the new tests pin:
+
+- 32496e59: `L4` in both F1 (job-1 page) and F2 (job-2 sources): `candidateFiles` gives [1, 2]; Record's
+  `droppedLines` still shows `L4` as given with no text; `planRebuild` waits for the reads, then marks both URLs
+  `(reconsider dropped lines)` and the objective contains both. The 7,500-character gate still holds back the
+  rebuild when the candidate set alone does not fit. The earlier test that expected an ambiguous id to mark no
+  file now expects both files.
+- e69669a6: the reviewer's page (ERC-20 main at `0xd34a…63b7`, an ERC-721 "Collectible badges" at `0x2222…2222`
+  with `symbol()` and `totalSupply()` proofs) gives two rows, Website and Main contract. The token's own symbol proof
+  is shown; a proof that names no contract is not (`provesToken`). The earlier fallback test now gives its supply
+  proof the main contract's address in the re-run.
+- d1dd68f7: `Official accounts: @imd` alone, channel "IMD on X" (tie strong), shows "Verified on chain" and "Stated
+  by IMD on X"; in "@imd, @news" `@imd` shows the same label.
+- 84df4beb: the jsdom check above (`src/modal.ts` now routes Escape to the top modal only).
+
+### Better Interface review of this revision
+
+The changes are behavioural: Key facts rows, rebuild planning, Escape routing. No new markup, tokens or sizes.
+I checked the six domains without a browser for the changed parts. Accessibility: Escape now matches the
+nested-dialog focus model (`src/modal.ts:29-37`), fixed. Writing: the README, agents.md and DESIGN.md describe the
+new rules. Layout, typography, colours and UI: no change, so no finding. Rendered checks were not performed
+(no browser, above). Paying and wallets were not tested (no wallet here).
+
+## Earlier build: third revision of the no-size-limit change (2026-11-19, evidence for the previous source only)
 
 Run on this machine after the last source change. Answers to each review finding are in `.imd-responses.json`.
 

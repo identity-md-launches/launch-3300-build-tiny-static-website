@@ -86,7 +86,9 @@ No tracked capitals, no eyebrows above headings.
   Confirm a fact (three template choices as 44px radio tiles, each with its short form; the contract template's
   chain picker lists only chains the oracle accepts), Add sources and Suggest an edit. Every action opens the
   same pay dialog with amount, Intake, action id and the full body before any wallet prompt.
-- **Dialog**: bottom sheet on phones, centred from 640px; Escape and the × close it. While a dialog or the
+- **Dialog**: bottom sheet on phones, centred from 640px; Escape and the × close it. Escape goes to the top
+  modal only: with the wallet sheet open over the pay dialog, one Escape closes the sheet and focus returns to the
+  dialog's Connect button. While a dialog or the
   wallet sheet is open, everything else in the app (skip link, header, main) is inert, Tab and Shift+Tab cycle
   inside it (a wallet sheet opened over the pay dialog holds focus until it closes), and closing returns focus to
   the control that opened it (`src/modal.ts`). The pay dialog's Amount reads "Reading price…", then the price, or

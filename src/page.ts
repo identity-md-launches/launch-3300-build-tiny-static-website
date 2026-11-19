@@ -723,6 +723,18 @@ export function resolvePriorRef(ref: string, files: PriorLines[]): { ref: string
   return q ? hits.slice(0, 1) : hits.length === 1 ? hits : [];
 }
 
+/**
+ * Every earlier file that could have supplied a dropped reference. "F2:L14" names one file; a bare "L14" (an older
+ * form) names every file that has that id, so a rebuild recovering dropped lines keeps all of them in reach when the
+ * origin is ambiguous. Record still shows an ambiguous bare id as given (resolvePriorRef finds no single line).
+ */
+export function candidateFiles(ref: string, files: PriorLines[]): number[] {
+  const r = refKey(ref);
+  const q = /^F(\d+):(.+)$/.exec(r);
+  if (q) return [Number(q[1])];
+  return [...new Set(files.filter((f) => f.lines.some((l) => refKey(l.id) === r)).map((f) => f.n))];
+}
+
 /** Every earlier line (file Fn, line id) that the rebuilt page neither carried (in a line's from) nor listed in dropped. */
 export function unaccounted(page: Pick<Page, "lines" | "dropped">, files: PriorLines[]): Unaccounted[] {
   const named = new Set<string>();

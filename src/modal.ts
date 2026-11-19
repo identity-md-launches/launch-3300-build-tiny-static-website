@@ -11,7 +11,11 @@ export function focusablesIn(el: HTMLElement): HTMLElement[] {
   return [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((n) => !n.closest("[inert]") && n.getClientRects().length > 0);
 }
 
-export function holdFocus(el: HTMLElement): () => void {
+/**
+ * Escape goes to the top modal only: onEscape runs for the active modal and no other, so a sheet opened over the
+ * pay dialog closes alone and focus goes back to the control that opened it.
+ */
+export function holdFocus(el: HTMLElement, onEscape?: () => void): () => void {
   const opener = document.activeElement as HTMLElement | null;
   const changed: Element[] = [];
   // Up to the app's root only: nodes a wallet SDK appends to <body> stay usable.
@@ -23,7 +27,15 @@ export function holdFocus(el: HTMLElement): () => void {
       }
   stack.push(el);
   const onKey = (e: KeyboardEvent) => {
-    if (e.key !== "Tab" || stack[stack.length - 1] !== el) return;
+    if (stack[stack.length - 1] !== el) return;
+    if (e.key === "Escape") {
+      if (!onEscape) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onEscape();
+      return;
+    }
+    if (e.key !== "Tab") return;
     const f = focusablesIn(el);
     if (!f.length) {
       e.preventDefault();

@@ -75,8 +75,8 @@ and send only when `blockers` is `[]`.
 sources and edit result of the same subject that is **not folded in** (see below), oldest first, including
 earlier pages that were replaced without being named; then, when the page shown has `dropped` entries, the
 artifact URL of each file those entries came from (`F<n>:<id>` names file F<n> of the objective of the request
-that produced the page shown; a bare `<id>` from an older page names the one earlier file that has that id, so the
-site reads those files before it offers the rebuild), each once and followed by `(reconsider dropped lines)`, numbered on from the
+that produced the page shown; a bare `<id>` from an older page names every earlier file that has that id, all of them when
+the id is ambiguous, so the site reads those files before it offers the rebuild), each once and followed by `(reconsider dropped lines)`, numbered on from the
 others and left out if already listed; then `[A1]`... each completed panel answer of the subject
 as `question title = answer, N of M, request URL`; all joined with `; `. With nothing yet, `<PRIOR>` is
 `none`. If the list would push the objective to 7,500 characters or more, the site says so and keeps F1 and
@@ -258,9 +258,11 @@ The Overview's key facts table shows `infobox` rows, each with a badge the site 
 of the lines the row rests on: "Proven on chain" if any is a proof, else "Stated by <channel name>" for a
 statement, else "Reported by <who>" for a claim. Only the Website and Official accounts rows also show their
 channel's label (Own domain, Verified on chain or Not verified); an Official accounts row that lists several
-accounts shows each account's own label. Without `infobox`, the table shows at most: Website (the channel at
+accounts shows each account's own label, and one that lists a single account shows the label of the
+channel that account resolves to. Without `infobox`, the table shows at most: Website (the channel at
 the subject's domain), Main contract, and one token symbol proof and one token supply proof (a proof named for
-the token's symbol or supply, or re-run with `symbol()` or `totalSupply()`; never a seat count); it never
+the token's symbol or supply, or re-run with `symbol()` or `totalSupply()`; never a seat count; and only a proof
+that names the subject's own token contract and whose re-run reads no other contract); it never
 lists every channel and contract. The infobox rows a rebuild writes are, in order: Website, Token,
 Main contract, Chains, Supply, Seats, Price, Deployed by, Founder or creator, Contributors, Official accounts,
 Launched. Every completed panel answer of the subject

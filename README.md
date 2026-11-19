@@ -228,13 +228,17 @@ the channels list saying what each label means.
 - **Badge**: worked out only from the kinds of the lines a row rests on: "Proven on chain" if any is a proof;
   else "Stated by <channel name>" for a statement; else "Reported by <who>" for a claim. The badge opens those lines.
 - **Channel labels on rows**: only the Website and Official accounts rows show a channel's label. An Official
-  accounts row that lists several accounts (`@imd, @news`) shows each account with its own label.
+  accounts row that lists several accounts (`@imd, @news`) shows each account with its own label; a row that lists
+  one account takes the channel its handle resolves to (else the row's URL), so `@imd` alone shows the same label.
 - **Rows a rebuild writes**: Website, Token (symbol and contract), Main contract, Chains, Supply, Seats, Price,
   Deployed by, Founder or creator, Contributors, Official accounts, Launched. Supply and Seats are separate rows.
 - **Without `infobox`**: at most four rows: Website, Main contract, the token symbol proof and the token supply
   proof. A proof counts as the token's only when its fact is named for the token's symbol or supply ("Token
   symbol", "Symbol", "Ticker", "Token supply", "Total supply", "Supply") or re-run with `symbol()` /
-  `totalSupply()`; a seat count or other "supply" never fills the slot. Overview never lists every channel and contract.
+  `totalSupply()`; a seat count or other "supply" never fills the slot. It must also be about the subject's own
+  token (the contract whose role says token or ERC-20, else the main contract): the proof names that address and its
+  re-run reads no other contract. A collectible's or any other contract's symbol or supply, or a proof that names no
+  contract, leaves the row out. Overview never lists every channel and contract.
 - **Layout**: from 641px up the table uses a fixed layout and badges wrap inside their cell, so a long publisher
   name never widens the page; below that each row stacks label, value and badge.
 
@@ -261,8 +265,9 @@ they go to the transaction on Etherscan.
 - **Bringing back dropped lines**: when the page shown has `dropped` entries, `<PRIOR>` also lists the artifact
   URL of each file they came from (from the objective of the request that produced the page shown), marked
   `(reconsider dropped lines)`, and the job carries those lines forward unless one of the three reasons applies.
-  `F2:L14` names file F2; an older bare `L14` names the one earlier file that has it, so the site reads those
-  files first (Contribute waits for them, and a failed read offers Refresh).
+  `F2:L14` names file F2; an older bare `L14` names every earlier file that has it (all of them when two files
+  share the id, since either may have supplied the line), so the site reads those files first (Contribute waits for
+  them, and a failed read offers Refresh). The size limit below applies to that whole set.
 - **Size limit**: if `<PRIOR>` would push the objective to 7,500 characters or more, the site keeps F1 and every
   file to reconsider first (room is reserved for them), then the newest result files that fit (the oldest are
   deferred first), then the newest panel answers that fit in the room left. If the files to reconsider alone do
@@ -287,7 +292,7 @@ they go to the transaction on Etherscan.
 - **Accounting**: the site reads the `<PRIOR>` back from the shown rebuild's own request body, downloads each
   `F` file (SHA-256 checked), and warns on Record "N earlier lines are unaccounted for" for every `F<n>:<id>`
   that is in no line's `from` and not in `dropped`. A reference counts for the file it names; an older bare id
-  counts only when exactly one earlier file has it. `dropped` shows in a closed "Dropped in the last rebuild",
+  counts only when exactly one earlier file has it (an ambiguous one is shown as given, with no text). `dropped` shows in a closed "Dropped in the last rebuild",
   each with its reference, the earlier line's text and the reason.
 - **Facts table chain and block**: `fact.chain` and `fact.block` are shown as given. Otherwise they are read
   from the re-run steps, then the line, as whole chain names or chain ids and decimal or hex block numbers, and
@@ -328,15 +333,17 @@ pins the site's bodies to them.
 Details, the Better Interface review and its limits are in `artifacts/validation.md`.
 
 - `npm run typecheck`: exit 0.
-- `npm test`: 86 of 86 pass in 7 files (`tests/findings.test.ts` holds one block per review finding of this
-  revision: 2,001 lines and dropped entries, the merge rule, room for files to reconsider, bare dropped ids, the
-  statement rule in every objective, token-only fallback rows, the key facts CSS, this README, per-account labels).
+- `npm test`: 89 of 89 pass in 5 files (`tests/findings.test.ts` holds one block per review finding: 2,001 lines
+  and dropped entries, the merge rule, room for files to reconsider, bare dropped ids (an ambiguous one reconsiders
+  every candidate file), the statement rule in every objective, token-only fallback rows (only the subject's own
+  token), the key facts CSS, this README, per-account labels and a lone account's label).
 - `npm run build`: exit 0. `dist/` holds `index.html`, `agents.md`, `favicon.svg`, `og.png` and `assets/`, and
   `index.html` uses only `./` URLs.
-- Modal focus (inert background, Tab cycling, nested sheet, focus return): 1 of 1 pass in a jsdom scratch test.
+- Modal Escape routing (wallet sheet over the pay dialog closes alone, focus back on Connect): 1 of 1 pass in a
+  jsdom scratch test.
 - **Not run this round:** `node tests/e2e.mjs` and the design probe `taste.mjs`. Chromium cannot start on this
-  machine (missing system libraries, and the package downloads that supplied them last time are now refused).
-  The last browser run (124 of 124 e2e checks, 16 of 16 probe checks) was on the previous source.
+  machine (20 missing system libraries; no package source to fetch them). The last browser run (124 of 124 e2e
+  checks, 16 of 16 probe checks) was on an earlier source.
 - **Not tested here:** paying, approving and connecting (no wallet on this machine).
 
 ## Limits

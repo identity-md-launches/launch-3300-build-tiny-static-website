@@ -452,14 +452,10 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
 
   useEffect(() => {
     // Everything outside the dialog is inert and Tab cycles inside it; closing gives focus back to the opener.
-    const release = ref.current ? holdFocus(ref.current) : () => undefined;
+    // Escape closes the dialog only while it is the top modal; a wallet sheet over it takes Escape first.
+    const release = ref.current ? holdFocus(ref.current, () => close()) : () => undefined;
     ref.current?.querySelector<HTMLElement>("h2")?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    addEventListener("keydown", onKey);
     return () => {
-      removeEventListener("keydown", onKey);
       release();
       (opener.current as HTMLElement | null)?.focus?.();
     };

@@ -15,7 +15,7 @@ import { fetchArtifact } from "./api";
 import { jobLink, payerName } from "./format";
 import {
   allSources,
-  resolvePriorRef,
+  candidateFiles,
   countKinds,
   droppedLines,
   lineIdsOf,
@@ -126,8 +126,8 @@ export function subjectRefFor(id: string, items: Activity[], page: Page | null):
 
 /**
  * The file numbers the page shown's dropped entries came from. "F2:L14" names file F2 of the objective that
- * produced the page shown. A bare "L14" (an older form) is resolved the way Record's accounting resolves it: the
- * one earlier file that has that id, which needs those files read. Without them, bare ids are reported as
+ * produced the page shown. A bare "L14" (an older form) names every earlier file that has that id (all of them
+ * when the origin is ambiguous), which needs those files read. Without them, bare ids are reported as
  * unresolved so a rebuild waits for the reads rather than leaving their file out.
  */
 export function droppedFileNumbers(dropped: Pick<Dropped, "id">[], files?: PriorLines[]): { ns: Set<number>; unresolved: number } {
@@ -137,7 +137,8 @@ export function droppedFileNumbers(dropped: Pick<Dropped, "id">[], files?: Prior
     const m = /^F(\d+):/i.exec(d.id.trim());
     if (m) ns.add(Number(m[1]));
     else if (!files) unresolved++;
-    else for (const hit of resolvePriorRef(d.id, files)) ns.add(hit.n);
+    // Every file that has the id: when two earlier files share it, both are reconsidered rather than neither.
+    else for (const n of candidateFiles(d.id, files)) ns.add(n);
   }
   return { ns, unresolved };
 }

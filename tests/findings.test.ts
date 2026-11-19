@@ -6,9 +6,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Hex } from "viem";
 import { artifactUrl, EDIT_TEMPLATE, REBUILD_TEMPLATE, rebuildObjective, SOURCE_TEMPLATE, sourceObjective, type Prior } from "../src/bodies";
-import { accountsOf, keyFacts } from "../src/keyfacts";
+import { accountsOf, keyFacts, provesToken } from "../src/keyfacts";
 import { droppedFileNumbers, fitPrior, planRebuild, reconsiderFiles } from "../src/model";
-import { channelStatus, droppedLines, parsePage, type PriorLines } from "../src/page";
+import { candidateFiles, channelStatus, droppedLines, parsePage, type PriorLines } from "../src/page";
 import { refFromId } from "../src/subject";
 import type { TaggedRequest } from "../src/chain";
 import type { Activity } from "../src/useActivity";
@@ -132,8 +132,8 @@ describe("a legacy bare dropped id finds its file (45192b1a)", () => {
     expect(reconsiderFiles([{ id: "L4" }], given)).toEqual([]);
     expect(reconsiderFiles([{ id: "L4" }], given, [], files)).toEqual([artifactUrl(h("1"))]);
     expect(droppedLines({ dropped: [{ id: "L4", why: "space" }] }, files)[0]).toMatchObject({ ref: "F1:L4", text: "Old four" });
-    // An id two files have stays unresolved, as in Record's accounting.
-    expect(reconsiderFiles([{ id: "L1" }], given, [], [...files, { n: 3, lines: [{ id: "L1", text: "x" }] }])).toEqual([]);
+    // An id two files have is unresolved in Record's display, but both files are reconsidered (32496e59).
+    expect(reconsiderFiles([{ id: "L1" }], given, [], [...files, { n: 1, lines: [{ id: "L1", text: "x" }] }])).toEqual([artifactUrl(h("1")), artifactUrl(h("2"))]);
   });
   it("planRebuild is not offered from the home form until the files are read, then marks F1", () => {
     const ref = refFromId("example.com");
@@ -252,5 +252,103 @@ describe("an Official accounts row labels each account (2ba970b7)", () => {
     expect(row!.status).toBeNull();
     expect(row!.badge?.text).toBe("Stated by @imd");
     expect(accountsOf(p.channels, "@imd and x.com/news; @other", "imd.fun").map((a) => a.channel?.label ?? null)).toEqual(["@imd", "@news", null]);
+  });
+});
+
+describe("an ambiguous bare dropped id reconsiders every candidate file (32496e59)", () => {
+  const ref = refFromId("example.com");
+  const f1 = artifactUrl(h("1"));
+  const f2 = artifactUrl(h("2"));
+  const read: PriorLines[] = [
+    { n: 1, lines: [{ id: "L4", text: "Old four" }] },
+    { n: 2, lines: [{ id: "L4", text: "Later four" }] },
+  ];
+  it("L4 in both F1 and F2: both URLs are marked, Record still shows L4 as given", () => {
+    expect(candidateFiles("L4", read)).toEqual([1, 2]);
+    expect(candidateFiles("F2:L4", read)).toEqual([2]);
+    expect(droppedLines({ dropped: [{ id: "L4", why: "space" }] }, read)[0]).toMatchObject({ ref: "L4", text: "" });
+    const oldPage = act("add", { block: 100, hash: h("1"), page: JSON.stringify({ subject: { name: "Ex" }, lines: [] }) });
+    const src = act("source", { block: 150, hash: h("2") });
+    const shownPage = JSON.stringify({ subject: { name: "Ex" }, lines: [{ id: "L1", section: "money", text: "x", kind: "claim", by: "b" }], dropped: [{ id: "L4", why: "space" }] });
+    const shown = act("add", { block: 200, hash: h("f"), page: shownPage, objective: rebuildObjective({ files: [f1, f2], answers: [] }, ref) });
+    expect(planRebuild([oldPage, src, shown], ref).ok).toBe(false);
+    const plan = planRebuild([oldPage, src, shown], ref, read);
+    expect(plan.prior.reconsider).toEqual([f1, f2]);
+    expect(plan.ok).toBe(true);
+    const objective = rebuildObjective(plan.prior, ref);
+    expect(objective).toContain(f1);
+    expect(objective).toContain(f2);
+    expect(objective.match(/reconsider dropped lines/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
+  });
+  it("the size gate still applies to the candidate set", () => {
+    const many = Array.from({ length: 40 }, (_, i) => artifactUrl((i + 100).toString(16).padStart(64, "0")));
+    const fit = fitPrior(artifactUrl(h("f")), [], [], (p) => rebuildObjective(p, ref).length, many);
+    expect(fit.reconsiderLeftOut).toBeGreaterThan(0);
+  });
+});
+
+describe("the fallback shows only the subject's own token proofs (e69669a6)", () => {
+  const TOKEN = "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7";
+  const BADGE = "0x2222222222222222222222222222222222222222";
+  const page = (lines: object[]) =>
+    parsePage(
+      JSON.stringify({
+        subject: {
+          name: "IMD",
+          channels: [{ label: "imd.fun", url: "https://imd.fun/", tie: "weak" }],
+          contracts: [
+            { address: TOKEN, chain: "Ethereum", role: "token", main: true },
+            { address: BADGE, chain: "Ethereum", role: "Collectible badges (ERC-721)", main: false },
+          ],
+        },
+        lines,
+        sources: [{ id: "R2", ref: "https://etherscan.io/" }],
+      }),
+      "imd.fun",
+    );
+  const badge = [
+    { id: "L1", section: "on_chain", text: "12 badges exist.", kind: "proof", rerun: `Call totalSupply() on ${BADGE} on Ethereum at block 123.`, fact: { name: "Total supply", value: "12", unit: "badges" }, sources: ["R2"] },
+    { id: "L2", section: "on_chain", text: "The badge symbol is BADGE.", kind: "proof", rerun: `Call symbol() on ${BADGE} on Ethereum at block 123.`, fact: { name: "Symbol", value: "BADGE", unit: "" }, sources: ["R2"] },
+  ];
+  it("a collectible's symbol and supply proofs do not fill the token rows", () => {
+    const p = page(badge);
+    expect(keyFacts(p, () => undefined, p.lines).rows.map((r) => r.label)).toEqual(["Website", "Main contract"]);
+  });
+  it("the token's own proofs are shown; one that names no contract is not", () => {
+    const p = page([
+      ...badge,
+      { id: "L3", section: "on_chain", text: "Anonymous supply.", kind: "proof", rerun: "call totalSupply()", fact: { name: "Total supply", value: "7", unit: "" }, sources: ["R2"] },
+      { id: "L4", section: "on_chain", text: "Symbol is IMD.", kind: "proof", rerun: `Call symbol() on ${TOKEN}.`, fact: { name: "Symbol", value: "IMD", unit: "" }, sources: ["R2"] },
+    ]);
+    expect(keyFacts(p, () => undefined, p.lines).rows.map((r) => [r.label, r.value])).toEqual([
+      ["Website", "imd.fun"],
+      ["Main contract", TOKEN],
+      ["Symbol", "IMD"],
+    ]);
+    expect(provesToken(p.lines[2]!, [TOKEN])).toBe(false);
+    expect(provesToken(p.lines[0]!, [TOKEN])).toBe(false);
+  });
+});
+
+describe("a lone Official accounts handle keeps its tie (d1dd68f7)", () => {
+  it("@imd alone shows Verified on chain, as it does in a list", () => {
+    const make = (value: string, extra: object[] = []) =>
+      parsePage(
+        JSON.stringify({
+          subject: { name: "IMD", channels: [{ label: "IMD on X", url: "https://x.com/imd", tie: "strong" }, ...extra] },
+          infobox: [{ label: "Official accounts", value, lines: ["L1"] }],
+          lines: [{ id: "L1", section: "people", text: "We are @imd.", kind: "statement", by: "@imd", sources: ["S1"] }],
+          sources: [{ id: "S1", ref: "https://x.com/imd/status/1" }],
+        }),
+        "imd.fun",
+      );
+    const alone = make("@imd");
+    const [row] = keyFacts(alone, (id) => alone.lines.find((l) => l.id === id), alone.lines).rows;
+    expect(row!.status?.text).toBe("Verified on chain");
+    expect(row!.channel?.url).toBe("https://x.com/imd");
+    expect(row!.badge?.text).toBe("Stated by IMD on X");
+    const both = make("@imd, @news", [{ label: "@news", url: "https://x.com/news", tie: "weak" }]);
+    const [row2] = keyFacts(both, (id) => both.lines.find((l) => l.id === id), both.lines).rows;
+    expect(row2!.accounts[0]!.status?.text).toBe("Verified on chain");
   });
 });
