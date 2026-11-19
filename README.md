@@ -16,8 +16,9 @@ npm run preview        # serve the built dist/ locally
 npm run typecheck      # tsc --noEmit only
 npm test               # vitest unit tests (tests/unit.test.ts)
 npx vite-node scripts/agents-md.ts   # rewrite public/agents.md from src/bodies.ts, then npm run build
-# browser interaction checks on dist/ (needs Playwright with a Chromium that can start):
-IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/e2e.mjs test/scratch/e2e
+# browser interaction checks on dist/ against the live chain (needs Playwright with a Chromium that can start);
+# an optional second argument is a fixture harness build to check summary, facts and differs levels:
+IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/e2e.mjs test/scratch/e2e [harness-dist]
 ```
 
 `dist/` is committed and is what gets hosted. Vite's `base` is `./`, so every asset URL is relative and
@@ -29,17 +30,20 @@ needs no rewrites.
 | Path | What it holds |
 | --- | --- |
 | `templates/research.txt` | The research objective: the first brief's text plus this job's additions before "Sections:". Shown to the visitor and sent as `objective` |
-| `templates/source.txt` | The "Add sources" objective, with `<URLS>` and `<CHANNELS>` filled in by `src/bodies.ts` |
+| `templates/source.txt` | The "Add sources" objective, with `<URLS>`, `<CHANNELS>` and `<MAIN>` filled in by `src/bodies.ts` |
 | `public/agents.md` | Published at the site root as `./agents.md` and linked in the footer. Written by `scripts/agents-md.ts` from the same functions the site uses, so its bodies are the site's bytes |
 | `tests/fixtures/drafted.txt` | The oracle requests IMD's free check drafted on 2026-11-19; the unit tests pin our bodies to them |
 | `src/config.ts` | Every address, chain id, action id, ABI, RPC, route and the launch block |
 | `src/bodies.ts` | The exact request bodies (research, sources, P1 to P4), the wording matcher and the link rules |
 | `src/chain.ts` | Reads `Requested` and `Completed` logs from public RPCs and decodes them |
 | `src/api.ts` | IMD API reads, SHA-256 check, IPFS fallback, localStorage cache |
-| `src/page.ts` | Parses untrusted `page.json` and `lines.json` into plain strings; orders `differs` pairs; merges source lines into sections |
+| `src/page.ts` | Parses untrusted `page.json` and `lines.json` into plain strings; the Statement label rule; facts; `differs` levels and pairs; source outcomes; merges source lines and the one numbered source list |
+| `src/Record.tsx` | The record: Summary, Channels, filter, rows with details, fact tables, Sources |
+| `src/ActivityList.tsx` | Activity, including each source job's per-source outcome |
+| `src/format.ts` | Shared display helpers (kind names, tie words, job links, line anchors) |
 | `src/useActivity.ts` | Follows every request of this site to completion; refusal reasons; source files; ENS names; polling |
 | `src/wallet.tsx`, `src/wallet-icons.ts` | wagmi config and the connect sheet (EIP-6963, "Open in" links, Coinbase Smart Wallet) |
-| `src/App.tsx`, `src/styles.css` | The record, actions, pay dialog, activity and About line |
+| `src/App.tsx`, `src/styles.css` | Page shell, actions, pay dialog and About line; all styles |
 | `tests/` | Unit tests and the Playwright interaction script |
 
 ## How a paid action works
@@ -72,7 +76,10 @@ whitespace. Repeats (same parsed URL) are dropped. Links are taken in order whil
 and the finished objective stays under 7,500 characters; every line left out is listed with why. A
 live line says how many more fit ("2 of 20 links. 17 more will fit at full length (300 characters), more
 if shorter: 5,100 characters left."). `<URLS>` becomes `[1] https://a; [2] https://b`; `<CHANNELS>` becomes
-the record's channel URLs joined by `, ` (`none known` if there is no record). The button waits until the
+each of the record's channels as `url (tie: strong|weak|none)`, joined by `, ` (`none known` if there is no
+record); `<MAIN>` becomes the address of the contract the record marks `main` (`not known` if none). The
+template asks the job to judge each source `about_subject` (with `about_why`), to fill `read_via` when it read
+through a mirror or cache, and to give each `differs` pair a `level`. The button waits until the
 record has loaded, so the channels are real. The full body is shown before any wallet prompt.
 
 ## Finding and following requests
@@ -112,11 +119,37 @@ record has loaded, so the channels are real. The full body is shown before any w
 
 **Source job** (`job.open@job-1`, tag kind `source`): the same steps as research, for the file named
 `"lines"` (`artifacts/lines.json`), with the same SHA-256 check and IPFS fallback. Its lines go into their
-sections after the research lines, each with its label, who said it, a chip linking to its source URL and
-a grey line "added from a source by <payer>, research job". A line is a statement only when its source has
-`publisher_is_subject_channel: true`; anything else, `proof` included, is shown as a claim. Where `differs`
-names two lines, the second sits directly under the first. Sources with `could_open: false` add nothing
-and are listed in the Activity row as "could not open: <url>".
+sections after the research lines. Lines of sources with `could_open: false` or `about_subject: false` are not
+shown. The Activity row lists every source of the job with its outcome: `N lines`, `could not open`, or
+`read, not about this subject: <about_why>`.
+
+### How the record reads
+
+- **One line per row**: the sentence, a coloured kind marker with its word (Proof, Statement, Claim), who said
+  it (statements and claims) and its source numbers. Clicking the row or pressing Enter on it opens the
+  details: quote, re-run steps, how it was checked, who added it (research or source job and its payer) and
+  the links. Rows start closed.
+- **Filter**: All, Proof, Statement, Claim, each with its count, above the sections.
+- **Summary**: when the page has `summary`, it sits at the top under "Summary" with the note "Written by the
+  research job from the lines below. Not itself a checked line." Each sentence ends with links to its line ids;
+  a link shows all kinds, opens that line and moves focus to it.
+- **On-chain facts**: in each section, proof lines with `fact` show as a table of name, value (with unit),
+  chain and block (from `fact.chain`/`fact.block` if given, else read from the line and its re-run steps). A
+  table row opens to the sentence and re-run steps. Proof lines without `fact` stay rows.
+- **Differs**: `level: "conflict"` shows "Conflicts with the line above: <why>" in red; `"question"` or no level
+  shows a quieter grey "Compare with the line above: <why>". The second line sits directly under the first.
+- **Sources**: one numbered list, research sources first, then each source job's. With `read_via`, the list
+  shows "read via <host>".
+
+### The label rule
+
+A line shows as **Statement** only if its publisher is one of the record's channels with tie `strong` or
+`weak`. For research lines the publisher is the line's `by` (matched to a channel label) or one of its sources'
+URLs (at or under a channel URL). For source lines it is the source's `publisher` or URL. A line marked
+statement whose channel has tie `none`, or whose publisher is not a channel, shows as **Claim**, and its
+details say why. The job's own `publisher_is_subject_channel` is not trusted. A source job's line is never a
+proof. The rule applies to every result already on chain: on the live record, the source job's lines from
+`github.com/Identity-md` (tie none) now show as claims.
 
 **Oracle question** (`oracle.request@oracle-1`): the oracle request id comes from the same intake route
 (`admission.result.requestId`), or from the completion `uri`. Then
@@ -138,53 +171,47 @@ they go to the transaction on Etherscan.
 
 ## Free request check, run before building
 
-`POST https://api.imd.fun/requests/check` with `{"action":"job.open" | "oracle.request","input":…}`, run on
-2026-11-19 against the bodies this build sends (generated from `src/bodies.ts`). Results as returned:
+`POST https://api.imd.fun/requests/check` with `{"action":"job.open","input":<exact body>}`, run on 2026-11-19
+against this job's bodies, generated from `src/bodies.ts`:
 
 | Body | Result |
 | --- | --- |
-| Research, exact body (`job.open`, with this job's additions) | 200, `blockers: []`, `suggestions: []`, `judged: true`, kind `report`, plan: one step "Research and write the report, with sources" (`research-report`) |
-| Sources, exact body (`job.open`), 3 links (an X post, `github.com/Identity-md/worker`, `imd.fun/docs/api/`) and the 10 channel URLs of the live record | 200, `blockers: []`, `suggestions: []`, `judged: true`, kind `report`, the same one-step plan |
-| P1, short form (`question, panelSize 5, answerType bool, evidence panel, chainId 1`) | 200, `blockers: []`, `suggestions: []`. The drafted `request` is byte for byte our P1 body |
-| P2, short form | 200, `blockers: []`, `suggestions: []`; drafted request equals our P2 body |
-| P3, short form (`evidence chain`) | 200, `blockers: []`; one suggestion `wording`: "It may be read more than one way. Naming the period, the unit or the term you mean makes a split less likely." The drafted request adds `"evidence":"chain"`, which is the default our body leaves out |
-| P4, short form, with the post from the refused request | 200, `blockers: []`, `suggestions: []`; drafted request equals our P4 body |
-| P1 exact body sent to the check | 400 `invalid_request`: the check takes the short form only |
+| Research, exact body (2,875-character objective, with summary, fact, statement rule, read_via, differs level and the new JSON keys) | 200, `blockers: []`, `suggestions: []`, `judged: true`, kind `report`, plan: one step "Research and write the report, with sources" (`research-report`) |
+| Sources, exact body (2,552-character objective): 3 links (an X post, `github.com/Identity-md/worker`, `imd.fun/docs/api/`), the live record's 10 channels as `url (tie: …)` and `<MAIN>` = `0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7` | 200, `blockers: []`, `suggestions: []`, `judged: true`, kind `report`, the same one-step plan |
 
-The drafted P1 and P4 requests are saved in `tests/fixtures/drafted.txt`, and a unit test requires our
-bodies to equal them byte for byte. None of the drafted requests has a `tag`. The exact oracle bytes can
-only be validated by `POST /requests/quote`, which needs a request token, so that was not run.
-
-The P3 `wording` suggestion is not a blocker, and P3 keeps the first brief's wording.
+The oracle bodies and questions did not change. The earlier check results for them still hold: P1, P2 and P4
+drafted byte for byte as sent, and P3 got one non-blocking `wording` suggestion. The drafted P1 and P4 requests
+are in `tests/fixtures/drafted.txt`, and a unit test pins our bodies to them.
 
 ## Validation results
 
 Details, the design review and its limits are in `artifacts/validation.md`.
 
 - `npm run typecheck`: exit 0.
-- `npm test`: 19 of 19 unit tests pass. They pin the research objective's additions, the tag-free oracle
-  bytes (equal to the check's drafted requests), the source body bytes and template, the link rules (https
-  only, 300 characters, no quotes or spaces, repeats, 20 links, under 7,500 characters), finding oracle
-  requests by wording, `lines.json` parsing (kinds never raised, unopened sources dropped), the merge order
-  with `differs` pairs, refusal text, `agents.md` holding the exact bodies, log decoding and the real topics.
-- `npm run build`: exit 0. `dist/` holds `index.html`, `agents.md`, `favicon.svg`, `og.png` and
-  `assets/`; `index.html` uses only `./` URLs.
-- **Interaction test (DOM, not a browser):** the real `App` rendered in happy-dom with the RPC and
-  api.imd.fun mocked and the live record's real `page.json` as data: 8 of 8 checks pass (tie wording and
-  key; "Checked by a panel" above the sections with title, answer, agreement, label and link; source lines
-  after research lines with the differs pair together and the grey line; Activity keeping requests by tag
-  or wording, refusal reason and detail as text, "could not open"; no free-text box; agents.md link; P1
-  body without tag and the live price; Add sources live count, left-out lines, full body and the empty
-  error). happy-dom was installed only under `test/scratch/`, which is not submitted, so this test is not
-  in the repository.
-- Live reads from this machine on 2026-11-19: `GET /intake/1/0xadda56ad…d8df` returned
-  `reason: "body_invalid"`, `detail: ": Unrecognized key: \"tag\""` with `access-control-allow-origin: *`;
-  the Intake's `Requested` logs since the launch block hold this site's research job (completed, job
-  `1aac4211-…`) and the refused oracle request.
-- **Not run:** any browser check. On this machine the sandbox stops Chromium at start
-  (`bootstrap_check_in … MachPortRendezvousServer: Permission denied`), Firefox and WebKit did not start
-  within 200 seconds, and binding a local port fails with `listen EPERM`. So `tests/e2e.mjs` (updated for
-  this job) and the design probe `taste.mjs` did not run, and there are no screenshots.
+- `npm test`: 22 of 22 unit tests pass. They pin these things:
+  - the research objective's additions and new keys, and the source template's new text, keys,
+    `<CHANNELS>` with ties and `<MAIN>`;
+  - the oracle bytes, which are unchanged;
+  - the link rules;
+  - the label rule on research and source lines, including a channel with tie none;
+  - `fact` with chain and block, `summary`, `read_via` as a host, and differs `level`;
+  - source outcomes (`N lines`, `could not open`, `read, not about this subject`) and the one numbered source
+    list;
+  - filter counts, `agents.md`, log decoding and the real topics.
+- `npm run build`: exit 0. `dist/` holds `index.html`, `agents.md`, `favicon.svg`, `og.png` and `assets/`, and
+  `index.html` uses only `./` URLs.
+- `node tests/e2e.mjs` in headless Chromium against the live chain and api.imd.fun, plus a fixture harness:
+  44 of 44 pass at 390 and 1440. The checks cover:
+  - rows closed by default, opening on click, and Enter closing and reopening them;
+  - filter counts, and each kind filter showing only its kind;
+  - one numbered source list;
+  - per-source outcomes in Activity;
+  - no horizontal scroll and no console errors;
+  - with the fixture: Summary and its link opening and focusing the line, both differs wordings, the fact table
+    and its details, "read via", and "not about this subject".
+- Design probe `taste.mjs`: 16 of 16.
+- To start Chromium on this machine, I had to put libraries it was missing (`libnspr4` and others) into
+  `test/scratch`. The harness is not submitted either.
 - **Not testable here:** paying, approving and connecting, because there is no wallet on this machine.
 
 ## Limits

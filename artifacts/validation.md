@@ -1,78 +1,89 @@
-# Validation: IMD on the record, revision 2
+# Validation: reading the record, label rule, new templates (job 3)
 
-This revision: oracle bodies without `tag`, oracle requests found by wording, refusal reasons in
-Activity, "Checked by a panel" above the sections, the "Add sources" action, the research objective
-additions, tie wording, `/agents.md`, and the request checks. Look, wallet code and the research body's
-tag are unchanged.
+## Scope and assumptions
 
-## 1. Scope and assumptions
+- Changed surfaces: the record (rows with details, filter, Summary, on-chain fact tables, differs levels, one
+  source list), the Activity row for source jobs, the source and research templates, `public/agents.md`.
+  The wallet code, request bodies' fields, oracle questions and the pay dialog are unchanged.
+- Export: `dist/`, built by `npm run build` (Vite, `base: "./"`).
+- Inferred choices: a research line's publisher is its `by` (matched to a channel label) or its sources' URLs
+  (a URL at or under a channel URL); a source line's publisher is its source's `publisher` or URL. The job's own
+  `publisher_is_subject_channel` is not trusted. Chain and block in the fact table come from `fact.chain` /
+  `fact.block` if a result gives them, else from the line's text and re-run steps. `<MAIN>` reads "not known" and
+  `<CHANNELS>` "none known" when there is no record.
 
-- Scope: `src/`, `templates/`, `public/agents.md`, exported to `dist/`.
-- Assumptions:
-  - `<URLS>` is filled as `[1] https://a; [2] https://b`, so each source has an id the job can name.
-  - `<CHANNELS>` is the record's channel URLs joined by `, `, or `none known` before any research. The
-    Add sources button waits until the record has loaded.
-  - "How many more will fit" is counted for links of the longest allowed length (300 characters), so the
-    number is never too high; the characters left are shown too.
-  - A source line is shown as a statement only when its source has `publisher_is_subject_channel: true`;
-    otherwise as a claim (kinds are never raised, and the template forbids `proof`).
-  - The "link to the request" for a panel row is explorer.imd.fun's job page for the oracle's job
-    (explorer has no oracle page: `/oracle/<id>` answered 404), or the transaction before a job id is known.
-- Excluded: themes and localisation (not asked).
+## Verification (commands run on this machine, 2026-11-19)
 
-## 2. Request checks (item 9)
+| Command | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm test` | 22 of 22 pass |
+| `npm run build` | exit 0; `dist/index.html` uses only `./` URLs |
+| `POST https://api.imd.fun/requests/check` (research and source bodies) | both 200, `blockers: []`, `suggestions: []`, `judged: true` (README has details) |
+| `node tests/e2e.mjs test/scratch/e2e test/scratch/harness-dist` (Chromium 1248 headless shell, live chain and api.imd.fun) | 44 of 44 pass |
+| `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` | 16 of 16 pass |
 
-Run on 2026-11-19 against `POST https://api.imd.fun/requests/check`; the full table is in `README.md`.
-Research body, sources body, P1, P2, P3 and P4 short forms: all 200 with `blockers: []`. P3 has one
-`wording` suggestion (not a blocker). The drafted P1, P2 and P4 requests are byte for byte the bodies this
-site sends; none has a `tag`.
+Browser setup: this machine's Chromium lacked system libraries (`libnspr4.so` and others). I extracted them from
+Ubuntu packages into `test/scratch/libs` and ran with `LD_LIBRARY_PATH`. A shim in `test/scratch/pw` points
+Playwright's `chromium.launch` at the cached headless shell. Neither is part of the repository.
 
-## 3. Coverage, the six Better Interface domains
+**Interaction checks (e2e), at 390 and 1440 wide, against the live record** (60 lines: 40 from research, 20 from
+the completed source job). Rows render closed. Clicking a row opens Checked and Added by. Enter on the row
+button closes it and opens it again. The filter counts add up (All 60 = Proof 14 + Statement 11 + Claim 35),
+and each filter shows only its kind. The source list is numbered 1 to 25 across research and added sources.
+Activity lists every source of the source job with "N lines" or "could not open". There is no horizontal scroll
+and no console or page error.
 
-| Domain | Status | What was checked |
-| --- | --- | --- |
-| Accessibility | Checked (source, DOM) | Native `textarea` with a visible label; the live count is `aria-live="polite"` (`src/App.tsx:331`); the error is linked by `aria-describedby` and focus moves to the field; refusal text is plain text, and HTML in `detail` renders as text (DOM test); every new link has a descriptive name, and the source chip has `aria-label="Source: <url>"`; answers carry the word, not only a colour. **Unperformed:** keyboard walk and screen reader in a browser |
-| Layout | Checked (source) | New cards reuse `.card`; Add sources falls into the action grid; long URLs wrap (`.break`, `.chip-wide` with `overflow-wrap: anywhere`); no fixed heights. **Unperformed:** rendered overflow at 320, 390, 1440 |
-| Writing | Checked | Verb-first buttons ("Review the source job", "Open the request"); tie words in plain language with one key line; errors say what to do ("Paste at least one https link, one per line."); left-out lines say why; no exclamation marks, no em dashes in new copy |
-| Typography | Checked (source) | No new font size, weight or family: the new rules use `--text-small` and existing weights, so the scale stays at five sizes |
-| Colors | Checked (declared pairs) | New uses reuse existing pairs: `true` pill green 5.89:1, `false` pill error on `#fdecea` 6.63:1, "confirmed on chain" `#146c36` on white, "Left out" orange on card 6.44:1. Computed from declared hex values, not measured |
-| UI | Checked (source) | One accent per area (fix F2); answer and state pills reuse the pill shape; no card inside a card; no `transition: all` |
+**With fixture data** (`test/scratch/harness`: the live page plus a summary, four `fact`s, a conflict and a
+question pair, a `read_via`, and one source marked not about the subject), at 390 and 1440:
+- The Summary has its heading and note. A line-id link switches the filter to All, opens that line and focuses
+  it.
+- Both differs wordings show.
+- The fact table shows 4 rows with "Ethereum, block 26,445,903", and a table row opens to the sentence and
+  re-run steps.
+- "read via web.archive.org" shows.
+- "read, not about this subject: …" shows.
 
-## 4. Findings and fixes
+Screenshots I looked at: `live-390.png`, `live-1440.png`, `fixture-390-facts.png`, `fixture-1440-facts.png`,
+`fixture-390-differs.png`, `fixture-1440-differs.png` and the probe's `390.png`, `1440.png` (all under
+`test/scratch/`, not submitted). At 390 the first screen shows the title, the one-line description and the
+Research again / Confirm a fact / Add sources buttons.
 
-| # | Sev | Where | Finding | Fix | Recheck |
-| --- | --- | --- | --- | --- | --- |
-| F1 | High (brief) | `src/bodies.ts:26` | Oracle bodies carried `tag`, which the Intake refuses (`body_invalid`) | Tag removed; key order pinned by a unit test and equal to the check's drafted request | `npm test` |
-| F2 | Medium | `src/App.tsx:344` | Add sources used a second accent-filled button in the actions area | Neutral `.btn`, like "Review the post check" | Source rechecked |
-| F3 | Low | `src/App.tsx:170` | The panel row's link read "the request" | "Open the request" / "Open the transaction" | DOM test |
-| F4 | Low | `src/App.tsx:72` | The source chip's name was only the host | `aria-label="Source: <url>"`, `title` keeps the full URL | Source rechecked |
-| F5 | Low | `src/App.tsx:229` | The tie key line was long for the first screen's word budget | Shortened to 25 words | Source rechecked |
-| F6 | Low, open | `src/wallet.tsx` | In the DOM test the Coinbase wallet SDK tried to reach `cca-lite.coinbase.com` | Not changed: the brief says to keep the wallet code as it is | — |
-| F7 | Low, open | `src/App.tsx` (header outside `main`) | While a dialog is open the header stays in the tab order (carried from revision 1) | Not fixed | — |
+**Probe (taste@1), final export:**
+- render, layout, targets, contrast, casing, tracking, eyebrows: pass.
+- type-sizes: 4 sizes used more than once, 5 counting one-offs.
+- type-faces: 2 families, 2 weights.
+- glyphs, slogans, repetition: pass.
+- copy-budget: 57 words of prose on the first screen at 390 (bar 60).
+- chrome, motion: pass.
+- share: title, favicon, og:title, og:image and description all present.
 
-## 5. Verification (commands actually run)
+## Better Interface review (six domains)
 
-- `npm run typecheck` / the `tsc --noEmit` step of `npm run build`: exit 0.
-- `npm test`: 19 of 19 unit tests pass (`tests/unit.test.ts`).
-- `npm run build`: exit 0; `dist/index.html` refers only to `./` URLs; `dist/agents.md` is present.
-- `npx vite-node scripts/agents-md.ts`: wrote `public/agents.md`; a unit test checks it holds the exact
-  research body, the source template, the tag-free oracle body and every preset question.
-- DOM interaction test (happy-dom, scratch only, not submitted): 8 of 8 pass. It renders the real `App`
-  with mocked RPC (including Multicall3, which wagmi's config batches price reads through) and mocked
-  api.imd.fun, using the live record's real `page.json`.
-- **Taste probe:** `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` with
-  Playwright 1.62 installed outside the repository. It exited 1: `listen EPERM: operation not permitted
-  127.0.0.1`, because this machine's sandbox does not allow binding a local port. Chromium also cannot
-  start here (`bootstrap_check_in … MachPortRendezvousServer: Permission denied`), and Firefox and WebKit
-  did not start within 200 seconds. **The probe did not run; no screenshot exists.** To run it, allow
-  local binding (`sandbox.network.allowLocalBinding: true`) and run the command above.
-- **`tests/e2e.mjs`:** updated for this revision (untagged oracle fixtures, refusal detail, panel card
-  position, tie wording, Add sources, agents.md link, no free text) and syntax-checked with
-  `node --check`; **not executed**, for the same reason.
+| Domain | Coverage |
+| --- | --- |
+| Accessibility | Checked. Each row toggle is a native `<button>` with `aria-expanded`/`aria-controls`. Clicking the row is an extra pointer shortcut, and its links stay separate tab stops. The filter is `role="group"` with `aria-pressed`. The fact table has a caption and row headers. A Summary link moves focus to the opened row. Kinds are shown by dot plus word, never colour alone. The chevron transition is off under reduced motion. Keyboard Enter was tested in Chromium. Not verified: a screen-reader session, forced-colours mode, native 200% zoom. |
+| Layout | Checked at 320 (probe), 390 and 1440. The sentence comes first and evidence is behind disclosure, with a chevron to show there is more. Differs pairs stay together. Fact rows that are part of a differs pair stay as rows. |
+| Writing | Checked. Labels are worded as the brief asks. The Checked text says why a marked statement is shown as a claim. Outcome text is "N lines", "could not open" or "read, not about this subject: why". |
+| Typography | Checked. The existing five-size scale and two weights are kept. Counts and table numbers use tabular numbers. Long URLs wrap. |
+| Colors | Checked. Existing tokens are reused, plus `--red-800` for conflicts. The probe measured contrast: all text passes 4.5:1. |
+| UI | Checked. States: closed, open, pressed filter, hover gated by `(hover: hover)`, empty filter result ("No lines of this kind."). There is no `transition: all`. |
 
-## 6. Completion
+## Findings and fixes
 
-The requested changes are built, unit-tested and checked in a DOM. Browser rendering at 320, 390 and
-1440, the probe's measurements and screenshots, the keyboard walk and measured contrast remain
-unperformed on this machine. Wallet flows (connect, approve, pay) cannot be exercised without a wallet.
-This is the worker's own report, not an independent certification.
+1. **MEDIUM, layout:** at 390 the row chevron wrapped onto its own line above the sentence (`src/styles.css`
+   `.row-toggle`, first version: flex-wrap with a 20rem text basis). This was seen in
+   `fixture-390-facts.png`. Fix: the toggle is now a grid (`auto | 1fr`, plus `auto` above 40rem), and the
+   chevron is aligned to the first line. Rechecked in `fixture-390-differs.png`: fixed.
+2. **LOW, test race:** the e2e first read the filter counts while only the source-job lines had loaded (3 fails at
+   390). This was a test problem, not a site bug: until the research page arrives, source lines show as claims
+   because there are no channels yet. Fix: `tests/e2e.mjs` now waits for the research page's Channels block.
+   Rerun: 44 of 44.
+
+## Completion
+
+Complete for the stated scope. Limits:
+- Paying, approving and connecting were not run, because there is no wallet on this machine.
+- No live result has `summary`, `fact` or `level` yet, so those were checked with fixture data in the real
+  browser.
+- No screen-reader or physical-device session was run.

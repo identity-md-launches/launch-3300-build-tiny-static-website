@@ -2,19 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, pad, stringToHex, type Hex } from "viem";
 import { useAccount } from "wagmi";
 import { readContract, waitForTransactionReceipt, writeContract } from "wagmi/actions";
-import { ACTIONS, CHAIN_ID, EMPTY_SELECTOR, ERC20_ABI, ETHERSCAN, EXPLORER, IMD, INTAKE, INTAKE_ABI, ZERO_ADDRESS } from "./config";
+import { ACTIONS, CHAIN_ID, EMPTY_SELECTOR, ERC20_ABI, ETHERSCAN, IMD, INTAKE, INTAKE_ABI, ZERO_ADDRESS } from "./config";
 import { PRESETS, RESEARCH_OBJECTIVE, SOURCE_MAX_LINKS, encodeBody, oracleBody, planSources, questionP4, researchBody, sourceBody, validateP4 } from "./bodies";
 import { fetchResearchPage } from "./api";
-import { mergeRecord, parsePage, safeHref, SECTION_TITLES, type Line, type Page, type RecordRow, type SourceJob, type SourceLine } from "./page";
+import { parsePage, safeHref, type Page } from "./page";
+import { Record, type RecordState } from "./Record";
+import { ActivityList } from "./ActivityList";
 import { ConnectSheet, config } from "./wallet";
-import { isSourceJob, rememberSent, useActivity, type Activity } from "./useActivity";
+import { rememberSent, useActivity, type Activity } from "./useActivity";
 
 const actionId = (a: string) => pad(stringToHex(a), { dir: "right", size: 32 });
 const imd = (v: bigint) => `${formatUnits(v, 18)} IMD`;
-const shortHex = (h: string) => `${h.slice(0, 6)}…${h.slice(-4)}`;
-const payerName = (a: Activity) => a.ens ?? shortHex(a.req.payer);
-const kindName = (k: string) => (k === "proof" ? "Proof" : k === "statement" ? "Statement" : "Claim");
-const jobLink = (jobId: string | null, tx: string) => (jobId ? `${EXPLORER}/jobs/${jobId}` : `${ETHERSCAN}/tx/${tx}`);
 
 async function readPrice(action: string): Promise<bigint> {
   return readContract(config, { address: INTAKE, abi: INTAKE_ABI, functionName: "priceOf", args: [actionId(action), IMD], chainId: CHAIN_ID });
@@ -38,96 +36,8 @@ interface Ask {
   warning?: string;
 }
 
-/* ---------- Record ---------- */
-
-/** The tie words shown to visitors, for the page's strong, weak and none. */
-const TIE_WORDS: Record<string, string> = { strong: "confirmed on chain", weak: "names the contract", none: "not confirmed" };
-const tieWord = (t: string) => TIE_WORDS[t] ?? TIE_WORDS.none!;
-
-function KindLabel({ line, showBy }: { line: Line; showBy?: boolean }) {
-  return (
-    <span className={`label label-${line.kind}`}>
-      {kindName(line.kind)}
-      {(line.kind === "claim" || showBy) && line.by ? ` · ${line.by}` : ""}
-    </span>
-  );
-}
-
-function LineRow({ row, page, check }: { row: RecordRow; page: Page | null; check: { text: string; href: string } }) {
-  const { line, origin } = row;
-  const differs = row.differsWith ? row.why || " " : undefined;
-  const num = (id: string) => (page ? page.sources.findIndex((s) => s.id === id) + 1 : 0);
-  const src = origin ? (line as SourceLine).source : null;
-  const srcHref = src ? safeHref(src.url) : null;
-  return (
-    <li className={`line${differs ? " line-differs" : ""}`}>
-      {differs && <p className="differs-note">Differs from the line above{differs.trim() ? `: ${differs}` : ""}</p>}
-      <p className="line-text">{line.text}</p>
-      {line.quote && line.kind !== "proof" && <p className="quote">“{line.quote}”</p>}
-      {line.rerun && line.kind === "proof" && <p className="quote">Re-run: {line.rerun}</p>}
-      <div className="line-meta">
-        <KindLabel line={line} showBy={!!origin} />
-        {origin ? (
-          srcHref ? (
-            <a className="chip chip-wide" href={srcHref} target="_blank" rel="noopener noreferrer nofollow" title={src!.url} aria-label={`Source: ${src!.url}`}>
-              {hostOf(src!.url)}
-            </a>
-          ) : (
-            <span className="chip chip-wide">{src?.url ? "source" : "?"}</span>
-          )
-        ) : (
-          line.sources.map((s) => {
-            const n = num(s);
-            return n > 0 ? (
-              <a key={s} className="chip mono" href={`#source-${n}`} aria-label={`Source ${n}`}>
-                {n}
-              </a>
-            ) : (
-              <span key={s} className="chip mono" title="Source not listed">
-                ?
-              </span>
-            );
-          })
-        )}
-        {!origin && (
-          <a className="checked" href={check.href} target="_blank" rel="noopener noreferrer">
-            {check.text}
-          </a>
-        )}
-      </div>
-      {origin && (
-        <p className="small">
-          added from a source by {origin.payer},{" "}
-          <a href={origin.jobHref} target="_blank" rel="noopener noreferrer">
-            research job
-          </a>
-        </p>
-      )}
-    </li>
-  );
-}
-
-const hostOf = (url: string) => {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "source";
-  }
-};
-
-function ExtLink({ url, children }: { url: string; children: React.ReactNode }) {
-  const href = safeHref(url);
-  return href ? (
-    <a href={href} target="_blank" rel="noopener noreferrer nofollow">
-      {children}
-    </a>
-  ) : (
-    <span>{children}</span>
-  );
-}
-
 /** The newest completed research page, downloaded, hash-checked and parsed. */
-function useRecordPage(items: Activity[] | null) {
+function useRecordPage(items: Activity[] | null): RecordState {
   const latest = useMemo(() => items?.find((a) => a.req.action === ACTIONS.research && a.req.kind === "add" && a.state === "completed"), [items]);
   const [page, setPage] = useState<Page | null>(null);
   const [via, setVia] = useState<{ jobId: string | null; path: string } | null>(null);
@@ -144,161 +54,20 @@ function useRecordPage(items: Activity[] | null) {
   }, [latest]);
   /** Ready once the chain was read and the page, if there is one, has loaded or failed. */
   const ready = items !== null && (!latest || page !== null || error !== null);
-  const channels = (page?.channels ?? []).map((c) => safeHref(c.url)).filter((u): u is string => !!u);
-  return { latest, page, via, error, ready, channels };
+  const channels = (page?.channels ?? []).flatMap((c) => {
+    const url = safeHref(c.url);
+    return url ? [{ url, tie: c.tie }] : [];
+  });
+  return { latest, page, via, error, ready, channels, main: page?.main ?? "" };
 }
 
-type RecordState = ReturnType<typeof useRecordPage>;
-
-function PanelChecks({ items }: { items: Activity[] }) {
-  const panel = items.filter((a) => a.req.action === ACTIONS.oracle && a.state === "completed");
-  if (!panel.length) return null;
-  return (
-    <div className="card">
-      <h2>Checked by a panel</h2>
-      <ul className="lines">
-        {panel.map((a) => (
-          <li key={a.req.requestId} className="line">
-            <p className="line-text">{a.req.title || String(a.req.bodyJson?.question ?? "").slice(0, 120)}</p>
-            <div className="line-meta">
-              <span className={`answer answer-${a.oracle?.answer ?? "none"}`}>{a.oracle?.answer ?? "no answer"}</span>
-              <span className="small">
-                panel, {a.oracle?.agreed ?? "?"} of {a.oracle?.panelSize ?? "?"} agreed
-              </span>
-              <span className={`label label-${a.req.kind}`}>{kindName(a.req.kind)}</span>
-              <a className="checked" href={jobLink(a.jobId, a.req.transactionHash)} target="_blank" rel="noopener noreferrer">
-                {a.jobId ? "Open the request" : "Open the transaction"}
-              </a>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function Record({ items, rec, onAsk, price }: { items: Activity[] | null; rec: RecordState; onAsk: (a: Ask) => void; price: string }) {
-  const { latest, page, via, error } = rec;
-  const sourceJobs: SourceJob[] = useMemo(
-    () =>
-      (items ?? [])
-        .filter((a) => isSourceJob(a.req) && a.state === "completed" && a.sources)
-        .reverse()
-        .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash) })),
-    [items],
-  );
-  const sections = useMemo(() => mergeRecord(page, sourceJobs), [page, sourceJobs]);
-  const research = () => onAsk({ title: "Research this page", action: ACTIONS.research, kind: "add", body: researchBody() });
-  const researchCheck = { text: "research job", href: latest ? jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash) : EXPLORER };
-
-  return (
-    <section id="record" aria-labelledby="record-title">
-      <h1 id="record-title">{page?.name || "IMD (imd.fun)"}</h1>
-      <p className="lead">{page?.oneLine || "A public record of imd.fun. Every line shows who said it, its source and how it was checked."}</p>
-
-      {!page && (
-        <div className="card empty">
-          <h2>{items === null ? "Reading the record…" : "No research yet"}</h2>
-          <p>
-            {latest && !error
-              ? "Research finished. Downloading and checking the page…"
-              : "The record is written by the IMD swarm. Pay for one research job and its page appears here."}
-          </p>
-          {error && <p className="error">Unable to read the page: {error}</p>}
-          <div className="row-actions">
-            <button className="btn btn-primary" onClick={research}>
-              Research this page
-            </button>
-            <span className="price mono">{price}</span>
-          </div>
-        </div>
-      )}
-
-      {page && (
-        <>
-          {page.channels.length > 0 && (
-            <>
-              <ul className="channels" aria-label="Channels">
-                {page.channels.map((c, i) => (
-                  <li key={i}>
-                    <ExtLink url={c.url}>{c.label || c.url}</ExtLink>
-                    <span className={`tie tie-${TIE_WORDS[c.tie] ? c.tie : "none"}`}>{tieWord(c.tie)}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="small tie-key">
-                Confirmed on chain: a contract, ENS record or deployer wallet points to it. Names the contract: it publishes the main contract's address. Not confirmed: neither.
-              </p>
-            </>
-          )}
-          <div className="row-actions">
-            <button className="btn btn-primary" onClick={research}>
-              Research again
-            </button>
-            <a className="btn" href="#actions">
-              Confirm a fact
-            </a>
-            <a className="btn" href="#add-sources">
-              Add sources
-            </a>
-          </div>
-        </>
-      )}
-
-      <PanelChecks items={items ?? []} />
-
-      {sections.map(({ section, rows }) => (
-        <div key={section} className="card">
-          <h2>{SECTION_TITLES[section] ?? section}</h2>
-          <ul className="lines">
-            {rows.map((row) => (
-              <LineRow key={row.line.id || row.line.text} row={row} page={page} check={researchCheck} />
-            ))}
-          </ul>
-        </div>
-      ))}
-
-      {page && page.openQuestions.length > 0 && (
-        <div className="card">
-          <h2>Not known yet</h2>
-          <ul className="plain">
-            {page.openQuestions.map((q, i) => (
-              <li key={i}>{q}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {page && page.sources.length > 0 && (
-        <div className="card">
-          <h2>Sources</h2>
-          <ol className="sources">
-            {page.sources.map((s, i) => (
-              <li key={i} id={`source-${i + 1}`}>
-                <span className="chip mono">{i + 1}</span>
-                <span className="source-ref">
-                  <ExtLink url={s.ref}>{s.ref}</ExtLink>
-                </span>
-                <span className="small">
-                  {s.type || "source"} · read {s.readAt || "at an unknown time"}
-                  {s.couldOpen === false ? " · could not open" : ""}
-                </span>
-              </li>
-            ))}
-          </ol>
-          {via && <p className="small">Read through {via.path === "api" ? "api.imd.fun" : "an IPFS gateway"}; bytes matched the listed SHA-256.</p>}
-        </div>
-      )}
-    </section>
-  );
-}
 
 /* ---------- Actions ---------- */
 
 function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: RecordState; price: string }) {
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
-  const plan = useMemo(() => planSources(text, rec.channels), [text, rec.channels]);
+  const plan = useMemo(() => planSources(text, rec.channels, rec.main), [text, rec.channels, rec.main]);
   const n = plan.links.length;
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -312,7 +81,7 @@ function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Recor
       return;
     }
     setErr("");
-    onAsk({ title: `Add ${n} source${n === 1 ? "" : "s"}`, action: ACTIONS.research, kind: "source", body: sourceBody(plan.links, rec.channels) });
+    onAsk({ title: `Add ${n} source${n === 1 ? "" : "s"}`, action: ACTIONS.research, kind: "source", body: sourceBody(plan.links, rec.channels, rec.main) });
   };
   const fit =
     plan.slotsLeft === 0
@@ -323,7 +92,7 @@ function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Recor
   return (
     <div className="card" id="add-sources">
       <h3>Add sources</h3>
-      <p>One research job reads each link and adds what it says about imd.fun to the record, as a statement if one of imd.fun's channels published it and a claim if not.</p>
+      <p>One research job reads each link and adds what it says about imd.fun to the record, as a statement if one of imd.fun's tied channels published it and a claim if not. Sources that are not about imd.fun add nothing.</p>
       <form className="form" onSubmit={submit} noValidate>
         <label htmlFor="src-links">Links, one per line</label>
         <textarea id="src-links" name="links" rows={5} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder={"https://x.com/name/status/123\nhttps://example.com/article"}
@@ -566,61 +335,6 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
   );
 }
 
-/* ---------- Activity ---------- */
-
-function ActivityList({ items, error, loading, reload }: ReturnType<typeof useActivity>) {
-  return (
-    <section id="activity" aria-labelledby="activity-title">
-      <div className="section-head">
-        <h2 id="activity-title" className="section-title">Activity</h2>
-        <button className="btn" onClick={() => void reload()} disabled={loading}>{loading ? "Reading chain…" : "Refresh"}</button>
-      </div>
-      {error && <p className="error">Unable to read the chain: {error}. Try Refresh.</p>}
-      {items && items.length === 0 && !error && <div className="card"><p>No requests yet. Every paid request from this page appears here, newest first.</p></div>}
-      {items === null && <div className="card"><p>Reading requests from Ethereum…</p></div>}
-      {items && items.length > 0 && (
-        <ul className="activity">
-          {items.map((a) => (
-            <li key={a.req.requestId} className="card act">
-              <div className="act-top">
-                <span className={`state state-${a.state}`}>{a.state}</span>
-                <span className="small">{a.time ? new Date(a.time).toLocaleString() : `block ${a.req.blockNumber}`}</span>
-              </div>
-              <p className="act-what">
-                {a.req.action === ACTIONS.research ? (isSourceJob(a.req) ? "Sources" : "Research") : `Question · ${kindName(a.req.kind)}`}
-                {a.req.action === ACTIONS.oracle && a.state === "completed" && a.oracle ? ` · answer: ${a.oracle.answer ?? "none"} (panel, ${a.oracle.agreed ?? "?"} of ${a.oracle.panelSize ?? "?"} agreed)` : ""}
-              </p>
-              {(a.state === "refused" || a.state === "failed") && (
-                <p className="why">
-                  {a.state === "refused" ? "Refused" : "Failed"}: {a.refusal ? [a.refusal.reason, a.refusal.detail].filter(Boolean).join(": ") : a.completion?.reason || "no reason given yet"}
-                </p>
-              )}
-              {a.req.action === ACTIONS.oracle && <p className="small">{a.req.title || String(a.req.bodyJson?.question ?? "")}</p>}
-              {isSourceJob(a.req) && a.sources && a.sources.sources.some((s) => s.couldOpen === false) && (
-                <ul className="plain small" aria-label="Sources not opened">
-                  {a.sources.sources.filter((s) => s.couldOpen === false).map((s, i) => (
-                    <li key={i}>
-                      could not open: <span className="mono break">{s.url || s.id}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {isSourceJob(a.req) && a.sources && <p className="small">{a.sources.lines.length} line{a.sources.lines.length === 1 ? "" : "s"} added to the record</p>}
-              {a.sourcesError && <p className="error">Unable to read the lines: {a.sourcesError}</p>}
-              <p className="small">
-                Paid by <span className="mono">{payerName(a)}</span> ·{" "}
-                <a href={jobLink(a.jobId, a.req.transactionHash)} target="_blank" rel="noopener noreferrer">
-                  {a.jobId ? "Open on explorer.imd.fun" : "Open the transaction"}
-                </a>
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 /* ---------- App ---------- */
 
 export default function App() {
@@ -640,7 +354,7 @@ export default function App() {
         <ConnectSheet />
       </header>
       <main id="root-main" tabIndex={-1}>
-        <Record items={activity.items} rec={rec} onAsk={setAsk} price={researchPrice} />
+        <Record items={activity.items} rec={rec} price={researchPrice} onResearch={() => setAsk({ title: "Research this page", action: ACTIONS.research, kind: "add", body: researchBody() })} />
         <Actions onAsk={setAsk} researchPrice={researchPrice} rec={rec} />
         <ActivityList {...activity} />
         <footer className="about">

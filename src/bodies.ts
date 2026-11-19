@@ -116,16 +116,25 @@ export const SOURCE_MAX_OBJECTIVE = 7500;
 /** The numbered links, as they replace <URLS>: "[1] https://a; [2] https://b". */
 export const numberLinks = (urls: string[]) => urls.map((u, i) => `[${i + 1}] ${u}`).join("; ");
 
-export function sourceObjective(urls: string[], channels: string[]) {
-  return SOURCE_TEMPLATE.replace("<URLS>", numberLinks(urls)).replace("<CHANNELS>", channels.length ? channels.join(", ") : "none known");
+/** A channel as it replaces <CHANNELS>: its URL and tie. */
+export interface ChannelTie {
+  url: string;
+  tie: "strong" | "weak" | "none";
+}
+/** The channels, as they replace <CHANNELS>: "https://imd.fun/ (tie: weak), https://api.imd.fun (tie: strong)". */
+export const channelList = (channels: ChannelTie[]) => (channels.length ? channels.map((c) => `${c.url} (tie: ${c.tie})`).join(", ") : "none known");
+
+/** <MAIN> is the record's main contract address; "not known" when the record names none. */
+export function sourceObjective(urls: string[], channels: ChannelTie[], main: string) {
+  return SOURCE_TEMPLATE.replace("<URLS>", () => numberLinks(urls)).replace("<CHANNELS>", () => channelList(channels)).replace("<MAIN>", () => main || "not known");
 }
 
-export function sourceBody(urls: string[], channels: string[]) {
+export function sourceBody(urls: string[], channels: ChannelTie[], main: string) {
   return {
     tag: { app: APP_TAG, kind: "source" },
     skill: "research-report",
     outputs: [{ name: "lines", path: "artifacts/lines.json", mediaType: "application/json" }],
-    objective: sourceObjective(urls, channels),
+    objective: sourceObjective(urls, channels, main),
   };
 }
 
@@ -155,7 +164,7 @@ export interface SourcePlan {
 }
 
 /** Splits the pasted text into usable links, in order, keeping as many as fit under 7,500 characters and 20 links. */
-export function planSources(text: string, channels: string[]): SourcePlan {
+export function planSources(text: string, channels: ChannelTie[], main: string): SourcePlan {
   const links: string[] = [];
   const seen = new Set<string>();
   const rejected: SourcePlan["rejected"] = [];
@@ -176,19 +185,19 @@ export function planSources(text: string, channels: string[]): SourcePlan {
       rejected.push({ line, why: `past the limit of ${SOURCE_MAX_LINKS} links` });
       continue;
     }
-    if (sourceObjective([...links, line], channels).length >= SOURCE_MAX_OBJECTIVE) {
+    if (sourceObjective([...links, line], channels, main).length >= SOURCE_MAX_OBJECTIVE) {
       rejected.push({ line, why: "does not fit under 7,500 characters" });
       continue;
     }
     seen.add(key);
     links.push(line);
   }
-  const objective = sourceObjective(links, channels);
+  const objective = sourceObjective(links, channels, main);
   const charsLeft = SOURCE_MAX_OBJECTIVE - 1 - objective.length;
   const slotsLeft = SOURCE_MAX_LINKS - links.length;
   let moreAtMost = 0;
   const longest = "https://" + "x".repeat(SOURCE_MAX_URL - 8);
-  while (moreAtMost < slotsLeft && sourceObjective([...links, ...Array(moreAtMost + 1).fill(longest)], channels).length < SOURCE_MAX_OBJECTIVE) moreAtMost++;
+  while (moreAtMost < slotsLeft && sourceObjective([...links, ...Array(moreAtMost + 1).fill(longest)], channels, main).length < SOURCE_MAX_OBJECTIVE) moreAtMost++;
   return { links, rejected, objective, charsLeft, moreAtMost, slotsLeft };
 }
 

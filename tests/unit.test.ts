@@ -3,7 +3,7 @@ import { encodeAbiParameters, keccak256, pad, stringToHex, toHex, type Hex } fro
 import { readFileSync } from "node:fs";
 import { researchBody, oracleBody, oracleShortForm, PRESETS, Q_P1, Q_P2, Q_P3, questionP4, validateP4, encodeBody, matchOracleQuestion, sourceBody, sourceObjective, planSources, numberLinks, SOURCE_TEMPLATE } from "../src/bodies";
 import { decodeRequested, decodeCompleted, stateOf } from "../src/chain";
-import { parsePage, orderAll, safeHref, parseLines, mergeRecord } from "../src/page";
+import { parsePage, orderAll, safeHref, parseLines, mergeRecord, allSources, outcomeOf, outcomeText, countKinds, channelFor, underChannel, chainAndBlock } from "../src/page";
 import { normalizeAnswer, oracleIdFrom, refusalOf } from "../src/api";
 import { TOPIC_COMPLETED, TOPIC_REQUESTED } from "../src/config";
 
@@ -15,11 +15,17 @@ describe("bodies", () => {
     expect(b.objective).toBe(readFileSync("templates/research.txt", "utf8").trim());
     expect(encodeBody(b)).toContain('"app":"rec-test-1"');
   });
+  it("research objective adds summary, fact, the statement rule, read_via and differs level before Sections, and the new JSON keys", () => {
+    const o = researchBody().objective;
+    expect(o).toContain("if one needs an archive node say so in the rerun. Write summary: 3 to 5 plain sentences telling a newcomer what the subject is, how it works and what it costs, each listing the line ids it rests on; say nothing in summary that no line supports. For each proof line also fill fact with a short name, the value and the unit. A line is a statement only if its channel's tie is strong or weak. If you read a source through another host, put that host in read_via. In differs set level: conflict only when both lines cannot be true at once, otherwise question. Sections: what_it_does");
+    expect(o).toContain("subject{type,name,one_line,channels[{label,url,tie}],contracts[{address,chain,role,main}]}, summary[{text,lines[]}], lines[{id,section,text,kind,by,sources[],quote,rerun,fact{name,value,unit}}], differs[{lines[],why,level}], open_questions[], sources[{id,ref,type,read_at,could_open,read_via}], ignored_instructions[], notes.");
+    expect(o.length).toBeLessThan(7500);
+  });
   it("research objective keeps the brief's text and adds the newcomer, channel, claims, units and RPC rules before Sections", () => {
     const o = researchBody().objective;
     expect(o.startsWith("Write the record page for one subject: imd.fun.")).toBe(true);
     expect(o).toContain("at most 40 lines. Write at least 6 lines in what_it_does that tell a newcomer in plain words what the subject is, who uses it and what it costs.");
-    expect(o).toContain("if one needs an archive node say so in the rerun. Sections: what_it_does, how_it_works, money, people, on_chain, history.");
+    expect(o).toContain("Sections: what_it_does, how_it_works, money, people, on_chain, history.");
     expect(o.indexOf("Include up to 8 claims from outside sources")).toBeLessThan(o.indexOf("Sections:"));
   });
   it("oracle bodies carry no tag: exactly v, question, chainId, window, answerType, evidence (panel), panelSize, quorum, validForSeconds", () => {
@@ -132,37 +138,46 @@ describe("page", () => {
 });
 
 describe("add sources", () => {
-  const ch = ["https://imd.fun/", "https://imd.fun/docs/"];
+  const ch = [{ url: "https://imd.fun/", tie: "weak" as const }, { url: "https://explorer.imd.fun/", tie: "none" as const }];
+  const MAIN = "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7";
   it("builds the body from templates/source.txt with numbered links and the record's channels", () => {
-    const b = sourceBody(["https://x.com/a/status/1", "https://example.com/p"], ch);
+    const b = sourceBody(["https://x.com/a/status/1", "https://example.com/p"], ch, MAIN);
     expect(Object.keys(b)).toEqual(["tag", "skill", "outputs", "objective"]);
     expect(encodeBody({ ...b, objective: "<SOURCE_OBJECTIVE>" })).toBe(
       '{"tag":{"app":"rec-test-1","kind":"source"},"skill":"research-report","outputs":[{"name":"lines","path":"artifacts/lines.json","mediaType":"application/json"}],"objective":"<SOURCE_OBJECTIVE>"}',
     );
     expect(SOURCE_TEMPLATE).toBe(readFileSync("templates/source.txt", "utf8").trim());
     expect(b.objective).toBe(
-      SOURCE_TEMPLATE.replace("<URLS>", "[1] https://x.com/a/status/1; [2] https://example.com/p").replace("<CHANNELS>", "https://imd.fun/, https://imd.fun/docs/"),
+      SOURCE_TEMPLATE.replace("<URLS>", "[1] https://x.com/a/status/1; [2] https://example.com/p").replace("<CHANNELS>", "https://imd.fun/ (tie: weak), https://explorer.imd.fun/ (tie: none)").replace("<MAIN>", MAIN),
     );
+    expect(b.objective).toContain(`The subject's own channels are: https://imd.fun/ (tie: weak), https://explorer.imd.fun/ (tie: none). The subject is the project at imd.fun whose main contract is ${MAIN}. A source is about the subject only if it refers to that domain, that contract or a listed channel, or plainly describes the same project; the same name is not enough. For each source set about_subject true or false and give about_why in one sentence; if false, write no lines for it. If the publisher is a listed channel with tie strong or weak, its lines have kind statement; otherwise kind claim.`);
+    expect(b.objective).toContain("Write lines about the subject, not about the source itself.");
+    expect(b.objective).toContain("If you read a source through another host, such as a mirror or cache, put that host in read_via.");
+    expect(b.objective).toContain("In differs set level: conflict only when both lines cannot be true at once, otherwise question.");
+    expect(b.objective).toContain("JSON keys: tag, sources[{id,url,type,publisher,published_at,read_at,could_open,read_via,about_subject,about_why,publisher_is_subject_channel}], lines[{id,source,section,text,kind,by,quote}], differs[{lines[],why,level}], ignored_instructions[], notes.");
+    expect(b.objective).not.toMatch(/<URLS>|<CHANNELS>|<MAIN>/);
+    expect(sourceObjective([], [], "")).toContain("channels are: none known. The subject is the project at imd.fun whose main contract is not known.");
+    expect(sourceObjective(["https://a.com/$&"], ch, MAIN)).toContain("[1] https://a.com/$&.");
     expect(b.objective).toContain("Sources: [1] https://x.com/a/status/1; [2] https://example.com/p. Output exactly one file");
     expect(numberLinks([])).toBe("");
   });
   it("accepts only https links up to 300 characters with no quotes or spaces, and drops repeats", () => {
-    const p = planSources(["https://a.com/x", "http://b.com", "https://a.com/x", "https://c.com/\"q", "https://d.com/a b", "https://" + "e".repeat(293) + ".com", "", "  https://f.com/ok  ", "ftp://g.com"].join("\n"), ch);
+    const p = planSources(["https://a.com/x", "http://b.com", "https://a.com/x", "https://c.com/\"q", "https://d.com/a b", "https://" + "e".repeat(293) + ".com", "", "  https://f.com/ok  ", "ftp://g.com"].join("\n"), ch, MAIN);
     expect(p.links).toEqual(["https://a.com/x", "https://f.com/ok"]);
     expect(p.rejected.map((r) => r.why)).toEqual(["not an https link", "already listed", "has a quote or a space", "has a quote or a space", "longer than 300 characters", "not an https link"]);
   });
   it("stops at 20 links and keeps the objective under 7,500 characters, counting what still fits", () => {
     const many = Array.from({ length: 25 }, (_, i) => `https://example.com/${i}`).join("\n");
-    const p = planSources(many, ch);
+    const p = planSources(many, ch, MAIN);
     expect(p.links.length).toBe(20);
     expect(p.slotsLeft).toBe(0);
     expect(p.rejected.filter((r) => r.why.startsWith("past the limit")).length).toBe(5);
     const long = Array.from({ length: 20 }, (_, i) => `https://example.com/${i}/${"x".repeat(270)}`).join("\n");
-    const q = planSources(long, ch);
+    const q = planSources(long, ch, MAIN);
     expect(q.objective.length).toBeLessThan(7500);
-    expect(sourceObjective([...q.links, `https://example.com/20/${"x".repeat(270)}`], ch).length).toBeGreaterThanOrEqual(7500);
+    expect(sourceObjective([...q.links, `https://example.com/20/${"x".repeat(270)}`], ch, MAIN).length).toBeGreaterThanOrEqual(7500);
     expect(q.rejected.every((r) => r.why === "does not fit under 7,500 characters")).toBe(true);
-    const empty = planSources("", ch);
+    const empty = planSources("", ch, MAIN);
     expect(empty.slotsLeft).toBe(20);
     expect(empty.moreAtMost).toBeGreaterThan(0);
     expect(empty.moreAtMost).toBeLessThanOrEqual(20);
@@ -182,15 +197,82 @@ describe("add sources", () => {
       ],
       differs: [{ lines: ["a", "b"], why: "Two prices." }],
     }));
-    expect(data.lines.map((l) => [l.id, l.kind])).toEqual([["a", "statement"], ["b", "claim"], ["c", "claim"]]);
+    expect(data.lines.map((l) => [l.id, l.marked])).toEqual([["a", "statement"], ["b", "statement"], ["c", "claim"]]);
     expect(data.lines[1]!.by).toBe("@someone");
     const merged = mergeRecord(page, [{ key: "r1", data, payer: "alice.eth", jobHref: "https://explorer.imd.fun/jobs/x" }]);
     const money = merged.find((s) => s.section === "money")!.rows;
     expect(money.map((r) => r.line.id)).toEqual(["l1", "l4", "l3", "l5", "r1:a", "r1:b", "r1:c"]);
     expect(money[5]!.differsWith).toBe("r1:a");
+    expect(money.slice(4).map((r) => r.line.kind)).toEqual(["statement", "claim", "claim"]);
+    expect(money[5]!.line.labelNote).toContain("is not one of the record's channels");
     expect(money[4]!.origin).toEqual({ payer: "alice.eth", jobHref: "https://explorer.imd.fun/jobs/x" });
     expect(merged.find((s) => s.section === "history")).toBeUndefined();
     expect(mergeRecord(null, [{ key: "r1", data, payer: "p", jobHref: "h" }]).map((s) => s.section)).toEqual(["money"]);
+  });
+  it("lists each source's outcome, drops lines of sources not about the subject, and keeps read_via as a host", () => {
+    const data = parseLines(JSON.stringify({
+      sources: [
+        { id: "S1", url: "https://x.com/a/status/1", publisher: "@a", could_open: true, about_subject: true, read_via: "https://nitter.example/a/status/1" },
+        { id: "S2", url: "https://imd.org/", publisher: "IMD Business School", could_open: true, about_subject: false, about_why: "It is a business school with the same name." },
+        { id: "S3", url: "https://dead.example/", could_open: false },
+      ],
+      lines: [
+        { id: "L1", source: "S1", section: "people", text: "IMD has no employees.", kind: "claim" },
+        { id: "L2", source: "S1", section: "money", text: "A job costs 0.5 IMD.", kind: "claim" },
+        { id: "L3", source: "S2", section: "people", text: "IMD is a school.", kind: "claim" },
+      ],
+      differs: [{ lines: ["L1", "L2"], why: "x", level: "Conflict" }, { lines: ["L2", "L3"], why: "y" }],
+    }));
+    expect(data.lines.map((l) => l.id)).toEqual(["L1", "L2"]);
+    expect(data.sources.map((s) => outcomeText(outcomeOf(data, s)))).toEqual(["2 lines", "read, not about this subject: It is a business school with the same name.", "could not open"]);
+    expect(data.sources[0]!.readVia).toBe("nitter.example");
+    expect(data.differs.map((d) => d.level)).toEqual(["conflict", "question"]);
+    const list = allSources(page, [{ key: "j", data, payer: "bob.eth", jobHref: "h" }]);
+    expect(list.map((s) => [s.key, s.n])).toEqual([["r:s1", 1], ["r:s2", 2], ["j:S1", 3], ["j:S2", 4], ["j:S3", 5]]);
+    expect(list[2]!.readVia).toBe("nitter.example");
+    expect(list[2]!.addedBy).toBe("bob.eth");
+  });
+  it("label rule: a statement needs a channel with tie strong or weak, for research and source lines already on the page", () => {
+    const channels = [
+      { label: "IMD docs", url: "https://imd.fun/docs/", tie: "weak" },
+      { label: "IMD API", url: "https://api.imd.fun", tie: "strong" },
+      { label: "Identity-md GitHub organization", url: "https://github.com/Identity-md", tie: "none" },
+      { label: "POOL4", url: "https://pool4.imd.fun/", tie: "weak" },
+    ];
+    const p = parsePage(JSON.stringify({
+      subject: { name: "IMD", channels, contracts: [{ address: "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7", chain: "Ethereum", main: true }, { address: "0x0000ec93127baa929e58e97dd0095a2bfb38ec1d", main: false }] },
+      summary: [{ text: "IMD is a paid swarm.", lines: ["a", "b"] }, { text: "", lines: [] }],
+      lines: [
+        { id: "a", section: "money", text: "A job costs 0.5 IMD.", kind: "statement", by: "IMD docs", sources: ["d"] },
+        { id: "b", section: "money", text: "POOL4 burns 85%.", kind: "statement", by: "POOL4 docs", sources: ["pd"] },
+        { id: "c", section: "people", text: "A wallet posts news.", kind: "statement", by: "Identity-md maintainers", sources: ["gh"] },
+        { id: "d", section: "people", text: "Someone said so.", kind: "statement", by: "@someone", sources: ["x"] },
+        { id: "e", section: "on_chain", text: "At Ethereum block 26445903, the token reported a total supply of 4,000 IMD.", kind: "proof", rerun: "Call totalSupply() on chain 1.", fact: { name: "Total supply", value: "4,000", unit: "IMD" } },
+        { id: "f", section: "on_chain", text: "At Base block 59310707 the symbol was FP.", kind: "proof", fact: { name: "Symbol", value: "FP", chain: "Base", block: 59310707 } },
+        { id: "g", section: "on_chain", text: "No fact here.", kind: "proof" },
+      ],
+      sources: [{ id: "d", ref: "https://imd.fun/docs/#price" }, { id: "pd", ref: "https://pool4.imd.fun/docs" }, { id: "gh", ref: "https://github.com/Identity-md/awesome-imd" }, { id: "x", ref: "https://x.com/someone/status/1", read_via: "archive.org" }],
+    }));
+    expect(p.lines.map((l) => [l.id, l.kind])).toEqual([["a", "statement"], ["b", "statement"], ["c", "claim"], ["d", "claim"], ["e", "proof"], ["f", "proof"], ["g", "proof"]]);
+    expect(p.lines.find((l) => l.id === "c")!.labelNote).toContain("has tie none");
+    expect(p.main).toBe("0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7");
+    expect(p.summary).toEqual([{ text: "IMD is a paid swarm.", lines: ["a", "b"] }]);
+    expect(p.sources[3]!.readVia).toBe("archive.org");
+    expect(p.lines.find((l) => l.id === "e")!.fact).toEqual({ name: "Total supply", value: "4,000", unit: "IMD", chain: "Ethereum", block: "26445903" });
+    expect(p.lines.find((l) => l.id === "f")!.fact).toMatchObject({ chain: "Base", block: "59310707" });
+    expect(p.lines.find((l) => l.id === "g")!.fact).toBeNull();
+    // A source job that marks a line statement from a channel with tie none (the live job's GitHub source) shows a claim.
+    const data = parseLines(JSON.stringify({
+      sources: [{ id: "S7", url: "https://github.com/Identity-md/awesome-imd", publisher: "Identity-md (GitHub organization)", could_open: true, publisher_is_subject_channel: true }, { id: "S9", url: "https://api.imd.fun/requests/capabilities", publisher: "IMD", could_open: true }],
+      lines: [{ id: "L1", source: "S7", section: "people", text: "x", kind: "statement" }, { id: "L2", source: "S9", section: "money", text: "y", kind: "statement" }],
+    }));
+    const merged = mergeRecord(p, [{ key: "j", data, payer: "p", jobHref: "h" }]).flatMap((s) => s.rows).filter((r) => r.origin);
+    expect(merged.map((r) => [r.line.id, r.line.kind])).toEqual([["j:L2", "statement"], ["j:L1", "claim"]]);
+    const counts = countKinds(mergeRecord(p, [{ key: "j", data, payer: "p", jobHref: "h" }]));
+    expect(counts).toEqual({ all: 9, proof: 3, statement: 3, claim: 3 });
+    expect(channelFor([{ label: "X", url: "https://x.com/imd_fun", tie: "weak" }], "@imd_fun", [])?.label).toBe("X");
+    expect(underChannel("https://imd.fun.evil.com/docs", { label: "", url: "https://imd.fun/", tie: "weak" })).toBe(false);
+    expect(chainAndBlock({}, "Read on chain 1", "at block 12,345,678")).toEqual({ chain: "Ethereum", block: "12345678" });
   });
   it("reads refusal reason and detail as plain text", () => {
     expect(refusalOf({ requestId: "0x1", reason: "body_invalid", detail: ': Unrecognized key: "tag"' })).toEqual({ reason: "body_invalid", detail: 'Unrecognized key: "tag"' });
@@ -208,11 +290,15 @@ describe("agents.md", () => {
     for (const p of PRESETS) expect(md).toContain(p.question);
     expect(md).toContain("0xa43e6f75ee006411f79ac1c84120606c2330de82");
     expect(md).toContain("priceOf");
+    expect(md).toContain("`<MAIN>`");
+    expect(md).toContain("url (tie: strong|weak|none)");
+    expect(md).toContain("summary[{text,lines[]}]");
+    expect(md).toContain("about_subject,about_why");
   });
 });
 
 describe("source rules", () => {
   it("never renders result values as HTML", () => {
-    for (const f of ["src/App.tsx", "src/wallet.tsx", "src/page.ts"]) expect(readFileSync(f, "utf8")).not.toMatch(/dangerouslySetInnerHTML|innerHTML/);
+    for (const f of ["src/App.tsx", "src/Record.tsx", "src/ActivityList.tsx", "src/wallet.tsx", "src/page.ts"]) expect(readFileSync(f, "utf8")).not.toMatch(/dangerouslySetInnerHTML|innerHTML/);
   });
 });
