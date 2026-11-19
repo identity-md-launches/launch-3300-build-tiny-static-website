@@ -32,6 +32,7 @@ import { OverviewTab, RecordTab, SourcesTab, type Filter, type Ui } from "./Reco
 import { ActivityList } from "./ActivityList";
 import { ConnectSheet, config } from "./wallet";
 import { rememberSent, useActivity } from "./useActivity";
+import { holdFocus } from "./modal";
 import { planRebuild, subjectRefFor, useRecordModel, type RecordModel } from "./model";
 import { lineAnchor } from "./format";
 import { TABS, routeOf, setLinkSubject, subjectHref, to } from "./route";
@@ -99,7 +100,7 @@ function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Recor
   return (
     <div className="card" id="add-sources">
       <h3>Add sources</h3>
-      <p>One research job reads each link and adds what it says about {name} to the record, as a statement if one of its tied channels published it and a claim if not. Sources that are not about {name} add nothing.</p>
+      <p>One research job reads each link and adds what it says about {name} to the record, as a statement if one of its Own domain or Verified on chain channels published it and a claim if not. Sources that are not about {name} add nothing.</p>
       <form className="form" onSubmit={submit} noValidate>
         <label htmlFor="src-links">Links, one per line</label>
         <textarea id="src-links" name="links" rows={5} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder={"https://x.com/name/status/123\nhttps://example.com/article"}
@@ -166,7 +167,7 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
       <h3>{rec.page ? "Rebuild the page" : "Create the page"}</h3>
       <p className="break">
         One page job starts from the page shown now and every page, sources and edit result it has not folded in yet, carries each line forward or says why it dropped
-        it, merges repeats, and then looks for what is new. It researches {describeSubject(rec.subject)}.
+        it, merges only exact duplicates, and then looks for what is new. It researches {describeSubject(rec.subject)}.
       </p>
       {ready ? (
         <>
@@ -415,6 +416,7 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
   const [balance, setBalance] = useState<bigint | null>(null);
   const [step, setStep] = useState<Step>("review");
   const [msg, setMsg] = useState("");
+  const [priceFailed, setPriceFailed] = useState(false);
   const [tx, setTx] = useState<Hex | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<Element | null>(document.activeElement);
@@ -434,28 +436,37 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
     }
     return p;
   };
+  /** Reads the price (and the wallet's allowance and balance); on failure the amount says so and Retry price shows. */
+  const readQuote = () => {
+    setPriceFailed(false);
+    setMsg("");
+    refresh().catch(() => {
+      setPriceFailed(true);
+      setMsg("Unable to read the price. Check your connection and use Retry price.");
+    });
+  };
   useEffect(() => {
-    refresh().catch(() => setMsg("Unable to read the price. Check your connection and try again."));
+    readQuote();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address]);
 
   useEffect(() => {
+    // Everything outside the dialog is inert and Tab cycles inside it; closing gives focus back to the opener.
+    const release = ref.current ? holdFocus(ref.current) : () => undefined;
     ref.current?.querySelector<HTMLElement>("h2")?.focus();
-    const main = document.getElementById("root-main");
-    main?.setAttribute("inert", "");
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
     addEventListener("keydown", onKey);
     return () => {
       removeEventListener("keydown", onKey);
-      main?.removeAttribute("inert");
+      release();
+      (opener.current as HTMLElement | null)?.focus?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const close = () => {
     onClose();
-    (opener.current as HTMLElement | null)?.focus?.();
   };
 
   const pay = async () => {
@@ -509,7 +520,7 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
         </div>
         <dl className="facts">
           <dt>Amount</dt>
-          <dd className="mono">{price === null ? "Reading price…" : `${imd(price)} (${price.toString()})`}</dd>
+          <dd className="mono">{price !== null ? `${imd(price)} (${price.toString()})` : priceFailed ? "Price unavailable" : "Reading price…"}</dd>
           <dt>To</dt>
           <dd className="mono">IMD Intake v2 {INTAKE}</dd>
           <dt>Action</dt>
@@ -520,6 +531,11 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
         <pre className="body mono" tabIndex={0} aria-label="Request body">{JSON.stringify(ask.body, null, 2)}</pre>
         <p className="small">Payments go to IMD and are not refunded. {needsApprove ? `Your wallet first approves exactly ${price !== null ? imd(price) : "the price"} to the Intake.` : ""}</p>
         <div className="row-actions">
+          {priceFailed && price === null && (
+            <button type="button" className="btn" onClick={readQuote}>
+              Retry price
+            </button>
+          )}
           {!isConnected ? (
             <><ConnectSheet /><span className="small">Connect a wallet to pay.</span></>
           ) : !right ? (
@@ -651,6 +667,8 @@ export default function App() {
     const known = subjectRefFor(typed.id, mine, null);
     const ref: SubjectRef = typed.address ? typed : known;
     const plan = planRebuild(mine, ref);
+    if (plan.needsReads) return `The page of ${ref.id} dropped lines whose files must be read first. Open its page and rebuild it from Contribute.`;
+    if (plan.reconsiderLeftOut > 0) return `The files the page of ${ref.id} dropped lines from do not fit in one objective. Open its page to see why.`;
     if (!plan.ok) return `An earlier result of ${ref.id} could not be read yet. Open its page and use Refresh.`;
     setAsk(rebuildAsk(plan.prior, ref, plan.hasPage));
     return null;

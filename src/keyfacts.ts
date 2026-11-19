@@ -1,5 +1,5 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
-import { channelStatus, hostOf, onDomain, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page } from "./page";
+import { channelFor, channelStatus, hostOf, onDomain, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page } from "./page";
 import { chainIdOf, chainName } from "./subject";
 
 export type Badge = { text: string; tone: "proof" | "statement" | "claim" | ChannelStatus };
@@ -18,6 +18,30 @@ export interface KeyRow {
   badge: Badge | null;
   /** The channel's label (Own domain, Verified on chain, Not verified), on the Website and Official accounts rows only. */
   status: Badge | null;
+  /**
+   * An Official accounts row that lists several accounts: each account with the channel it matches and that
+   * channel's own label, so a verified account is told apart from an unverified one in the same list.
+   */
+  accounts: Account[];
+}
+
+export interface Account {
+  name: string;
+  channel: Channel | null;
+  status: Badge | null;
+}
+
+/** Each account an Official accounts value lists ("@imd, @news"), matched to its channel by label, handle or URL. */
+export function accountsOf(channels: Channel[], value: string, domain: string): Account[] {
+  const parts = value
+    .split(/\s*(?:,|;|\||·|\band\b)\s*/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.map((name) => {
+    const url = /^https?:\/\//i.test(name) ? name : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(name) ? `https://${name}` : "";
+    const channel = channelFor(channels, name, url ? [url] : []);
+    return { name, channel, status: channel ? statusBadge(channel, domain) : null };
+  });
 }
 
 /** The only rows that show a channel's tie. */
@@ -76,8 +100,13 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       const lines = r.lines.map(resolve).filter((l): l is Line => !!l);
       const named = channelOfRow(page.channels, r);
       if (named) used.add(named);
-      const channel = TIE_ROWS.test(r.label.trim()) ? named : null;
-      return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge: badgeOf(lines), status: channel ? statusBadge(channel, domain) : null };
+      const tied = TIE_ROWS.test(r.label.trim());
+      // An Official accounts row naming several accounts shows each account's own label, not one for the row.
+      const listed = tied && /^official accounts?$/i.test(r.label.trim()) ? accountsOf(page.channels, r.value, domain) : [];
+      const accounts = listed.length > 1 && listed.some((a) => a.channel) ? listed : [];
+      for (const a of accounts) if (a.channel) used.add(a.channel);
+      const channel = tied && !accounts.length ? named : null;
+      return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge: badgeOf(lines), status: channel ? statusBadge(channel, domain) : null, accounts };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }
@@ -86,23 +115,37 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
   if (site) {
     const lines = linesOn(all, site);
     const shown = site.url.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-    rows.push({ label: "Website", value: shown || site.url, url: site.url, note: "", lines, channel: site, badge: badgeOf(lines), status: statusBadge(site, domain) });
+    rows.push({ label: "Website", value: shown || site.url, url: site.url, note: "", lines, channel: site, badge: badgeOf(lines), status: statusBadge(site, domain), accounts: [] });
   }
   const main = page.contracts.find((c) => c.main && /^0x[0-9a-fA-F]{40}$/.test(c.address));
   if (main) {
     const addr = main.address.toLowerCase();
     const lines = all.filter((l) => [l.text, l.rerun, l.quote, l.fact?.value ?? ""].some((s) => s.toLowerCase().includes(addr)));
     const id = chainIdOf(main.chain);
-    rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines), status: null });
+    rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines), status: null, accounts: [] });
   }
-  const taken = new Set<Line>();
-  for (const re of [/symbol/i, /supply/i]) {
-    const l = all.find((x) => x.kind === "proof" && x.fact && re.test(x.fact.name) && !taken.has(x));
+  const token = page.contracts.filter((c) => /token|erc-?20/i.test(c.role) && /^0x[0-9a-fA-F]{40}$/.test(c.address)).map((c) => c.address.toLowerCase());
+  for (const which of ["symbol", "supply"] as const) {
+    const found = all.filter((x) => x.kind === "proof" && x.fact && isTokenFact(x, which));
+    // Prefer a proof that reads the token contract itself, when the page names one.
+    const l = found.find((x) => token.some((a) => `${x.rerun} ${x.fact!.value}`.toLowerCase().includes(a))) ?? found[0];
     if (!l) continue;
-    taken.add(l);
-    rows.push({ label: l.fact!.name, value: `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l]), status: null });
+    rows.push({ label: l.fact!.name, value: `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l]), status: null, accounts: [] });
   }
   return { rows, fromInfobox: false, otherChannels: page.channels.filter((c) => c !== site) };
+}
+
+/**
+ * A proof of the token's symbol or supply: named so ("Token symbol", "Symbol", "Ticker"; "Token supply", "Total
+ * supply", "Supply") or re-run with the ERC-20 call itself (symbol(), totalSupply()). A seat or any other count
+ * named "supply" is not the token's supply.
+ */
+export function isTokenFact(l: Line, which: "symbol" | "supply"): boolean {
+  if (!l.fact) return false;
+  const name = l.fact.name.trim();
+  if (/\bseats?\b/i.test(`${name} ${l.fact.unit}`) || /\bseats?\b/i.test(l.text)) return false;
+  if (which === "symbol") return /^(token )?(symbol|ticker)$/i.test(name) || /\btoken('s)? (symbol|ticker)\b/i.test(name) || (/\bsymbol\(\)/.test(l.rerun) && /symbol|ticker/i.test(name));
+  return /^(token |total )?supply$/i.test(name) || /\b(token('s)?|total) supply\b/i.test(name) || (/\btotalSupply\(\)/.test(l.rerun) && /supply/i.test(name));
 }
 
 /** Splits a value into text and 0x addresses, so addresses can be shown shortened in monospace with a copy button. */

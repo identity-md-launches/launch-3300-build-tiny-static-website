@@ -58,8 +58,12 @@ No tracked capitals, no eyebrows above headings.
   `overflow-wrap: anywhere`, so a `1:0x…` id or a long domain wraps inside the column), `one_line` as the lead,
   then **Key facts** full width: a bordered box with a table of label, value (linked when it has a url;
   addresses mono, shortened, with a Copy button) and a badge pill ("Proven on chain", "Stated by …", "Reported
-  by …", or a channel's "Confirmed on chain" / "Names the contract" / "Not confirmed"); a badge opens the lines
-  in Record. Then the **summary** in short paragraphs with one 9px dot per kind after each sentence (24px round
+  by …", worked out only from the kinds of the row's lines; on the Website and Official accounts rows also the
+  channel's "Own domain" (blue) / "Verified on chain" (green) / "Not verified" (grey)); a badge opens the lines
+  in Record. An Official accounts row listing several accounts shows them as a list (`.kf-accounts`, 4px gap),
+  each name linked to its channel with its own label pill. Badges wrap inside their cell (`max-width: 100%`,
+  `overflow-wrap: anywhere`), so a long publisher name never widens the page. Without `infobox`, at most four
+  rows: Website, Main contract, token symbol, token supply. Then the **summary** in short paragraphs with one 9px dot per kind after each sentence (24px round
   target) and an Edit button beside its heading, then Rebuild the page / Create the page (primary), Contribute
   and the price. With no page, a "No page yet" card; when the research said `found: false`, a "Not a project
   record" card with the job's notes and a link to Activity instead. There is no panel box on Overview.
@@ -68,9 +72,10 @@ No tracked capitals, no eyebrows above headings.
   per section. "On chain" starts with the **facts table** (name, value with unit, chain and block). Each line row
   has a chevron, the sentence, a kind marker and the speaker, source number chips, and under it "Confirmed by:
   …" in green or "Contradicted by: …" in red, linking the line or panel answer. Then "Other channels" (channels
-  not in key facts, with tie words), "Not known yet", and **Panel answers** always last (also with no page):
+  not in key facts, with their labels), "Not known yet", and **Panel answers** always last (also with no page):
   each answer's title, a true/false pill, "panel, N of M agreed", its kind marker and a link to the request.
-- **Sources**: channels with tie words and their key, then one numbered source list.
+- **Sources**: channels with their label (Own domain, Verified on chain, Not verified) and a key saying what each
+  means, then one numbered source list.
 - **Activity**: one card per request of the subject, newest first: state pill, time, what it was (Page rebuild,
   Sources, Edit, Question), the label "Shown now", "Folded into the page shown" or "Not yet folded in: included
   in the next rebuild", refusal reasons, "Not a project record: … Its notes: …" for a `found: false` result,
@@ -81,7 +86,12 @@ No tracked capitals, no eyebrows above headings.
   Confirm a fact (three template choices as 44px radio tiles, each with its short form; the contract template's
   chain picker lists only chains the oracle accepts), Add sources and Suggest an edit. Every action opens the
   same pay dialog with amount, Intake, action id and the full body before any wallet prompt.
-- **Dialog**: bottom sheet on phones, centred from 640px; Escape and the × close it; the page behind is inert.
+- **Dialog**: bottom sheet on phones, centred from 640px; Escape and the × close it. While a dialog or the
+  wallet sheet is open, everything else in the app (skip link, header, main) is inert, Tab and Shift+Tab cycle
+  inside it (a wallet sheet opened over the pay dialog holds focus until it closes), and closing returns focus to
+  the control that opened it (`src/modal.ts`). The pay dialog's Amount reads "Reading price…", then the price, or
+  "Price unavailable" with a secondary "Retry price" button beside the actions when the read fails; Pay stays
+  disabled until a price is read.
 
 ## Responsive behaviour
 
@@ -90,8 +100,8 @@ No tracked capitals, no eyebrows above headings.
   first screen); from 832px the list and a 20rem Add form side by side, and the jump button is hidden.
 - The subject tab bar wraps instead of scrolling: below 512px the tabs use 14px and spread across the width;
   every tab keeps its full label and a 44px target.
-- Key facts: below 640px each row stacks label, value, then badge; from 640px label, value and badge are three
-  columns.
+- Key facts: below 640px each row stacks label, value, then badge; from 640px label (11rem), value and badge
+  (16rem) are three columns of a fixed-layout table, and badges wrap within the badge column.
 - Below 640px the facts table becomes stacked rows. From 832px Contribute's cards are two columns.
 - Controls are at least 44px tall, except filter buttons (40px), the Edit button (36px), the Copy button and
   badges (24px) and the summary dots (24px targets).

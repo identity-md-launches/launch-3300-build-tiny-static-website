@@ -95,14 +95,19 @@ and send only when \`blockers\` is \`[]\`.
 sources and edit result of the same subject that is **not folded in** (see below), oldest first, including
 earlier pages that were replaced without being named; then, when the page shown has \`dropped\` entries, the
 artifact URL of each file those entries came from (\`F<n>:<id>\` names file F<n> of the objective of the request
-that produced the page shown), each once and followed by \`(reconsider dropped lines)\`, numbered on from the
+that produced the page shown; a bare \`<id>\` from an older page names the one earlier file that has that id, so the
+site reads those files before it offers the rebuild), each once and followed by \`(reconsider dropped lines)\`, numbered on from the
 others and left out if already listed; then \`[A1]\`... each completed panel answer of the subject
 as \`question title = answer, N of M, request URL\`; all joined with \`; \`. With nothing yet, \`<PRIOR>\` is
-\`none\`. If the list would push the objective to 7,500 characters or more, the site says so and keeps F1 and the
-newest result files that fit with no panel answers, then the files to reconsider that fit, then the newest panel
-answers that fit in the room left: neither answers nor files to reconsider ever push a result file out. The record
-has no size limit: a rebuild drops an earlier line only as an exact duplicate of a line it kept, as not about the
-subject, or as replaced by a newer statement from the same speaker.
+\`none\`. If the list would push the objective to 7,500 characters or more, the site says so and keeps F1 and
+every file to reconsider first (room is reserved for them), then the newest result files that fit (the oldest
+are deferred first), then the newest panel answers that fit in the room left. If the files to reconsider alone do
+not fit, the site does not offer the rebuild. The record has no size limit, and the site reads every line and
+every dropped entry of a page, however many: a rebuild drops an earlier line only as an exact duplicate of a line
+it kept (named in the dropped entry), as not about the subject, or as replaced by a newer statement from the same
+speaker. It merges only exact duplicates of the same attributed line; lines by different speakers or with
+different quotes stay separate even when they report the same fact, and a line a proof or panel answer settles is
+kept with links to what confirms or contradicts it.
 
 **Folded in.** A result (page, sources or edit) is folded into the page shown only if its artifact URL
 (\`${API}/artifacts/<sha-256>\`) appears in the objective of the request that produced the page shown, read from
@@ -238,9 +243,11 @@ of name, value, chain and block (read from the line's text and re-run steps), al
 The Overview's key facts table shows \`infobox\` rows, each with a badge the site works out only from the kinds
 of the lines the row rests on: "Proven on chain" if any is a proof, else "Stated by <channel name>" for a
 statement, else "Reported by <who>" for a claim. Only the Website and Official accounts rows also show their
-channel's label (Own domain, Verified on chain or Not verified). Without \`infobox\`, the table shows at most:
-Website (the channel at the subject's domain), Main contract, and one token symbol proof and one supply proof;
-it never lists every channel and contract. The infobox rows a rebuild writes are, in order: Website, Token,
+channel's label (Own domain, Verified on chain or Not verified); an Official accounts row that lists several
+accounts shows each account's own label. Without \`infobox\`, the table shows at most: Website (the channel at
+the subject's domain), Main contract, and one token symbol proof and one token supply proof (a proof named for
+the token's symbol or supply, or re-run with \`symbol()\` or \`totalSupply()\`; never a seat count); it never
+lists every channel and contract. The infobox rows a rebuild writes are, in order: Website, Token,
 Main contract, Chains, Supply, Seats, Price, Deployed by, Founder or creator, Contributors, Official accounts,
 Launched. Every completed panel answer of the subject
 is listed under "Panel answers", always the last section of the Record tab, also before the first page.

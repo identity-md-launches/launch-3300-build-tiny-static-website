@@ -4,6 +4,7 @@ import { createConfig, http, useAccount, useConnect, useDisconnect, useSwitchCha
 import { coinbaseWallet, injected } from "wagmi/connectors";
 import { CHAIN, CHAIN_ID, RPCS, SITE_NAME } from "./config";
 import { WALLET_ICONS } from "./wallet-icons";
+import { holdFocus } from "./modal";
 
 export const config = createConfig({
   chains: [CHAIN],
@@ -48,18 +49,16 @@ export function ConnectSheet() {
   };
   useEffect(() => {
     if (!open) return;
+    // Everything outside the sheet is inert and Tab cycles inside it, also when it opens over the pay dialog.
+    const release = sheet.current ? holdFocus(sheet.current) : () => undefined;
     sheet.current?.querySelector<HTMLElement>("button, a")?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
     addEventListener("keydown", onKey);
-    // The pay dialog may already hold the page inert; only undo what this sheet did.
-    const main = document.getElementById("root-main");
-    const already = main?.hasAttribute("inert") ?? true;
-    if (!already) main?.setAttribute("inert", "");
     return () => {
       removeEventListener("keydown", onKey);
-      if (!already) main?.removeAttribute("inert");
+      release();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);

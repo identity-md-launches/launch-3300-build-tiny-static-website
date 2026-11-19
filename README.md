@@ -193,11 +193,20 @@ shown. The Activity row lists every source of the job with its outcome: `N lines
 
 ### The label rule
 
-A line shows as **Statement** only if its publisher is one of the record's channels with tie `strong` or
-`weak`. For research lines the publisher is the line's `by` (matched to a channel label) or one of its sources'
-URLs (at or under a channel URL). For source lines it is the source's `publisher` or URL. A line marked
-statement whose channel has tie `none`, or whose publisher is not a channel, shows as **Claim**, and its
-details say why. The job's own `publisher_is_subject_channel` is not trusted. A source job's line is never a
+Every channel shows one label, everywhere on the site (Sources, Key facts, a line's details):
+
+- **Own domain**: the channel's host is the subject's domain or a subdomain of it (`docs.example.com` for
+  `example.com`), whatever its tie. Never for a chain:address subject, which has no domain.
+- **Verified on chain**: any other channel with tie `strong` (a contract, ENS record or deployer wallet points to it).
+- **Not verified**: everything else, including an off-domain channel with tie `weak` or `none`.
+
+Only the first two can publish statements. A line shows as **Statement** only if its publisher is one of the
+record's channels labelled Own domain or Verified on chain. For research lines the publisher is the line's `by`
+(matched to a channel label or X handle) or one of its sources' URLs (at or under a channel URL). For source
+lines it is the source's `publisher` or URL. A line marked statement whose channel is Not verified, or whose
+publisher is not a channel, shows as **Claim**, and its details say why. The rebuild, Add sources and edit
+objectives give the job the same rule: a line published on a listed channel on the subject's domain or a
+subdomain of it, or one with tie strong, is a statement; any other publisher's line is a claim. The job's own `publisher_is_subject_channel` is not trusted. A source job's line is never a
 proof. The rule applies to every result already on chain: on the live record, the source job's lines from
 `github.com/Identity-md` (tie none) now show as claims.
 
@@ -211,8 +220,23 @@ tab (also when there is no page yet): its short title, the answer, "panel, N of 
 to the request on explorer.imd.fun (the transaction until a job id is known). Channels that the key facts table
 does not show are listed on Record under "Other channels".
 
-Channel ties are worded for visitors: strong is "confirmed on chain", weak "names the contract", none
-"not confirmed", with one line under the channels saying what each means.
+Channels are labelled for visitors as above (Own domain, Verified on chain, Not verified), with one line under
+the channels list saying what each label means.
+
+### Key facts
+
+- **Badge**: worked out only from the kinds of the lines a row rests on: "Proven on chain" if any is a proof;
+  else "Stated by <channel name>" for a statement; else "Reported by <who>" for a claim. The badge opens those lines.
+- **Channel labels on rows**: only the Website and Official accounts rows show a channel's label. An Official
+  accounts row that lists several accounts (`@imd, @news`) shows each account with its own label.
+- **Rows a rebuild writes**: Website, Token (symbol and contract), Main contract, Chains, Supply, Seats, Price,
+  Deployed by, Founder or creator, Contributors, Official accounts, Launched. Supply and Seats are separate rows.
+- **Without `infobox`**: at most four rows: Website, Main contract, the token symbol proof and the token supply
+  proof. A proof counts as the token's only when its fact is named for the token's symbol or supply ("Token
+  symbol", "Symbol", "Ticker", "Token supply", "Total supply", "Supply") or re-run with `symbol()` /
+  `totalSupply()`; a seat count or other "supply" never fills the slot. Overview never lists every channel and contract.
+- **Layout**: from 641px up the table uses a fixed layout and badges wrap inside their cell, so a long publisher
+  name never widens the page; below that each row stacks label, value and badge.
 
 Fetched pages, oracle reads, job ids, ENS names and block times are cached in `localStorage`. Every
 cache access is wrapped in try/catch, and the page renders without it.
@@ -228,10 +252,22 @@ they go to the transaction on Etherscan.
   shown>; [F2] …` (every completed page, sources and edit result of the subject **not folded in**, oldest first,
   including earlier pages replaced without being named) `; [A1] <question title> = <answer>, N of M, <request
   URL>; …` (completed panel answers, oldest first). With nothing yet, `none`.
-- **Size limit**: if `<PRIOR>` would push the objective to 7,500 characters or more, the site keeps F1, then the
-  newest result files that fit **with no panel answers**, then adds the newest panel answers that fit in the room
-  left; answers never push a result file out. The Contribute card says how many results and answers were left
-  out, and Activity's labels come from the same list.
+- **The record has no size limit**: the objective says so; only infobox and summary are short. A rebuild drops an
+  earlier line for exactly three reasons: an exact duplicate of a line it kept (named in the dropped entry), not
+  about the subject, or replaced by a newer statement from the same speaker. It merges only exact duplicates of
+  the same attributed line: two speakers reporting the same fact stay two lines. A claim or statement that a
+  proof or panel answer settles is kept, with `links` to what confirms or contradicts it. The site reads every
+  line and every dropped entry of a page, however many (no 2,000 cap).
+- **Bringing back dropped lines**: when the page shown has `dropped` entries, `<PRIOR>` also lists the artifact
+  URL of each file they came from (from the objective of the request that produced the page shown), marked
+  `(reconsider dropped lines)`, and the job carries those lines forward unless one of the three reasons applies.
+  `F2:L14` names file F2; an older bare `L14` names the one earlier file that has it, so the site reads those
+  files first (Contribute waits for them, and a failed read offers Refresh).
+- **Size limit**: if `<PRIOR>` would push the objective to 7,500 characters or more, the site keeps F1 and every
+  file to reconsider first (room is reserved for them), then the newest result files that fit (the oldest are
+  deferred first), then the newest panel answers that fit in the room left. If the files to reconsider alone do
+  not fit, the rebuild is not offered. The Contribute card says how many results and answers were left out, and
+  Activity's labels come from the same list.
 - **Folded in**: a result (page, sources or edit) is folded into the page shown **only** if its artifact URL
   appears in the objective of the request that produced the page shown, read from that request's body in the
   Intake's `Requested` event. Time order alone does not count. Activity labels each completed result "Shown now",
@@ -258,7 +294,7 @@ they go to the transaction on Etherscan.
   only when exactly one is named; else "Chain not given" / "block not given".
   The same `<PRIOR>` resolves `links` targets `A<n>` to the panel answer.
 
-## Free request check (2026-11-19, this revision)
+## Free request check (2026-11-19, previous revision; not re-run after the wording changes of this one)
 
 `POST https://api.imd.fun/requests/check` with `{"action":"job.open","input":<exact body>}` for job bodies and
 `{"action":"oracle.request","input":<short form>}` for questions. Bodies were generated by the site's own
@@ -292,19 +328,16 @@ pins the site's bodies to them.
 Details, the Better Interface review and its limits are in `artifacts/validation.md`.
 
 - `npm run typecheck`: exit 0.
-- `npm test`: 66 of 66 pass (22 `tests/unit.test.ts`, 12 `tests/rebuild.test.ts`, 13 `tests/revision.test.ts`,
-  19 `tests/subjects.test.ts`: subject ids and any chain id, tags, `<SUBJECT>`, the three questions and their
-  drafted bodies, folding by objective, the size limit with answers after files, key facts, `found: false`).
+- `npm test`: 86 of 86 pass in 7 files (`tests/findings.test.ts` holds one block per review finding of this
+  revision: 2,001 lines and dropped entries, the merge rule, room for files to reconsider, bare dropped ids, the
+  statement rule in every objective, token-only fallback rows, the key facts CSS, this README, per-account labels).
 - `npm run build`: exit 0. `dist/` holds `index.html`, `agents.md`, `favicon.svg`, `og.png` and `assets/`, and
   `index.html` uses only `./` URLs.
-- `node tests/e2e.mjs` in headless Chromium (Playwright chromium-headless-shell 1255) with the fixture: 124 of
-  124 pass at 390, 1440 and 320 plus three variants at 390 (panel answer only, a `found: false` result, a failed
-  chain read); see `artifacts/validation.md`.
-- Design probe `taste.mjs` on the export: 16 of 16 pass.
-- Free request check: see the tables above (2026-11-19, this revision).
-- **Not tested here:** paying, approving and connecting (no wallet on this machine). In this sandbox's browser
-  the price read through `gateway.tenderly.co` fails its CORS preflight, so the page shows "Price unavailable";
-  the wallet code that sets that transport is unchanged, as the brief asks.
+- Modal focus (inert background, Tab cycling, nested sheet, focus return): 1 of 1 pass in a jsdom scratch test.
+- **Not run this round:** `node tests/e2e.mjs` and the design probe `taste.mjs`. Chromium cannot start on this
+  machine (missing system libraries, and the package downloads that supplied them last time are now refused).
+  The last browser run (124 of 124 e2e checks, 16 of 16 probe checks) was on the previous source.
+- **Not tested here:** paying, approving and connecting (no wallet on this machine).
 
 ## Limits
 

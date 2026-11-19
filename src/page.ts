@@ -160,8 +160,8 @@ function parseLinks(v: unknown): LineLink[] {
 }
 
 function parseDropped(v: unknown): Dropped[] {
+  // Every dropped entry is kept: the record has no line limit, so neither has the list of what it dropped.
   return arr(v)
-    .slice(0, 2000)
     .map((d) => {
       const o = obj(d);
       return { id: str(o.id, 64).trim(), why: str(o.why, 400) };
@@ -362,9 +362,8 @@ export function parsePage(text: string, domain = ""): Page {
     };
   });
   const refOf = new Map(sources.map((s) => [s.id, s.ref]));
-  // The record has no line limit; this cap only bounds an absurd file.
+  // The record has no line limit: every valid line is kept, however many there are.
   const lines: Line[] = arr(j.lines)
-    .slice(0, 2000)
     .map((l) => {
       const o = obj(l);
       const lineText = str(o.text, 600);

@@ -275,7 +275,7 @@ describe("key facts", () => {
 });
 
 describe("bringing back lines dropped for space", () => {
-  it("lists the files the page shown dropped entries from, marked reconsider, after the results; never pushing a result out", () => {
+  it("lists the files the page shown dropped entries from, marked reconsider, after the results; room is reserved for them first", () => {
     const given = [
       { n: 1, url: artifactUrl(h("1")), hash: h("1") },
       { n: 2, url: artifactUrl(h("2")), hash: h("2") },
@@ -293,11 +293,13 @@ describe("bringing back lines dropped for space", () => {
     expect(fit.prior.reconsider).toEqual([artifactUrl(h("1"))]);
     expect(rebuildObjective(fit.prior, ref)).toContain(`[F3] ${artifactUrl(h("1"))} (reconsider dropped lines)`);
     expect(fitPrior(null, [], [], measure, [artifactUrl(h("1"))]).prior.reconsider).toBeUndefined();
-    // With no room, files to reconsider are left out before any result.
+    // With no room, ordinary results give way (oldest first) so the file to reconsider stays (8fe1a504).
     const many = Array.from({ length: 60 }, (_, i) => ({ id: String(i), url: artifactUrl(i.toString(16).padStart(64, "0")) }));
     const full = fitPrior(artifactUrl(h("f")), many, [], measure, [artifactUrl(h("1"))]);
     const alone = fitPrior(artifactUrl(h("f")), many, [], measure);
-    expect(full.included).toEqual(alone.included);
+    expect(full.prior.reconsider).toEqual([artifactUrl(h("1"))]);
+    expect(full.reconsiderLeftOut).toBe(0);
+    expect(full.included.size).toBe(alone.included.size - 1);
     expect(measure(full.prior)).toBeLessThan(7500);
   });
   it("planRebuild reads the dropped entries of the page shown against the objective that produced it", () => {
@@ -322,14 +324,14 @@ describe("panel answers never push a result file out of <PRIOR> (aa9250dc)", () 
     const src = { id: "s", url: artifactUrl(h("a")) };
     const answers = Array.from({ length: 20 }, (_, i) => ({ title: "A".repeat(88), answer: "true", agreed: 5, size: 5, url: `https://explorer.imd.fun/jobs/${String(i).padStart(36, "0")}` }));
     const measure = (p: Parameters<typeof rebuildObjective>[0]) => rebuildObjective(p, ref).length;
-    expect(measure({ files: [f1, src.url], answers })).toBe(9087);
+    expect(measure({ files: [f1, src.url], answers })).toBe(9414);
     const fit = fitPrior(f1, [src], answers, measure);
     expect(fit.prior.files).toEqual([f1, src.url]);
     expect(fit.included.has("s")).toBe(true);
     expect(fit.leftOut).toBe(0);
-    expect(fit.prior.answers).toEqual(answers.slice(9));
-    expect(fit.answersLeftOut).toBe(9);
-    expect(measure(fit.prior)).toBe(7476);
+    expect(fit.prior.answers).toEqual(answers.slice(11));
+    expect(fit.answersLeftOut).toBe(11);
+    expect(measure(fit.prior)).toBe(7445);
   });
 });
 

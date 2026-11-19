@@ -15,6 +15,7 @@ import { fetchArtifact } from "./api";
 import { jobLink, payerName } from "./format";
 import {
   allSources,
+  resolvePriorRef,
   countKinds,
   droppedLines,
   lineIdsOf,
@@ -44,6 +45,8 @@ export interface Accounting {
   error: string;
   /** The dropped list, with each earlier line's text once the earlier files are read. */
   dropped: (Dropped & { ref: string; text: string })[];
+  /** The earlier files' line ids, once read: they resolve bare dropped ids for the files to reconsider. */
+  read: PriorLines[];
 }
 
 /** A summary sentence with the record lines its references name, each resolved in its own scope. */
@@ -122,15 +125,38 @@ export function subjectRefFor(id: string, items: Activity[], page: Page | null):
 }
 
 /**
- * The files to mark "reconsider dropped lines": the artifact URLs of the files the page shown's dropped entries
- * came from ("F2:L14" names file F2 of the objective that produced the page shown), in file order, each once,
- * leaving out any URL already listed.
+ * The file numbers the page shown's dropped entries came from. "F2:L14" names file F2 of the objective that
+ * produced the page shown. A bare "L14" (an older form) is resolved the way Record's accounting resolves it: the
+ * one earlier file that has that id, which needs those files read. Without them, bare ids are reported as
+ * unresolved so a rebuild waits for the reads rather than leaving their file out.
  */
-export function reconsiderFiles(dropped: Pick<Dropped, "id">[], given: { n: number; url: string; hash: string }[], listed: string[] = []): string[] {
-  const ns = new Set(dropped.flatMap((d) => {
+export function droppedFileNumbers(dropped: Pick<Dropped, "id">[], files?: PriorLines[]): { ns: Set<number>; unresolved: number } {
+  const ns = new Set<number>();
+  let unresolved = 0;
+  for (const d of dropped) {
     const m = /^F(\d+):/i.exec(d.id.trim());
-    return m ? [Number(m[1])] : [];
-  }));
+    if (m) ns.add(Number(m[1]));
+    else if (!files) unresolved++;
+    else for (const hit of resolvePriorRef(d.id, files)) ns.add(hit.n);
+  }
+  return { ns, unresolved };
+}
+
+/** True when the page shown's dropped list has a bare id, whose file only the earlier files' reads can tell. */
+export const hasBareDropped = (dropped: Pick<Dropped, "id">[]) => droppedFileNumbers(dropped).unresolved > 0;
+
+/**
+ * The files to mark "reconsider dropped lines": the artifact URLs of the files the page shown's dropped entries
+ * came from, in file order, each once, leaving out any URL already listed. Pass the earlier files' lines to
+ * resolve bare ids.
+ */
+export function reconsiderFiles(
+  dropped: Pick<Dropped, "id">[],
+  given: { n: number; url: string; hash: string }[],
+  listed: string[] = [],
+  files?: PriorLines[],
+): string[] {
+  const { ns } = droppedFileNumbers(dropped, files);
   const out: string[] = [];
   for (const f of [...given].sort((a, b) => a.n - b.n))
     if (ns.has(f.n) && f.hash && !out.includes(f.url) && !listed.includes(f.url)) out.push(f.url);
@@ -138,9 +164,10 @@ export function reconsiderFiles(dropped: Pick<Dropped, "id">[], given: { n: numb
 }
 
 /**
- * Keeps <PRIOR> under 7,500 characters: F1 always, then the newest results that fit with no answers (oldest
- * dropped first), then the files to reconsider in the room left, then the newest panel answers that fit in the
- * room left. Neither answers nor files to reconsider ever push a result out. Returns which results made it in.
+ * Keeps <PRIOR> under 7,500 characters. F1 always, then every file to reconsider (they are required: room is
+ * reserved for them before anything else), then the newest results that fit (oldest deferred first), then the
+ * newest panel answers in the room left. reconsiderLeftOut > 0 means the files to reconsider alone do not fit;
+ * the rebuild is then not offered. Returns which results made it in.
  */
 export function fitPrior(
   page: string | null,
@@ -149,24 +176,29 @@ export function fitPrior(
   measure: (p: Prior) => number,
   reconsider: string[] = [],
 ): { prior: Prior; included: Set<string>; leftOut: number; answersLeftOut: number; reconsiderLeftOut: number } {
-  // Files come first: F1, then the newest results that fit with no answers at all. Answers only take the room left.
-  let rs = [...results];
-  let rc: string[] = [];
+  const wanted = page ? reconsider.filter((u, i) => u !== page && reconsider.indexOf(u) === i) : [];
+  let rc: string[] = [...wanted];
+  // A result that is also a file to reconsider is listed once, marked.
+  let rs = results.filter((r) => !rc.includes(r.url));
+  const offered = rs.length;
   let as: PriorAnswer[] = [];
   const make = (): Prior => ({ files: [...(page ? [page] : []), ...rs.map((r) => r.url)], answers: as, ...(rc.length ? { reconsider: rc } : {}) });
+  // Ordinary results give way first, oldest first, so the files to reconsider keep their room.
   while (rs.length > 0 && measure(make()) >= MAX_OBJECTIVE) rs = rs.slice(1);
-  const wanted = page ? reconsider.filter((u) => u !== page && !rs.some((r) => r.url === u)) : [];
-  for (let k = wanted.length; k > 0; k--) {
-    rc = wanted.slice(0, k);
-    if (measure(make()) < MAX_OBJECTIVE) break;
-    rc = [];
-  }
+  // Only when the files to reconsider alone do not fit is one left out, and then the rebuild is held back.
+  while (rc.length > 0 && measure(make()) >= MAX_OBJECTIVE) rc = rc.slice(0, -1);
   for (let k = answers.length; k > 0; k--) {
     as = answers.slice(answers.length - k);
     if (measure(make()) < MAX_OBJECTIVE) break;
     as = [];
   }
-  return { prior: make(), included: new Set(rs.map((r) => r.id)), leftOut: results.length - rs.length, answersLeftOut: answers.length - as.length, reconsiderLeftOut: wanted.length - rc.length };
+  return {
+    prior: make(),
+    included: new Set(rs.map((r) => r.id)),
+    leftOut: offered - rs.length,
+    answersLeftOut: answers.length - as.length,
+    reconsiderLeftOut: wanted.length - rc.length,
+  };
 }
 
 export type Standing = "shown" | "folded" | "next" | "left-out" | "";
@@ -274,11 +306,13 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
 
   const panel = useMemo(() => (items ?? []).filter((a) => a.req.action === ACTIONS.oracle && a.state === "completed" && a.completion).sort(completionOrder), [items]);
   const given = useMemo(() => parsePrior(latest?.req.bodyJson?.objective), [latest]);
+  const [accounting, setAccounting] = useState<Accounting>({ state: "none", missing: [], files: 0, error: "", dropped: [], read: [] });
   const fit = useMemo(() => {
     const results = unfolded.filter((a) => a.fileHash).map((a) => ({ id: a.req.requestId, url: artifactUrl(a.fileHash!) }));
-    const again = reconsiderFiles(page?.dropped ?? [], given.files);
+    // Bare dropped ids are resolved with the same reads Record's accounting makes.
+    const again = reconsiderFiles(page?.dropped ?? [], given.files, [], accounting.state === "done" ? accounting.read : undefined);
     return fitPrior(page && pageHash ? artifactUrl(pageHash) : null, results, answersOf(items ?? []), (p) => rebuildObjective(p, subject).length, again);
-  }, [items, unfolded, page, pageHash, subject, given]);
+  }, [items, unfolded, page, pageHash, subject, given, accounting]);
 
   const sourceList = useMemo(() => allSources(page, jobs), [page, jobs]);
   const byId = useMemo(() => new Map(sections.flatMap((s) => s.rows.map((r) => [r.line.id, r.line] as const))), [sections]);
@@ -328,27 +362,32 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     return { text: a.text, activity };
   };
 
-  const [accounting, setAccounting] = useState<Accounting>({ state: "none", missing: [], files: 0, error: "", dropped: [] });
+  // A failed read is retried when the record is read again (Refresh).
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (accounting.state === "error") setAttempt((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
   useEffect(() => {
     const bare = (page?.dropped ?? []).map((d) => ({ ...d, ref: d.id, text: "" }));
     if (!page || !given.files.length) {
-      setAccounting({ state: "none", missing: [], files: 0, error: "", dropped: bare });
+      setAccounting({ state: "none", missing: [], files: 0, error: "", dropped: bare, read: [] });
       return;
     }
     let live = true;
-    setAccounting({ state: "loading", missing: [], files: given.files.length, error: "", dropped: bare });
+    setAccounting({ state: "loading", missing: [], files: given.files.length, error: "", dropped: bare, read: [] });
     Promise.all(
       given.files.map(async (f): Promise<PriorLines> => {
         if (!f.hash) throw new Error(`F${f.n} is not an artifact address`);
         return { n: f.n, lines: lineIdsOf(await fetchArtifact(f.hash)) };
       }),
     )
-      .then((files) => live && setAccounting({ state: "done", missing: unaccounted(page, files), files: files.length, error: "", dropped: droppedLines(page, files) }))
-      .catch((e) => live && setAccounting({ state: "error", missing: [], files: given.files.length, error: e instanceof Error ? e.message : "An earlier file could not be read", dropped: bare }));
+      .then((files) => live && setAccounting({ state: "done", missing: unaccounted(page, files), files: files.length, error: "", dropped: droppedLines(page, files), read: files }))
+      .catch((e) => live && setAccounting({ state: "error", missing: [], files: given.files.length, error: e instanceof Error ? e.message : "An earlier file could not be read", dropped: bare, read: [] }));
     return () => {
       live = false;
     };
-  }, [page, given]);
+  }, [page, given, attempt]);
 
   const standing = (a: Activity): Standing => {
     if (!isResult(a)) return "";
@@ -369,6 +408,17 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     const unread = unfolded.find((a) => !a.fileHash);
     if (unread) return { ok: false, why: `Unable to read an earlier result${unread.sourcesError ? `: ${unread.sourcesError}` : ""}`, loading: false };
     if (panel.some((a) => !a.oracle)) return { ok: false, why: "Unable to read a panel answer.", loading: false };
+    // A bare dropped id names its file only once the earlier files are read; the rebuild waits for that.
+    if (page && given.files.length && hasBareDropped(page.dropped)) {
+      if (accounting.state === "error") return { ok: false, why: `Unable to read the earlier files the dropped lines came from: ${accounting.error}. Refresh to try again.`, loading: false };
+      if (accounting.state !== "done") return { ok: false, why: "Reading the earlier files the dropped lines came from…", loading: true };
+    }
+    if (fit.reconsiderLeftOut > 0)
+      return {
+        ok: false,
+        why: `The ${fit.reconsiderLeftOut + (fit.prior.reconsider?.length ?? 0)} files the dropped lines came from do not fit in one objective of 7,500 characters, so a rebuild would leave dropped lines unrecovered. It is not offered.`,
+        loading: false,
+      };
     return { ok: true, why: "", loading: false };
   })();
 
@@ -426,12 +476,16 @@ export function answersOf(items: Activity[]): PriorAnswer[] {
  * The <PRIOR> a rebuild of this subject is given, outside the hook (the home form uses it). ok is false while a
  * result it would list could not be read.
  */
-export function planRebuild(items: Activity[], subject: SubjectRef) {
+export function planRebuild(items: Activity[], subject: SubjectRef, read?: PriorLines[]) {
   const core = coreOf(items);
   const pageHash = core.latest?.fileHash ?? null;
   const unread = core.unfolded.some((a) => !a.fileHash) || (!!core.latest && (!core.page || !pageHash));
   const results = core.unfolded.filter((a) => a.fileHash).map((a) => ({ id: a.req.requestId, url: artifactUrl(a.fileHash!) }));
-  const again = reconsiderFiles(core.page?.dropped ?? [], parsePrior(core.latest?.req.bodyJson?.objective).files);
+  const given = parsePrior(core.latest?.req.bodyJson?.objective).files;
+  const dropped = core.page?.dropped ?? [];
+  // Bare dropped ids need the earlier files read (the subject's page does that); without them, no plan is offered.
+  const needsReads = !read && given.length > 0 && hasBareDropped(dropped);
+  const again = reconsiderFiles(dropped, given, [], read);
   const fit = fitPrior(core.page && pageHash ? artifactUrl(pageHash) : null, results, answersOf(items), (p) => rebuildObjective(p, subject).length, again);
-  return { ...fit, ok: !unread, hasPage: !!core.page };
+  return { ...fit, ok: !unread && !needsReads && fit.reconsiderLeftOut === 0, needsReads, hasPage: !!core.page };
 }

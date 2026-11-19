@@ -82,6 +82,23 @@ function Copy({ value }: { value: string }) {
 
 /** A value with every 0x address shortened in monospace, each with a copy button; linked when it has a url. */
 function KeyValue({ row }: { row: KeyRow }) {
+  if (row.accounts.length)
+    return (
+      <ul className="kf-accounts">
+        {row.accounts.map((a, i) => (
+          <li key={i}>
+            {a.channel && safeHref(a.channel.url) ? <ExtLink url={a.channel.url} className="break">{a.name}</ExtLink> : <span className="break">{a.name}</span>}
+            {a.status ? (
+              <span className={`badge badge-${a.status.tone}`} title={STATUS_HELP[a.status.tone as ChannelStatus]}>
+                {a.status.text}
+              </span>
+            ) : (
+              <span className="small"> not one of the record's channels</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
   const parts = splitAddresses(row.value);
   const body = parts.map((p, i) =>
     p.address ? (
@@ -337,7 +354,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
       ? "Proof: anyone can follow the re-run steps and get the same answer."
       : line.kind === "statement"
         ? `Statement: published on ${line.channel?.label || line.channel?.url || "a channel of the subject"}, labelled “${line.channel ? statusWord(line.channel, ctx.m.page?.domain ?? ctx.m.subject.domain) : STATUS_WORDS.unverified}”.`
-        : `Claim: said by ${line.by || "someone other than the subject"}, not on a tied channel of the subject.`;
+        : `Claim: said by ${line.by || "someone other than the subject"}, not on an Own domain or Verified on chain channel of the subject.`;
   const job = origin ? { what: "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
   return (
     <div className="details" id={id}>

@@ -1,6 +1,60 @@
 # Validation
 
-## This build: subjects, second revision (2026-11-19)
+## This build: third revision of the no-size-limit change (2026-11-19)
+
+Run on this machine after the last source change. Answers to each review finding are in `.imd-responses.json`.
+
+| Command | Result |
+| --- | --- |
+| `npm ci` | exit 0 |
+| `npm run build` (`tsc --noEmit`, then `vite build`) | exit 0; `dist/index.html` uses only `./` URLs (`./favicon.svg`, `./assets/…`); `dist/` 1.5 MB |
+| `npm test` (vitest) | 86 of 86 pass in 7 files, including 15 new in `tests/findings.test.ts`, one block per finding id |
+| `npx vite-node scripts/agents-md.ts` | rewrote `public/agents.md` (36,075 characters) from the site's own bodies |
+| Focus-hold check in jsdom (`test/scratch/focus.test.ts`, jsdom installed under `/tmp`, not a project dependency) | 1 of 1 pass: skip link, header and main inert while the dialog is open; Tab from the last control goes to Close, Shift+Tab from the heading or Close goes to the last; a nested sheet holds focus and gives it back; release restores the opener; a node outside the app root stays usable |
+| `node tests/e2e.mjs …` and `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` | **Not run this round.** Playwright 1.49 installed under `/tmp` and downloaded chromium-headless-shell 1148, but the browser cannot start: 21 system libraries (`libglib-2.0`, `libnss3`, `libX11`, …) are missing, and this sandbox now refuses the Ubuntu package downloads (`apt-get download` finds no source; `archive.ubuntu.com/ubuntu/pool/…` answers 403). The previous round's 124-check e2e run and 16 of 16 probe result are for the earlier source |
+| `POST https://api.imd.fun/requests/check` | Not re-run this round; the templates' wording changed (statement rule, merge rule) but no field or key did |
+
+What the new unit tests pin (each reproduces the finding's own case):
+
+- 52acaff0: a page with 2,001 claim lines and 2,001 dropped entries keeps all of them; an infobox row citing
+  `L2001` resolves to it and shows "Reported by Example Weekly"; dropped entry 2,001 resolves to its earlier text.
+- dc28a9b3: the rebuild template says "Merge only exact duplicates of the same attributed line. Keep separate lines
+  for different speakers or quotations…" and no longer "Merge lines that say the same thing".
+- 8fe1a504: page `f…f`, one dropped `F1:L2` from `1…1`, 60 later results: `<PRIOR>` lists the marked file, keeps the
+  newest results that fit, stays under 7,500; `planRebuild` is `ok`. When the files to reconsider alone do not fit,
+  `reconsiderLeftOut > 0` and the Contribute card and home form do not offer the rebuild.
+- 45192b1a: a bare dropped `L4` that only F1 has resolves to F1 with the same reads Record's accounting makes; until
+  those reads finish Contribute says "Reading the earlier files the dropped lines came from…", a failed read says
+  so and offers Refresh (which retries the reads), and the home form sends the visitor to the subject's page.
+- 1154ad1b: rebuild, Add sources and edit objectives make lines on Own domain (any tie) or tie strong channels
+  statements and everything else claims; a `docs.imd.fun` channel with tie none gives "Stated by Docs".
+- e3dbc6c6: Seat supply (L1) before Token supply (L2) gives one row, "Token supply 1000 EX"; a seat-only page gives
+  no supply row; a proof on the token contract is preferred.
+- e2b1fd57: the CSS has `table-layout: fixed`, a wrapping badge cell (no `nowrap`) and badges with `max-width: 100%;
+  overflow-wrap: anywhere`. The rendered widths at 641 and 1440 were **not** measured (no browser, above).
+- 9f1d8237: the README names the three drop reasons, settled lines kept, reconsidered files, Supply and Seats,
+  badge precedence, the four-row fallback and the three labels; the old tie words are gone.
+- 2ba970b7: `Official accounts: @imd, @news` shows `@imd` Verified on chain and `@news` Not verified, with one
+  evidence badge for the row.
+
+### Better Interface review of this revision
+
+Guide `.imd/reads/skills/better-interface/REFERENCE.md`, six domains, checked without a browser for the changed
+parts: the key facts table, the pay dialog's price state, the modal focus boundary and the Contribute wording.
+Rendered checks (contrast measurement, screenshots, overflow at 320/390/641/1440) were not performed this round.
+
+| Domain | Finding | Fix |
+| --- | --- | --- |
+| Layout | `src/styles.css:118-122`: automatic table layout with a `nowrap` badge cell let one long publisher name set the table's width | Fixed layout, 16rem badge column, wrapping badges (`src/styles.css:118-126`) |
+| Accessibility | `src/App.tsx:442`, `src/wallet.tsx:50`: only `main` was inert; Tab reached the skip link and header behind the dialog, and focus return ran while the opener was still inert | `src/modal.ts` holds focus for both, restoring the opener after the background is live again |
+| UI / writing | `src/App.tsx:512`: a failed price read still said "Reading price…" with no way to retry | "Price unavailable" plus a "Retry price" button; Pay stays disabled until a price is read |
+| Writing | `src/App.tsx:102,168`, `src/Record.tsx:340`: "tied channels", "merges repeats", "not on a tied channel" described the old rules | Worded with the visitor labels: Own domain or Verified on chain; "merges only exact duplicates" |
+| UI | `src/Record.tsx:84`: an Official accounts list hid which account is verified | Each account listed with its own label pill |
+| Typography / colours | No new sizes or tokens: the new list uses `--space-1/2` and the existing badge tones | n/a |
+
+Remaining limits: no browser run this round (above); paying and wallets not tested (no wallet here).
+
+## Earlier build: subjects, second revision (2026-11-19, evidence for the previous source only)
 
 Run on this machine after the last source change. Answers to the review findings are in `.imd-responses.json`.
 
