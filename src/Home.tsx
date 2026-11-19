@@ -51,7 +51,7 @@ function AddProject({ onAdd, price }: { onAdd: (i: { domain: string; address: st
   return (
     <section className="card add" id="add" aria-labelledby="add-title" tabIndex={-1}>
       <h2 id="add-title">Add a project</h2>
-      <p className="small">One research job writes its first page. You review the request and its price before your wallet asks.</p>
+      <p className="small">One research job writes the first page. You see its request and price first.</p>
       <form className="form" onSubmit={submit} noValidate>
         <label htmlFor="add-domain">Website domain</label>
         <input id="add-domain" name="domain" type="text" inputMode="url" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="example.com"
@@ -96,7 +96,7 @@ export function Home({ items, error, loading, reload, onAdd, price, bad }: {
   return (
     <section className="tab home" aria-labelledby="home-title">
       <h1 id="home-title" tabIndex={-1}>Projects, on the record</h1>
-      <p className="lead">Each page says what a crypto project is, who said each line and how it was checked. Anyone can pay to research one.</p>
+      <p className="lead">What a crypto project is, who said each line and how it was checked.</p>
       {bad && <p className="warn" role="status">“{bad}” is not a project id. Ids are a domain, such as imd.fun, or chain and contract, such as 1:0x….</p>}
       <div className="home-grid">
         <div className="home-list">

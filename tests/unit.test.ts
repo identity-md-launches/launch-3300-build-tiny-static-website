@@ -33,12 +33,12 @@ describe("bodies", () => {
     expect(o).toContain("Sections: what_it_does, how_it_works, money, people, on_chain, history.");
     expect(o.indexOf("Include up to 8 claims from outside sources")).toBeLessThan(o.indexOf("Sections:"));
   });
-  it("oracle bodies carry no tag: exactly v, question, chainId, window, answerType, evidence (panel), panelSize, quorum, validForSeconds", () => {
+  it("oracle bodies carry no tag: exactly v, question, chainId, window, answerType, evidence, panelSize, quorum, validForSeconds", () => {
     expect(encodeBody(oracleBody(Q_P1, "panel"))).toBe(
       `{"v":1,"question":${JSON.stringify(Q_P1)},"chainId":1,"window":{"hours":24},"answerType":"bool","evidence":"panel","panelSize":5,"quorum":4,"validForSeconds":86400}`,
     );
     expect(encodeBody(oracleBody(Q_P3, "chain"))).toBe(
-      `{"v":1,"question":${JSON.stringify(Q_P3)},"chainId":1,"window":{"hours":24},"answerType":"bool","panelSize":5,"quorum":4,"validForSeconds":86400}`,
+      `{"v":1,"question":${JSON.stringify(Q_P3)},"chainId":1,"window":{"hours":24},"answerType":"bool","evidence":"chain","panelSize":5,"quorum":4,"validForSeconds":86400}`,
     );
     for (const p of LEGACY_PRESETS) expect(encodeBody(oracleBody(p.question, "panel"))).not.toContain("tag");
     expect(Q_P2).toContain("costs 5 IMD");

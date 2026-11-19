@@ -230,16 +230,6 @@ export function OverviewTab({ m, ui, items, price }: { m: RecordModel; ui: Ui; i
     <section className="tab" aria-labelledby="record-title">
       <h1 id="record-title" tabIndex={-1}>{page?.name || m.subject.id}</h1>
       <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
-      <div className="row-actions">
-        <a className="btn btn-primary" href={to("rebuild")}>
-          {page ? "Rebuild the page" : "Create the page"}
-        </a>
-        <a className="btn" href={to("contribute")}>
-          Contribute
-        </a>
-        <span className="price mono">{price}</span>
-      </div>
-
       {!page && (
         <div className="card empty">
           <h2>{items === null ? "Reading the record…" : latest && !error ? "Downloading the record…" : "No page yet"}</h2>
@@ -258,6 +248,16 @@ export function OverviewTab({ m, ui, items, price }: { m: RecordModel; ui: Ui; i
           )}
         </div>
       )}
+
+      <div className="row-actions">
+        <a className="btn btn-primary" href={to("rebuild")}>
+          {page ? "Rebuild the page" : "Create the page"}
+        </a>
+        <a className="btn" href={to("contribute")}>
+          Contribute
+        </a>
+        <span className="price mono">{price}</span>
+      </div>
 
       <div className="card">
         <h2>Help build this record</h2>

@@ -139,16 +139,16 @@ With two placeholder links, two placeholder channels and a placeholder main cont
 The Intake refuses an oracle body with any key it does not know. A body carrying `"tag"` was refused with
 `body_invalid: Unrecognized key "tag"` (transaction
 `0xadda56adefd755e63bab2c004de49056100962c5f91dbc461ea65fa4deb9d8df`). Oracle bodies hold exactly these keys,
-in this order: `v, question, chainId, window, answerType, evidence` (only when `"panel"`)`, panelSize, quorum, validForSeconds`.
+in this order: `v, question, chainId, window, answerType, evidence, panelSize, quorum, validForSeconds`.
 
 ```json
 {"v":1,"question":"<QUESTION>","chainId":1,"window":{"hours":24},"answerType":"bool","evidence":"panel","panelSize":5,"quorum":4,"validForSeconds":86400}
 ```
 
-Questions answered from chain data leave out `evidence` (the default is `"chain"`):
+Questions answered from chain data (the contract template) carry `"evidence":"chain"`, as IMD's free check drafted it:
 
 ```json
-{"v":1,"question":"<QUESTION>","chainId":1,"window":{"hours":24},"answerType":"bool","panelSize":5,"quorum":4,"validForSeconds":86400}
+{"v":1,"question":"<QUESTION>","chainId":1,"window":{"hours":24},"answerType":"bool","evidence":"chain","panelSize":5,"quorum":4,"validForSeconds":86400}
 ```
 
 ### The three question templates
@@ -187,7 +187,7 @@ On chain <CHAIN ID> at the request's pinned block, does calling <FUNCTION SIGNAT
 For example, a contract question on Base filed under example.com:
 
 ```json
-{"v":1,"question":"On chain 8453 at the request's pinned block, does calling totalSupply() on the contract at 0x1111111111111111111111111111111111111111 return 1000000? This question is filed under the record of example.com.","chainId":8453,"window":{"hours":24},"answerType":"bool","panelSize":5,"quorum":4,"validForSeconds":86400}
+{"v":1,"question":"On chain 8453 at the request's pinned block, does calling totalSupply() on the contract at 0x1111111111111111111111111111111111111111 return 1000000? This question is filed under the record of example.com.","chainId":8453,"window":{"hours":24},"answerType":"bool","evidence":"chain","panelSize":5,"quorum":4,"validForSeconds":86400}
 ```
 
 The site reads back the three IMD presets it asked before (P1 and P2 statements, P3 a proof, all filed under

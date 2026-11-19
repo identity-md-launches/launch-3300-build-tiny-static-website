@@ -90,6 +90,16 @@ async function mock(page, opts = {}) {
 
 const browser = await chromium.launch({ headless: true });
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+/** The elements that reach past the viewport, for a failed overflow check. */
+const wideOf = (page) =>
+  page.evaluate(() => {
+    const w = document.documentElement.clientWidth;
+    return [...document.querySelectorAll("body *")]
+      .filter((e) => e.getBoundingClientRect().right > w + 0.5)
+      .slice(0, 6)
+      .map((e) => `${e.tagName.toLowerCase()}${e.id ? "#" + e.id : ""}.${String(e.className).replace(/ /g, ".")} right=${Math.round(e.getBoundingClientRect().right)}`)
+      .join(", ");
+  });
 try {
   for (const width of [390, 1440, 320]) {
     const ctx = await browser.newContext({ viewport: { width, height: 844 } });
@@ -151,6 +161,12 @@ try {
       const h1 = await page.locator("h1").boundingBox();
       const main = await page.locator("main").boundingBox();
       check(`${W} key facts sit under the name, above the summary, full width`, k.y > h1.y && k.y + k.height <= s.y + 1 && k.width >= main.width - 2 * 16 - 2, JSON.stringify({ k, s }));
+      check(`${W} key facts come directly after the one_line, with the actions below the summary`, await page.evaluate(() => {
+        const lead = document.querySelector("main .lead");
+        const actions = document.querySelector("main .tab > .row-actions");
+        const summary = document.querySelector(".summary");
+        return lead?.nextElementSibling?.classList.contains("overview") && document.querySelector(".overview")?.firstElementChild?.classList.contains("keyfacts") && !!actions && !!summary && (summary.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING) > 0;
+      }));
       check(`${W} every key fact row has a status badge`, (await page.locator(".keyfacts .badge").count()) >= 1);
       check(`${W} Checked by a panel is gone from Overview`, !/Checked by a panel/.test(await page.locator("main").innerText()));
       const linked = page.locator(".keyfacts a.badge").first();
@@ -196,7 +212,7 @@ try {
     await page.check('input[value="page"]');
     await page.click("text=Review the question");
     check(`${W} the web page form asks for its fields`, (await page.locator("#q-url-err").count()) === 1 && (await page.locator("#q-text-err").count()) === 1);
-    check(`${W} no horizontal scroll on Contribute`, (await overflow(page)) <= 0);
+    check(`${W} no horizontal scroll on Contribute`, (await overflow(page)) <= 0, await wideOf(page));
     check(`${W} no script errors`, errors.length === 0, errors.join(" | "));
     await ctx.close();
   }

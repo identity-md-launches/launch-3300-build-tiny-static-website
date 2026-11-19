@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Hex } from "viem";
 import { artifactUrl, encodeBody, matchOracleQuestion, questionContract, questionPage, questionPost, rebuildBody, rebuildObjective, sourceBody, editBody, templateBody, validateContract, validatePage, filedUnder } from "../src/bodies";
@@ -74,9 +75,16 @@ describe("oracle templates", () => {
   });
   it("oracle bodies still carry no tag; a contract question names its chain", () => {
     const c = questionContract(8453, "totalSupply()", A, "1000", "example.com");
-    expect(encodeBody(templateBody("contract", c, 8453))).toBe(`{"v":1,"question":${JSON.stringify(c)},"chainId":8453,"window":{"hours":24},"answerType":"bool","panelSize":5,"quorum":4,"validForSeconds":86400}`);
+    expect(encodeBody(templateBody("contract", c, 8453))).toBe(`{"v":1,"question":${JSON.stringify(c)},"chainId":8453,"window":{"hours":24},"answerType":"bool","evidence":"chain","panelSize":5,"quorum":4,"validForSeconds":86400}`);
     const p = questionPage("https://example.com/", "x is y", "example.com");
     expect(encodeBody(templateBody("page", p, 8453))).toContain('"chainId":1,"window":{"hours":24},"answerType":"bool","evidence":"panel"');
+  });
+  it("bodies are byte for byte the requests IMD's free check drafted for the three templates (2026-11-19)", () => {
+    const [post, page, contract] = readFileSync("tests/fixtures/drafted-templates.txt", "utf8").trim().split("\n");
+    const q = (t: "post" | "page" | "contract", text: string) => encodeBody(templateBody(t, text, 1));
+    expect(q("post", questionPost("https://x.com/imdfun/status/1990000000000000000", "imdfun", "a research job costs 0.5 IMD", "imd.fun"))).toBe(post);
+    expect(q("page", questionPage("https://imd.fun/docs/", "hiring the swarm for a job costs 0.5 IMD", "imd.fun"))).toBe(page);
+    expect(q("contract", questionContract(1, "totalSupply()", "0x0000eC93127BAA929E58E97dd0095A2BFb38ec1D", "2000", "imd.fun"))).toBe(contract);
   });
   it("validates the short forms", () => {
     expect(validatePage("https://example.com/a", "it says so")).toEqual({});

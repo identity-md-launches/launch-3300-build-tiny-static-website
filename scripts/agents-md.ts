@@ -143,11 +143,11 @@ ${fence(encodeBody(src), "json")}
 The Intake refuses an oracle body with any key it does not know. A body carrying \`"tag"\` was refused with
 \`body_invalid: Unrecognized key "tag"\` (transaction
 \`0xadda56adefd755e63bab2c004de49056100962c5f91dbc461ea65fa4deb9d8df\`). Oracle bodies hold exactly these keys,
-in this order: \`v, question, chainId, window, answerType, evidence\` (only when \`"panel"\`)\`, panelSize, quorum, validForSeconds\`.
+in this order: \`v, question, chainId, window, answerType, evidence, panelSize, quorum, validForSeconds\`.
 
 ${fence(encodeBody(oracleBody("<QUESTION>", "panel")), "json")}
 
-Questions answered from chain data leave out \`evidence\` (the default is \`"chain"\`):
+Questions answered from chain data (the contract template) carry \`"evidence":"chain"\`, as IMD's free check drafted it:
 
 ${fence(encodeBody(oracleBody("<QUESTION>", "chain")), "json")}
 

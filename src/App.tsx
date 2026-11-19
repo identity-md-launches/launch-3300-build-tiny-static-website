@@ -164,7 +164,7 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
   return (
     <div className="card" id="rebuild">
       <h3>{rec.page ? "Rebuild the page" : "Create the page"}</h3>
-      <p>
+      <p className="break">
         One page job starts from the page shown now and every page, sources and edit result it has not folded in yet, carries each line forward or says why it dropped
         it, merges repeats, and then looks for what is new. It researches {describeSubject(rec.subject)}.
       </p>
@@ -665,7 +665,7 @@ export default function App() {
           <Home items={activity.items} error={activity.error} loading={activity.loading} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} />
         )}
         <footer className="about">
-          <p>About: this is a test. Payments go to IMD and are not refunded. Nobody can edit a record by hand; every line comes from a paid research job or panel answer read from Ethereum.</p>
+          <p>About: a test. Payments go to IMD and are not refunded. Every line comes from a paid job or panel answer on Ethereum.</p>
           <p>
             For agents: <a href="./agents.md">agents.md</a> lists the Intake call, the exact bodies and the read routes.
           </p>

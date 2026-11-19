@@ -28,8 +28,8 @@ export function researchBody() {
 /**
  * An oracle body. It carries no "tag": the Intake refused one with body_invalid, Unrecognized key "tag"
  * (tx 0xadda56ad…d8df). Exactly these keys, in this order: v, question, chainId, window, answerType,
- * evidence (only when "panel"), panelSize, quorum, validForSeconds. `window` and `evidence: "panel"`
- * are what IMD's free check drafted for these questions.
+ * evidence ("panel" or "chain"), panelSize, quorum, validForSeconds. These are byte for byte the requests
+ * IMD's free check drafted for the three templates on 2026-11-19 (tests/fixtures/drafted-templates.txt).
  */
 export function oracleBody(question: string, evidence: "chain" | "panel", chainId = 1) {
   return {
@@ -38,7 +38,7 @@ export function oracleBody(question: string, evidence: "chain" | "panel", chainI
     chainId,
     window: { hours: 24 },
     answerType: "bool",
-    ...(evidence === "panel" ? { evidence: "panel" } : {}),
+    evidence,
     panelSize: 5,
     quorum: 4,
     validForSeconds: 86400,
