@@ -34,11 +34,11 @@ const check = (name, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? `: ${detail}` : ""}`);
 };
 
-const rpcAnswer = (call) => {
+const rpcAnswer = (call, fx, opts) => {
   const p = call.params ?? [];
   switch (call.method) {
     case "eth_blockNumber":
-      return "0x" + fx.head.toString(16);
+      return opts.failBlockNumber ? null : "0x" + fx.head.toString(16);
     case "eth_chainId":
       return "0x1";
     case "eth_getBlockByNumber":
@@ -57,7 +57,9 @@ const rpcAnswer = (call) => {
   }
 };
 
-async function mock(page) {
+/** opts: fx (a variant fixture), failBlockNumber (an RPC error), delayLogs (ms before eth_getLogs answers). */
+async function mock(page, opts = {}) {
+  const f = opts.fx ?? fx;
   await page.route(/^https?:\/\/(?!127\.0\.0\.1)/, async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -65,14 +67,16 @@ async function mock(page) {
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "*" } });
     if (req.method() === "POST" && (req.postData() ?? "").includes("jsonrpc")) {
       const body = JSON.parse(req.postData());
+      if (opts.delayLogs && (Array.isArray(body) ? body : [body]).some((c) => c.method === "eth_getLogs")) await new Promise((r) => setTimeout(r, opts.delayLogs));
       const one = (c) => {
-        const r = rpcAnswer(c);
+        const r = rpcAnswer(c, f, opts);
         return r === null ? { jsonrpc: "2.0", id: c.id, error: { code: -32000, message: "not in fixture" } } : { jsonrpc: "2.0", id: c.id, result: r };
       };
       return json(Array.isArray(body) ? body.map(one) : one(body));
     }
     if (url.hostname === "api.imd.fun") {
       let m;
+      const fx = f;
       if ((m = /^\/intake\/1\/(0x[0-9a-f]+)$/.exec(url.pathname))) return json(fx.intake[m[1]] ?? { entries: [] });
       if ((m = /^\/jobs\/([^/]+)\/result$/.exec(url.pathname))) return fx.results[m[1]] ? json(fx.results[m[1]]) : json({}, 404);
       if ((m = /^\/artifacts\/([0-9a-f]{64})$/.exec(url.pathname)))
@@ -109,28 +113,41 @@ try {
     check(`${W} accepted edit is the summary, in short paragraphs, marked who edited it`, (await page.locator(".summary .prose").count()) === 2 && /Edited by 0x0085…059e, checked by a research job/.test(await page.locator(".summary").innerText()));
     check(`${W} Checked by a panel shows on Overview`, /Checked by a panel/.test(await page.locator("main").innerText()));
     if (width === 390) {
-      const btn = await page.getByRole("button", { name: "Rebuild the page" }).boundingBox();
+      const btn = await page.getByRole("link", { name: "Rebuild the page" }).boundingBox();
       check(`${W} the main action is on the first screen`, btn && btn.y + btn.height < 900);
+      check(`${W} Overview's Rebuild is a link to the Contribute card, not a dialog`, (await page.getByRole("link", { name: "Rebuild the page" }).getAttribute("href")) === "#rebuild");
+      check(`${W} the summary note is short`, /Not itself a checked line\. Dots open supporting lines\./.test(await page.locator(".summary .small").innerText()));
+      check(`${W} the contribution card has no helper paragraph`, (await page.locator(".card:has(h2:text('Help build this record')) p").count()) === 0);
+      // An accepted sentence resting on the page's L1 opens that line; a supported_by_source sentence whose
+      // own line is also called L1 opens the edit's line, not the page's.
+      const firstHref = await page.locator(".summary .prose").first().locator(".sdot").first().getAttribute("href");
+      check(`${W} a supported sentence's dot opens the page line it names`, firstHref === "#line-L1", firstHref);
     }
     // A dot opens its lines in Record.
     await page.locator(".summary .sdot.kind-claim").last().click();
     await page.waitForSelector('.tabs a[aria-current="page"]:has-text("Record")');
     await page.waitForTimeout(200);
     const hash = await page.evaluate(() => location.hash);
-    check(`${W} a summary dot opens its line in the Record tab`, /^#line-0x.*E9$/.test(hash) && (await page.locator(`li.row[id="${hash.slice(1)}"] .row-toggle`).getAttribute("aria-expanded")) === "true", hash);
+    const opened = page.locator(`li.row[id="${hash.slice(1)}"]`);
+    check(`${W} a supported_by_source dot opens the edit's own line, not page L1`, /^#line-0x[0-9a-f]+-L1$/.test(hash) && (await opened.locator(".row-toggle").getAttribute("aria-expanded")) === "true" && /Seats cost 1 ETH\./.test(await opened.innerText()), hash);
     // Record
     check(`${W} one facts table, under On chain`, (await page.locator(".fact-table").count()) === 1 && (await page.locator(".card:has(.fact-table) h2").innerText()) === "On chain");
-    check(`${W} fact row shows name, value with unit, chain and block`, /Seat supply[\s\S]*2,000 seats[\s\S]*Ethereum, block 26,446,000/.test(await page.locator(".fact-table").innerText()));
-    const conf = page.locator(".settled-confirms");
-    const contra = page.locator(".settled-contradicts");
+    check(`${W} fact row reads the chain as whole words and the hex block from the re-run`, /Seat supply[\s\S]*2,000 seats[\s\S]*Ethereum, block 26,445,600/.test(await page.locator(".fact-table").innerText()), await page.locator(".fact-table").innerText());
+    check(`${W} a fact row's links show while it is closed`, /Confirmed by: The docs price a job at 0\.5 IMD = true, 5 of 5/.test(await page.locator(".fact-table .settled-confirms").innerText()));
+    const conf = page.locator("li.row .settled-confirms");
+    const contra = page.locator("li.row .settled-contradicts");
     check(`${W} Confirmed by (green) and Contradicted by (red) under the linked line`, /Confirmed by: The seat collection has 2,000 tokens\./.test(await conf.innerText()) && /Contradicted by: The docs price a job at 0\.5 IMD = true, 5 of 5/.test(await contra.innerText()));
     const colors = await page.evaluate(() => [getComputedStyle(document.querySelector(".settled-confirms")).color, getComputedStyle(document.querySelector(".settled-contradicts")).color]);
     check(`${W} link colours`, colors[0] === "rgb(20, 108, 54)" && colors[1] === "rgb(161, 35, 27)", colors.join(" "));
     await conf.locator("a").click();
     await page.waitForTimeout(200);
     check(`${W} Confirmed by opens the proof line`, (await page.locator("tr#line-L2 .row-toggle").getAttribute("aria-expanded")) === "true");
+    // The claim's checked detail no longer says nobody confirmed it; its link notes say what did.
+    const claimRow = page.locator("li.row", { hasText: "A post says a job costs 5 IMD." });
+    await claimRow.locator(".row-toggle").click();
+    check(`${W} an expanded claim with links does not say nobody confirmed it`, !/Nobody has confirmed it/.test(await claimRow.innerText()) && /Confirmed by/.test(await claimRow.innerText()));
     check(`${W} accounting warning lists the unaccounted line`, /1 earlier line is unaccounted for[\s\S]*F2:E2 Old source two lost/.test(await page.locator(".warn-box").innerText()));
-    check(`${W} Dropped in the last rebuild is closed with reasons`, (await page.locator("details.dropped").getAttribute("open")) === null && /F2:E1x not about the subject/.test(await page.locator("details.dropped").textContent()));
+    check(`${W} Dropped in the last rebuild is closed, with each line's text and reason`, (await page.locator("details.dropped").getAttribute("open")) === null && /F2:E1x: not about the subject/.test(await page.locator("details.dropped").textContent()) && /F1:L4 “Old four”: duplicate of L1/.test(await page.locator("details.dropped").textContent()));
     check(`${W} Not known yet is on Record`, /Not known yet/.test(await page.locator("main").innerText()));
     check(`${W} added-source and edit lines join the record`, /A blog says IMD launched in 2026\./.test(await page.locator("main").innerText()) && /Seats cost 1 ETH\./.test(await page.locator("main").innerText()));
     check(`${W} folded results (the old sources line) are not shown`, !/Old source one/.test(await page.locator("main").innerText()));
@@ -149,10 +166,13 @@ try {
     await page.waitForSelector(".verdicts");
     const act = await page.locator("#activity").innerText();
     check(`${W} Activity lists each edit sentence with its verdict and reason`, /supported by the record\s*IMD is a swarm of agents\./.test(act) && /not supported\s*It is the best swarm\.\s*Praise is always unsupported\./.test(act) && /supported by a new source/.test(act));
-    check(`${W} Activity names rebuilds and what is shown`, /Page rebuild/.test(act) && /Replaced by a newer page/.test(act) && /Folded into a newer page/.test(act) && /Shown now, on top of the page/.test(act));
+    check(`${W} Activity names rebuilds and what is shown`, /Page rebuild/.test(act) && /Replaced by a newer page/.test(act) && /Shown now, on top of the page/.test(act));
+    check(`${W} an earlier source the rebuild did not fully account for is not called folded in`, /Completed before the page shown/.test(act) && !/Folded into/.test(act) && /2 lines in result/.test(act));
+    check(`${W} an accepted verdict links the line that backs it`, /supported by the record\s*IMD is a swarm of agents\.\s*Backed by IMD is a swarm of agents\./.test(act) && (await page.locator('.verdicts a[href="#line-L1"]').count()) === 1);
     // Contribute: rebuild body
     await page.evaluate(() => (location.hash = "#contribute"));
     await page.locator("#rebuild").getByRole("button", { name: "Rebuild the page" }).click();
+    await page.waitForSelector("pre.body");
     const body = await page.locator("pre.body").innerText();
     const fh = Object.keys(fx.results).length && [fx.page2, fx.src2, fx.edit];
     check(`${W} rebuild body: kind add, page.json, <PRIOR> = shown page, then later results, then panel answers`, body.includes('"kind": "add"') && body.includes("artifacts/page.json") && body.includes(`Start from the earlier results: [F1] https://api.imd.fun/artifacts/${fh[0]}; [F2] https://api.imd.fun/artifacts/${fh[1]}; [F3] https://api.imd.fun/artifacts/${fh[2]}; [A1] The docs price a job at 0.5 IMD = true, 5 of 5, https://explorer.imd.fun/jobs/job-6. Fetch each file.`));
@@ -165,6 +185,16 @@ try {
     check(`${W} over 1,500 characters is flagged`, /1,501 of 1,500 characters/.test(await page.locator("#edit-count").innerText()) && (await page.locator("#edit-count").getAttribute("class")) === "error");
     await page.locator("#suggest-edit").getByRole("button", { name: "Review the edit job" }).click();
     check(`${W} an over-long edit does not open the dialog`, (await page.getByRole("dialog").count()) === 0);
+    await ta.fill("IMD runs jobs.");
+    await page.locator("#suggest-edit").getByRole("button", { name: "Review the edit job" }).click();
+    check(`${W} a short complete sentence opens the review`, (await page.getByRole("dialog").count()) === 1);
+    await page.keyboard.press("Escape");
+    await ta.fill("The string <PRIOR> is literal and <URLS> is also literal.");
+    await page.locator("#edit-links").fill("https://imd.fun/docs/");
+    await page.locator("#suggest-edit").getByRole("button", { name: "Review the edit job" }).click();
+    const lit = await page.locator("pre.body").innerText();
+    check(`${W} literal <PRIOR> and <URLS> in the text stay literal`, lit.includes("Proposed text: The string <PRIOR> is literal and <URLS> is also literal.. The record so far: [F1] https://api.imd.fun/artifacts/") && lit.includes("Extra sources from the visitor: [1] https://imd.fun/docs/."));
+    await page.keyboard.press("Escape");
     await ta.fill("IMD is a swarm of agents. It has 2,000 seats.");
     await page.locator("#edit-links").fill("https://imd.fun/docs/\nhttp://bad.example\n");
     check(`${W} edit links follow the Add sources rules`, /Left out, not an https link/.test(await page.locator("#suggest-edit").innerText()));
@@ -186,9 +216,65 @@ try {
       if (t === "record") await page.screenshot({ path: join(out, `${width}-record.png`), fullPage: true });
       check(`${W} no horizontal scroll on ${t}`, over <= 0, `${over}px`);
     }
-    const tabsFit = await page.evaluate(() => { const n = document.querySelector(".tabs"); return n.scrollWidth - n.clientWidth; });
-    check(`${W} all five tabs fit without scrolling the tab bar`, width < 390 || tabsFit <= 0, `${tabsFit}px`);
+    const tabsFit = await page.evaluate(() => {
+      const n = document.querySelector(".tabs");
+      const box = n.getBoundingClientRect();
+      const links = [...n.querySelectorAll("a")].map((a) => a.getBoundingClientRect());
+      return { over: n.scrollWidth - n.clientWidth, clipped: links.filter((r) => r.left < box.left - 0.5 || r.right > box.right + 0.5).length, short: links.filter((r) => r.height < 44).length };
+    });
+    check(`${W} all five tab labels are fully visible, 44px tall, with no scrolling tab bar`, tabsFit.over <= 0 && tabsFit.clipped === 0 && tabsFit.short === 0, JSON.stringify(tabsFit));
     check(`${W} no console errors`, errors.length === 0, errors.slice(0, 3).join(" | "));
+    await ctx.close();
+  }
+  // Scenarios at 390 wide, one context each.
+  const at390 = async (opts, url = base) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await ctx.newPage();
+    await mock(page, opts);
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(url);
+    return { ctx, page, errors };
+  };
+  {
+    // A malformed fragment still loads Overview.
+    const { ctx, page, errors } = await at390({}, `${base}#%`);
+    const ok = await page.waitForSelector("h1", { timeout: 20000 }).then(() => true, () => false);
+    check("390: #% loads Overview", ok && (await page.locator('.tabs a[aria-current="page"]').innerText()) === "Overview" && errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  }
+  {
+    // While the chain read is slow, Contribute's rebuild waits; once loaded it names F1-F3 and A1.
+    const { ctx, page } = await at390({ delayLogs: 2000 }, `${base}#rebuild`);
+    const btn = page.locator("#rebuild").getByRole("button");
+    check("390: rebuild cannot be reviewed while the record is loading", (await btn.isDisabled()) && /Reading the record/.test(await btn.innerText()));
+    await page.waitForSelector("#rebuild button:not([disabled])", { timeout: 30000 });
+    await btn.click();
+    const body = await page.locator("pre.body").innerText();
+    check("390: the rebuild reviewed after loading names F1-F3 and A1", /\[F1\][\s\S]*\[F2\][\s\S]*\[F3\][\s\S]*\[A1\]/.test(body) && !/earlier results: none/.test(body));
+    await ctx.close();
+  }
+  {
+    // A failed chain read never offers the empty prior.
+    const { ctx, page } = await at390({ failBlockNumber: true }, `${base}#contribute`);
+    await page.waitForSelector("#rebuild .warn", { timeout: 30000 }).catch(() => {});
+    const btn = page.locator("#rebuild").getByRole("button", { name: /Rebuild|Record|Reading/ });
+    check("390: after an RPC error, rebuild stays disabled and Refresh is offered", (await btn.isDisabled()) && (await page.locator("#rebuild").getByRole("button", { name: "Refresh" }).count()) === 1, await page.locator("#rebuild").innerText());
+    await page.locator("#edit-text").fill("IMD runs jobs.");
+    await page.locator("#suggest-edit").getByRole("button", { name: "Review the edit job" }).click();
+    check("390: after an RPC error, the edit is not reviewed either", (await page.getByRole("dialog").count()) === 0);
+    await ctx.close();
+  }
+  {
+    // No page job: the accepted edit is still the summary on Overview.
+    const pageIds = new Set([1, 3].map((n) => "0x" + n.toString(16).padStart(64, "0")));
+    const v = { ...fx, requests: fx.requests.filter((r) => !pageIds.has(r.topics[1])), completions: fx.completions.filter((c) => !pageIds.has(c.topics[1])) };
+    const { ctx, page } = await at390({ fx: v });
+    await page.waitForSelector(".summary", { timeout: 30000 }).catch(() => {});
+    const main = await page.locator("main").innerText();
+    check("390: with no page, Overview says No page yet and still shows the accepted edit", /No page yet/.test(main) && /Run a rebuild to publish the first record\./.test(main) && (await page.locator(".summary .prose").count()) === 2 && /Edited by/.test(main), main.slice(0, 300));
+    check("390: with no page, the supported sentence has no dot rather than the edit's own same-id line", (await page.locator(".summary .prose").first().locator(".sdot").count()) === 0 && (await page.locator(".summary .prose").nth(1).locator(".sdot.kind-claim").count()) === 1);
+    await page.screenshot({ path: join(out, "390-no-page.png") });
     await ctx.close();
   }
 } finally {

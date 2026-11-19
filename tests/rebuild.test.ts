@@ -150,8 +150,8 @@ describe("page keys from a rebuild", () => {
     const f1 = lineIdsOf(JSON.stringify({ lines: [{ id: "L3", text: "a" }, { id: "L4", text: "b" }, { id: "L5", text: "c" }, { id: "L6", text: "lost" }] }));
     const f2 = lineIdsOf(JSON.stringify({ lines: [{ id: "L1", text: "d" }, { id: "L2", text: "also lost" }] }));
     expect(unaccounted(page, [{ n: 1, lines: f1 }, { n: 2, lines: f2 }])).toEqual([
-      { ref: "F1:L6", text: "lost" },
-      { ref: "F2:L2", text: "also lost" },
+      { ref: "F1:L6", n: 1, text: "lost" },
+      { ref: "F2:L2", n: 2, text: "also lost" },
     ]);
     expect(lineIdsOf("not json")).toEqual([]);
   });
@@ -162,9 +162,13 @@ describe("page keys from a rebuild", () => {
 
 describe("tabs", () => {
   it("old links open the right tab", async () => {
-    // routeOf lives in App.tsx, which imports wagmi; read its table from the source instead of importing it.
-    const src = readFileSync("src/App.tsx", "utf8");
-    for (const s of ['if (h === "actions") return { tab: "contribute"', 'h === "add-sources"', 'if (h.startsWith("line-")', '{ id: "overview", label: "Overview" }', '{ id: "contribute", label: "Contribute" }'])
-      expect(src).toContain(s);
+    const { routeOf, TABS } = await import("../src/route");
+    expect(TABS.map((t) => t.label)).toEqual(["Overview", "Record", "Sources", "Activity", "Contribute"]);
+    expect(routeOf("")).toEqual({ tab: "overview", target: null });
+    expect(routeOf("#actions")).toEqual({ tab: "contribute", target: null });
+    expect(routeOf("#add-sources")).toEqual({ tab: "contribute", target: "add-sources" });
+    expect(routeOf("#activity")).toEqual({ tab: "activity", target: null });
+    expect(routeOf("#rebuild")).toEqual({ tab: "contribute", target: "rebuild" });
+    expect(routeOf("#line-L2")).toEqual({ tab: "record", target: "line-L2" });
   });
 });

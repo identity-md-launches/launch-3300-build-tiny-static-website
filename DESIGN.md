@@ -44,27 +44,37 @@ No tracked capitals, no eyebrows above headings.
   underline on the active one. Old links `#actions`, `#add-sources` and `#activity` open Contribute, Contribute
   (scrolled to Add sources) and Activity; `#line-…`, `#source-N` and `#panel-…` open Record, Sources and Overview
   at that item. After a link the tab's heading or the target takes focus.
-- **Overview**: h1 name, `one_line` as the lead, then Rebuild the page (primary), Contribute and the price.
+- **Overview**: h1 name, `one_line` as the lead (fallback "Public sources and checks for imd.fun."), then
+  Rebuild the page (primary, a link to the Contribute card `#rebuild`), Contribute and the price. With no page,
+  a "No page yet" card ("Run a rebuild to publish the first record.") and, if an edit was accepted, the summary.
   The **key facts box** is a bordered `aside` with a two-column table (label in secondary 13px, value linked
   when it has an http(s) url), each row with a small "line"/"N lines" link that opens those lines in Record.
   The **summary** is short paragraphs (by the job's `paragraph`, else three sentences each); after each sentence
   one 9px dot per kind among its lines inside a 24px round target; a dot opens those lines in Record. An
-  **Edit** button sits beside the "Summary" heading. The note under it says the summary is not a checked line
-  and, when an accepted edit is shown, "Edited by <payer>, checked by a research job". Then "Checked by a panel"
-  and a "Help build this record" card linking to the three paid actions.
+  **Edit** button sits beside the "Summary" heading. The note under it reads "Written from Record by a research
+  job. Not itself a checked line. Dots open supporting lines.", or "Edited by <payer>, checked by a research
+  job. …" for an accepted edit. Then "Checked by a panel" and a "Help build this record" card with just its
+  three links to the paid actions.
 - **Record**: the accounting warning (orange left rule on orange-50, "N earlier lines are unaccounted for" and
-  the list), a closed `details` "Dropped in the last rebuild" with each id and reason, the kind filter (All,
+  the list), a closed `details` "Dropped in the last rebuild" with each reference, the earlier line's text in
+  quotes and the reason, the kind filter (All,
   Proof, Statement, Claim with counts; pressed state is dark fill), then one card per section. "On chain"
   starts with the one **facts table** (name, value with unit, chain and block) holding every proof line with
-  `fact`; rows open in place. Each line row has a chevron, the sentence, a kind marker and the speaker, its
+  `fact`; rows open in place, and a row with links has its "Confirmed by"/"Contradicted by" notes in a row of
+  their own under it, shown while closed. A claim's "Checked" detail ends with who said it and where; the link
+  notes say what settled it. Each line row has a chevron, the sentence, a kind marker and the speaker, its
   source number chips, and under it "Confirmed by: …" in green or "Contradicted by: …" in red, each a link to
   the linked line or panel answer. Then "Not known yet".
 - **Sources**: channels with tie words and their key, then one numbered source list.
 - **Activity**: one card per request, newest first: state pill, time, what it was (Page rebuild, Sources, Edit,
-  Question), whether it is shown now or folded into a newer page, refusal reasons, panel answers, per-source
-  outcomes, and for edits each sentence with a verdict pill (supported by the record, supported by a new source,
-  not supported), any corrected wording and the reason. Links to the job and the result file.
-- **Contribute**: Rebuild the page (with the filled objective under "Read the objective"), Confirm a fact,
+  Question), whether it is shown now, replaced, folded into the page shown (only when that rebuild's accounting
+  covers it) or completed before the page shown, refusal reasons, panel answers, per-source outcomes, "N lines
+  added to the record" or "N lines in result", and for edits every sentence with a verdict pill (supported by
+  the record, supported by a new source, not supported), any corrected wording, the reason and "Backed by"
+  links to the lines it cites. Links to the job and the result file.
+- **Contribute**: Rebuild the page (with the filled objective under "Read the objective"; until the chain,
+  the page shown, later results and panel answers are all read, the button is disabled and a status line says
+  why, with a Refresh link after a failure), Confirm a fact,
   Add sources, and Suggest an edit (summary textarea prefilled with the current summary, a live
   "N of 1,500 characters" count that turns red over the limit, an optional links box under the Add sources
   rules, up to 5). Every action opens the same pay dialog, which shows amount, Intake, action id and the full
@@ -74,8 +84,9 @@ No tracked capitals, no eyebrows above headings.
 ## Responsive behaviour
 
 - Content column at most 60rem (960px), 16px side padding.
-- Below 512px the tabs use 14px and spread across the width; at 320px the tab bar scrolls sideways inside
-  itself (the page does not).
+- The tab bar wraps (`flex-wrap: wrap`) instead of scrolling: below 512px the tabs use 14px, 1px side padding
+  and spread across the width; where the five labels do not fit (320px, or wide fallback fonts) the last tab
+  moves to a second row. Every tab keeps its full label and a 44px target.
 - From 832px the Overview is two columns: summary on the left, the key facts box (20rem) on the right; below
   that the key facts box sits above the summary.
 - From 832px Contribute's cards are two columns.

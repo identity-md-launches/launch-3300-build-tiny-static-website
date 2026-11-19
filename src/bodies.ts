@@ -130,7 +130,20 @@ export const channelList = (channels: ChannelTie[]) => (channels.length ? channe
 
 /** <MAIN> is the record's main contract address; "not known" when the record names none. */
 export function sourceObjective(urls: string[], channels: ChannelTie[], main: string) {
-  return SOURCE_TEMPLATE.replace("<URLS>", () => numberLinks(urls)).replace("<CHANNELS>", () => channelList(channels)).replace("<MAIN>", () => main || "not known");
+  return fillTemplate(SOURCE_TEMPLATE, { URLS: numberLinks(urls), CHANNELS: channelList(channels), MAIN: main || "not known" });
+}
+
+/**
+ * Fills every <NAME> placeholder in one pass over the original template, so a value that happens to contain
+ * "<PRIOR>" or "<URLS>" is inserted as it is and never filled in again. Each placeholder is filled once.
+ */
+export function fillTemplate(template: string, values: Record<string, string>): string {
+  const used = new Set<string>();
+  return template.replace(/<([A-Z]+)>/g, (whole, name: string) => {
+    if (!(name in values) || used.has(name)) return whole;
+    used.add(name);
+    return values[name]!;
+  });
 }
 
 export function sourceBody(urls: string[], channels: ChannelTie[], main: string) {
@@ -237,7 +250,9 @@ export function priorText(p: Prior): string {
 export function parsePrior(objective: unknown): { files: { n: number; url: string; hash: string }[]; answers: { n: number; text: string; url: string }[] } {
   const out = { files: [] as { n: number; url: string; hash: string }[], answers: [] as { n: number; text: string; url: string }[] };
   if (typeof objective !== "string") return out;
-  const m = /(?:Start from the earlier results: |The record so far: )([\s\S]*?)\. (?:Fetch each file\.|Extra sources from the visitor:)/.exec(objective);
+  // From the last marker: in an edit the visitor's text comes first and may quote these words.
+  const at = Math.max(...["Start from the earlier results: ", "The record so far: "].map((k) => objective.lastIndexOf(k)));
+  const m = at < 0 ? null : /^(?:Start from the earlier results: |The record so far: )([\s\S]*?)\. (?:Fetch each file\.|Extra sources from the visitor:)/.exec(objective.slice(at));
   if (!m || m[1] === "none") return out;
   const re = /\[(F|A)(\d+)\] ([\s\S]*?)(?=; \[[FA]\d+\] |$)/g;
   for (const x of m[1]!.matchAll(re)) {
@@ -257,7 +272,7 @@ export function parsePrior(objective: unknown): { files: { n: number; url: strin
 /** The objective must stay under this many characters, as for Add sources. */
 export const MAX_OBJECTIVE = 7500;
 
-export const rebuildObjective = (p: Prior) => REBUILD_TEMPLATE.replace("<PRIOR>", () => priorText(p));
+export const rebuildObjective = (p: Prior) => fillTemplate(REBUILD_TEMPLATE, { PRIOR: priorText(p) });
 
 /** "Rebuild the page": the research action and tag, with the earlier results filled in. */
 export function rebuildBody(p: Prior) {
@@ -275,9 +290,7 @@ export const EDIT_MAX_TEXT = 1500;
 export const EDIT_MAX_LINKS = 5;
 
 export function editObjective(text: string, p: Prior, urls: string[]) {
-  return EDIT_TEMPLATE.replace("<TEXT>", () => text)
-    .replace("<PRIOR>", () => priorText(p))
-    .replace("<URLS>", () => (urls.length ? numberLinks(urls) : "none"));
+  return fillTemplate(EDIT_TEMPLATE, { TEXT: text, PRIOR: priorText(p), URLS: urls.length ? numberLinks(urls) : "none" });
 }
 
 export function editBody(text: string, p: Prior, urls: string[]) {

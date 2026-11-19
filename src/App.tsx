@@ -27,6 +27,7 @@ import { ConnectSheet, config } from "./wallet";
 import { rememberSent, useActivity } from "./useActivity";
 import { useRecordModel, type RecordModel } from "./model";
 import { lineAnchor } from "./format";
+import { TABS, routeOf } from "./route";
 
 type RecordState = RecordModel;
 const actionId = (a: string) => pad(stringToHex(a), { dir: "right", size: 32 });
@@ -123,9 +124,29 @@ function rebuildAsk(rec: RecordState): Ask {
   };
 }
 
-function RebuildCard({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: RecordState; price: string }) {
+/** Why <PRIOR> is not ready yet, with Refresh after a failed read. Nothing can be reviewed until it is. */
+function SnapshotNote({ rec, onRefresh, refreshing }: { rec: RecordState; onRefresh: () => void; refreshing: boolean }) {
+  const s = rec.snapshot;
+  if (s.ok) return null;
+  return (
+    <p className={s.loading ? "small" : "warn"} role="status">
+      {s.why}
+      {!s.loading && (
+        <>
+          {" "}
+          <button type="button" className="linklike" onClick={onRefresh} disabled={refreshing}>
+            {refreshing ? "Reading chain…" : "Refresh"}
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
+function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: Ask) => void; rec: RecordState; price: string; onRefresh: () => void; refreshing: boolean }) {
   const ask = rebuildAsk(rec);
   const prior = priorText(rec.prior);
+  const ready = rec.snapshot.ok;
   return (
     <div className="card" id="rebuild">
       <h3>Rebuild the page</h3>
@@ -133,19 +154,25 @@ function RebuildCard({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Reco
         One page job starts from the page shown now and every sources and edit result completed after it, carries each line forward or says why it dropped it, merges
         repeats, and then looks for what is new.
       </p>
-      <p className="small">
-        {prior === "none"
-          ? "There is no page yet, so this job starts from nothing."
-          : `It is given ${rec.prior.files.length} earlier file${rec.prior.files.length === 1 ? "" : "s"} and ${rec.prior.answers.length} panel answer${rec.prior.answers.length === 1 ? "" : "s"}.`}
-      </p>
-      <details>
-        <summary>Read the objective</summary>
-        <p className="objective">{String(ask.body.objective)}</p>
-      </details>
-      {ask.warning && <p className="warn">{ask.warning}</p>}
+      {ready ? (
+        <>
+          <p className="small">
+            {prior === "none"
+              ? "There is no page yet, so this job starts from nothing."
+              : `It is given ${rec.prior.files.length} earlier file${rec.prior.files.length === 1 ? "" : "s"} and ${rec.prior.answers.length} panel answer${rec.prior.answers.length === 1 ? "" : "s"}.`}
+          </p>
+          <details>
+            <summary>Read the objective</summary>
+            <p className="objective">{String(ask.body.objective)}</p>
+          </details>
+        </>
+      ) : (
+        <SnapshotNote rec={rec} onRefresh={onRefresh} refreshing={refreshing} />
+      )}
+      {ready && ask.warning && <p className="warn">{ask.warning}</p>}
       <div className="row-actions">
-        <button className="btn btn-primary" onClick={() => (rec.ready ? onAsk(ask) : undefined)} disabled={!rec.ready}>
-          {rec.ready ? "Rebuild the page" : "Reading the record…"}
+        <button className="btn btn-primary" onClick={() => (ready ? onAsk(ask) : undefined)} disabled={!ready}>
+          {ready ? "Rebuild the page" : rec.snapshot.loading ? "Reading the record…" : "Record not read"}
         </button>
         <span className="price mono">{price}</span>
       </div>
@@ -165,7 +192,7 @@ function summaryText(rec: RecordState) {
   return paras.map((p) => p.join(" ")).join("\n\n");
 }
 
-function SuggestEdit({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: RecordState; price: string }) {
+function SuggestEdit({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: Ask) => void; rec: RecordState; price: string; onRefresh: () => void; refreshing: boolean }) {
   const current = useMemo(() => summaryText(rec), [rec.summary]); // eslint-disable-line react-hooks/exhaustive-deps
   const [text, setText] = useState<string | null>(null);
   const [links, setLinks] = useState("");
@@ -176,9 +203,9 @@ function SuggestEdit({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Reco
   const over = clean.length > EDIT_MAX_TEXT;
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rec.ready) return setErr("Wait until the record has loaded, so the edit can name it.");
-    if (clean.length < 20) {
-      setErr("Write at least one full sentence.");
+    if (!rec.snapshot.ok) return setErr(rec.snapshot.loading ? "Wait until the record has loaded, so the edit can name it." : "The record could not be read in full, so the edit cannot name it. Refresh and try again.");
+    if (clean.length === 0) {
+      setErr("Write the summary text you propose.");
       document.getElementById("edit-text")?.focus();
       return;
     }
@@ -198,7 +225,7 @@ function SuggestEdit({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Reco
       <p>Change the summary as you like. One research job checks it sentence by sentence against the record and your links; what it accepts becomes the summary shown.</p>
       <form className="form" onSubmit={submit} noValidate>
         <label htmlFor="edit-text">Summary text</label>
-        <textarea id="edit-text" name="summary" rows={9} value={value} onChange={(e) => setText(e.target.value)} aria-invalid={over || (!!err && clean.length < 20)} aria-describedby="edit-count" />
+        <textarea id="edit-text" name="summary" rows={9} value={value} onChange={(e) => setText(e.target.value)} aria-invalid={over || (!!err && clean.length === 0)} aria-describedby="edit-count" />
         <p id="edit-count" className={over ? "error" : "small"} aria-live="polite">
           {clean.length.toLocaleString("en-US")} of {EDIT_MAX_TEXT.toLocaleString("en-US")} characters
           {text !== null && text !== current ? (
@@ -225,6 +252,7 @@ function SuggestEdit({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Reco
           </ul>
         )}
         {err && <p className="error" role="alert">{err}</p>}
+        <SnapshotNote rec={rec} onRefresh={onRefresh} refreshing={refreshing} />
         <div className="row-actions">
           <button className="btn" type="submit">Review the edit job</button>
           <span className="price mono">{price}</span>
@@ -234,7 +262,7 @@ function SuggestEdit({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Reco
   );
 }
 
-function ContributeTab({ onAsk, researchPrice, rec }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState }) {
+function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState; onRefresh: () => void; refreshing: boolean }) {
   const oraclePrice = usePrice(ACTIONS.oracle);
   const [p4, setP4] = useState({ url: "", handle: "", text: "" });
   const [p4Err, setP4Err] = useState<ReturnType<typeof validateP4>>({});
@@ -258,7 +286,7 @@ function ContributeTab({ onAsk, researchPrice, rec }: { onAsk: (a: Ask) => void;
       </h1>
       <p className="lead">Every action is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
       <div className="grid">
-        <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} />
+        <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} />
 
         <div className="card" id="confirm">
           <h3>Confirm a fact</h3>
@@ -295,7 +323,7 @@ function ContributeTab({ onAsk, researchPrice, rec }: { onAsk: (a: Ask) => void;
         </div>
 
         <AddSources onAsk={onAsk} rec={rec} price={researchPrice} />
-        <SuggestEdit onAsk={onAsk} rec={rec} price={researchPrice} />
+        <SuggestEdit onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} />
       </div>
     </section>
   );
@@ -442,27 +470,6 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
 }
 /* ---------- Tabs, with their own links ---------- */
 
-const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "record", label: "Record" },
-  { id: "sources", label: "Sources" },
-  { id: "activity", label: "Activity" },
-  { id: "contribute", label: "Contribute" },
-] as const;
-type Tab = (typeof TABS)[number]["id"];
-
-/** Which tab a link opens, and the element inside it. Old links (#actions, #add-sources, #activity) still work. */
-export function routeOf(hash: string): { tab: Tab; target: string | null } {
-  const h = decodeURIComponent(hash.replace(/^#/, ""));
-  if (TABS.some((t) => t.id === h)) return { tab: h as Tab, target: null };
-  if (h === "actions") return { tab: "contribute", target: null };
-  if (h === "add-sources" || h === "suggest-edit" || h === "rebuild" || h === "confirm") return { tab: "contribute", target: h };
-  if (h.startsWith("line-") || h === "dropped" || h === "unaccounted") return { tab: "record", target: h };
-  if (h.startsWith("source-")) return { tab: "sources", target: h };
-  if (h.startsWith("panel-")) return { tab: "overview", target: h };
-  return { tab: "overview", target: null };
-}
-
 function useRoute() {
   const [route, setRoute] = useState(() => ({ ...routeOf(location.hash), n: 0 }));
   useEffect(() => {
@@ -477,7 +484,7 @@ export default function App() {
   const activity = useActivity();
   const [ask, setAsk] = useState<Ask | null>(null);
   const researchPrice = usePrice(ACTIONS.research);
-  const rec = useRecordModel(activity.items);
+  const rec = useRecordModel(activity.items, activity.error);
   const route = useRoute();
   const [filter, setFilter] = useState<Filter>("all");
   const [openSet, setOpenSet] = useState<Set<string>>(() => new Set());
@@ -518,7 +525,7 @@ export default function App() {
     }
   }, [route, lines, rec.page]);
 
-  const onRebuild = () => setAsk(rebuildAsk(rec));
+  const refresh = () => void activity.reload();
   return (
     <>
       <a className="skip" href="#root-main" onClick={(e) => { e.preventDefault(); document.getElementById("root-main")?.focus(); }}>Skip to content</a>
@@ -536,11 +543,11 @@ export default function App() {
         </nav>
       </header>
       <main id="root-main" tabIndex={-1}>
-        {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={activity.items} price={researchPrice} onRebuild={onRebuild} />}
+        {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={activity.items} price={researchPrice} />}
         {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
         {route.tab === "sources" && <SourcesTab m={rec} />}
         {route.tab === "activity" && <ActivityList {...activity} shown={rec} />}
-        {route.tab === "contribute" && <ContributeTab onAsk={setAsk} researchPrice={researchPrice} rec={rec} />}
+        {route.tab === "contribute" && <ContributeTab onAsk={setAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} />}
         <footer className="about">
           <p>About: this is a test. Payments go to IMD and are not refunded. Nobody can edit this page by hand; every line comes from a paid research job or panel answer read from Ethereum.</p>
           <p>

@@ -7,7 +7,7 @@ const sha = (s: string) => createHash("sha256").update(Buffer.from(s, "utf8")).d
 const L = Number(LAUNCH_BLOCK);
 const files: Record<string, string> = {};
 const put = (o: unknown) => { const t = JSON.stringify(o); const h = sha(t); files[h] = t; return h; };
-const page1 = put({ subject: { name: "Old" }, lines: [{ id: "L1", section: "what_it_does", text: "Old one", kind: "claim" }, { id: "L2", section: "what_it_does", text: "Old two", kind: "claim" }, { id: "L3", section: "on_chain", text: "Old three", kind: "proof" }] });
+const page1 = put({ subject: { name: "Old" }, lines: [{ id: "L1", section: "what_it_does", text: "Old one", kind: "claim" }, { id: "L2", section: "what_it_does", text: "Old two", kind: "claim" }, { id: "L3", section: "on_chain", text: "Old three", kind: "proof" }, { id: "L4", section: "history", text: "Old four", kind: "claim" }] });
 const src1 = put({ sources: [{ id: "S1", url: "https://news.example/a", publisher: "news", could_open: true, about_subject: true }], lines: [{ id: "E1", source: "S1", section: "history", text: "Old source one", kind: "claim" }, { id: "E2", source: "S1", section: "history", text: "Old source two lost", kind: "claim" }] });
 const prior = { files: [artifactUrl(page1), artifactUrl(src1)], answers: [{ title: "The docs price a job at 0.5 IMD", answer: "true", agreed: 5, size: 5, url: "https://explorer.imd.fun/jobs/job-6" }] };
 const page2 = put({
@@ -24,10 +24,10 @@ const page2 = put({
   ],
   lines: [
     { id: "L1", section: "what_it_does", text: "IMD is a swarm of agents.", kind: "statement", by: "imd.fun", sources: ["R1"], quote: "a swarm", from: ["F1:L1", "F1:L2"] },
-    { id: "L2", section: "money", text: "The seat collection has 2,000 tokens.", kind: "proof", sources: ["R2"], rerun: "totalSupply() on Ethereum at block 26,446,000", fact: { name: "Seat supply", value: "2,000", unit: "seats" }, from: ["F1:L3"] },
+    { id: "L2", section: "money", text: "The seat collection has 2,000 tokens.", kind: "proof", sources: ["R2"], rerun: "Call totalSupply against the database index on Ethereum at block 0x1938720.", fact: { name: "Seat supply", value: "2,000", unit: "seats" }, from: ["F1:L3"], links: [{ type: "confirms", target: "A1" }] },
     { id: "L3", section: "money", text: "A post says a job costs 5 IMD.", kind: "claim", by: "someone", sources: ["R3"], quote: "5 IMD", from: ["F2:E1"], links: [{ type: "confirms", target: "L2" }, { type: "contradicts", target: "A1" }] },
   ],
-  dropped: [{ id: "F2:E1x", why: "not about the subject" }],
+  dropped: [{ id: "F2:E1x", why: "not about the subject" }, { id: "F1:L4", why: "duplicate of L1" }],
   sources: [{ id: "R1", ref: "https://imd.fun/" }, { id: "R2", ref: "https://etherscan.io/" }, { id: "R3", ref: "https://x.com/someone/status/1" }],
   open_questions: ["Who runs the seats?"],
 });
@@ -36,11 +36,11 @@ const edit = put({
   sentences: [
     { text: "IMD is a swarm of agents.", verdict: "supported", lines: ["L1"] },
     { text: "It is the best swarm.", verdict: "unsupported", why: "Praise is always unsupported." },
-    { text: "Seats cost 1 ETH.", verdict: "supported_by_source", lines: ["E9"] },
+    { text: "Seats cost 1 ETH.", verdict: "supported_by_source", lines: ["L1"], why: "A visitor source says so." },
   ],
-  accepted_summary: [{ text: "IMD is a swarm of agents.", lines: ["L1"], paragraph: 1 }, { text: "Seats cost 1 ETH.", lines: ["E9"], paragraph: 2 }],
+  accepted_summary: [{ text: "IMD is a swarm of agents.", lines: ["L1"], paragraph: 1 }, { text: "Seats cost 1 ETH.", lines: ["L1"], paragraph: 2 }],
   sources: [{ id: "V1", url: "https://seats.example/", publisher: "seats", could_open: true, about_subject: true }],
-  lines: [{ id: "E9", source: "V1", section: "money", text: "Seats cost 1 ETH.", kind: "claim", quote: "1 ETH" }],
+  lines: [{ id: "L1", source: "V1", section: "money", text: "Seats cost 1 ETH.", kind: "claim", quote: "1 ETH" }],
 });
 const reqs = [
   { n: 1, action: "job.open@job-1", body: researchBody(), file: ["page", page1], cb: 100 },

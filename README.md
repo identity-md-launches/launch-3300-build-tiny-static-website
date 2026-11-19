@@ -182,16 +182,32 @@ they go to the transaction on Etherscan.
   [F2] …` (every sources or edit result completed after it, oldest first) `; [A1] <question title> = <answer>,
   N of M, <request URL>; …` (every completed panel answer, oldest first). With no page yet, `none`.
 - **Suggest an edit**: `job.open@job-1`, tag kind `edit`, output `artifacts/edit.json`, objective
-  `templates/edit.txt` with the visitor's text (at most 1,500 characters), the same `<PRIOR>` and up to 5 https
-  links. From Contribute and from the Edit button beside the summary. The full body is shown before the wallet.
+  `templates/edit.txt` with the visitor's text (any non-empty text up to 1,500 characters; the job judges it),
+  the same `<PRIOR>` and up to 5 https links. `<TEXT>`, `<PRIOR>` and `<URLS>` are filled in one pass over the
+  template, so text that itself contains "<PRIOR>" stays literal. From Contribute and from the Edit button
+  beside the summary. The full body is shown before the wallet.
+- **Rebuild and edit wait for the whole record**: Overview's "Rebuild the page" is a link to the Contribute
+  card. Review stays disabled until the chain read succeeded, the page shown (with its artifact address), every
+  later result and every panel answer have been read; after a failed read the card says why and offers
+  Refresh. `<PRIOR>` = `none` only after a successful read that finds no page.
 - **What is shown**: the newest completed page result (by its `Completed` event), plus the sources and edit
-  results completed after it. Earlier ones are folded in and reachable from Activity ("Replaced by a newer
-  page", "Folded into a newer page", with links to the job and its result file). The newest such edit with an
-  `accepted_summary` becomes the summary, marked "Edited by <payer>, checked by a research job"; its lines join
-  the record like added-source lines; Activity lists each sentence with its verdict and reason.
+  results completed after it. Earlier ones stay reachable from Activity with their result file. An earlier
+  sources or edit result reads "Folded into the page shown" only when the shown rebuild was given it as an `F`
+  file and the accounting found every one of its lines carried or dropped; otherwise "Completed before the
+  page shown" and "N lines in result". The newest such edit with an `accepted_summary` becomes the summary
+  (even when no page has completed yet), marked "Edited by <payer>, checked by a research job"; its lines join
+  the record like added-source lines. Each accepted sentence's references resolve in their own scope: `F2:L14`
+  in the files the edit was given, a bare id of a `supported_by_source` sentence to the edit's own new line, a
+  bare id of a `supported` sentence to the page shown (no dot when that line is not shown). Activity lists
+  every sentence with its verdict, reason and the lines that back it.
 - **Accounting**: the site reads the `<PRIOR>` back from the shown rebuild's own request body, downloads each
   `F` file (SHA-256 checked), and warns on Record "N earlier lines are unaccounted for" for every `F<n>:<id>`
-  that is in no line's `from` and not in `dropped`. `dropped` shows in a closed "Dropped in the last rebuild".
+  that is in no line's `from` and not in `dropped`. A reference counts for the file it names; an older bare id
+  counts only when exactly one earlier file has it. `dropped` shows in a closed "Dropped in the last rebuild",
+  each with its reference, the earlier line's text and the reason.
+- **Facts table chain and block**: `fact.chain` and `fact.block` are shown as given. Otherwise they are read
+  from the re-run steps, then the line, as whole chain names or chain ids and decimal or hex block numbers, and
+  only when exactly one is named; else "Chain not given" / "block not given".
   The same `<PRIOR>` resolves `links` targets `A<n>` to the panel answer.
 
 ## Free request check, run before building
@@ -206,6 +222,10 @@ bodies generated from `src/bodies.ts` (`test/scratch/bodies.ts`, not submitted):
 | Sources: 2 links, 2 channels with ties, `<MAIN>` = `0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7` (2,123 characters) | 200, `blockers: []`, `suggestions: []`, `judged: true`, the same plan |
 | Edit: three sentences in two paragraphs, the same `<PRIOR>`, one link (1,818 characters) | 200, `blockers: []`, `suggestions: []`, `judged: true`, the same plan |
 
+Revision (same day): the template texts and the body shapes did not change, and the unit tests pin them; only
+the placeholder filling changed, which gives byte-identical bodies unless the visitor's text or a link itself
+contains a placeholder. The check was not re-run.
+
 The artifact hashes in the checked `<PRIOR>` were example values (no rebuild has run yet); the check judges
 the wording, not the files. The oracle bodies and questions did not change; the earlier results for them still
 hold (P1, P2 and P4 drafted byte for byte as sent, P3 one non-blocking `wording` suggestion), and a unit test
@@ -216,18 +236,15 @@ pins our bodies to the drafted P1 and P4 in `tests/fixtures/drafted.txt`.
 Details, the Better Interface review and its limits are in `artifacts/validation.md`.
 
 - `npm run typecheck`: exit 0.
-- `npm test`: 34 of 34 pass (22 in `tests/unit.test.ts`, 12 new in `tests/rebuild.test.ts`: rebuild template,
-  body and `<PRIOR>`, reading `<PRIOR>` back, the edit body, template and link rules, `edit.json`, `infobox`,
-  `from`, `links`, `dropped`, paragraphs, the accounting check, completion order; `agents.md` now pins the
-  rebuild and edit bodies).
+- `npm test`: 47 of 47 pass (22 in `tests/unit.test.ts`, 12 in `tests/rebuild.test.ts`, 13 in
+  `tests/revision.test.ts`: literal placeholders, short edits, prior read-back, hex blocks and whole-word chains,
+  per-file accounting and dropped text, 41 verdicts, malformed fragments).
 - `npm run build`: exit 0. `dist/` holds `index.html`, `agents.md`, `favicon.svg`, `og.png` and `assets/`, and
   `index.html` uses only `./` URLs.
-- `node tests/e2e.mjs` in headless Chromium with the fixture: 118 of 118 pass at 390, 1440 and 320 (tabs and
-  old links, key facts placement, summary dots, one facts table, Confirmed/Contradicted by, accounting warning
-  and dropped list, edit display and verdicts, rebuild and edit bodies, the 1,500-character limit, no
-  horizontal scroll, no console errors).
-- Design probe `taste.mjs` on the live chain: 15 of 16. `copy-budget` fails (104 prose words on the first
-  screen at 390, bar 60) because the brief makes the summary the default tab's main text; see
+- `node tests/e2e.mjs` in headless Chromium (Playwright chromium-headless-shell 1255) with the fixture: 147 of
+  147 pass at 390, 1440 and 320 plus four scenarios at 390 (see `artifacts/validation.md`).
+- Design probe `taste.mjs` on the live chain: 15 of 16. `copy-budget` fails (93 prose words on the first
+  screen at 390 and 1440, bars 60 and 90) because the brief makes the summary the default tab's main text; see
   `artifacts/validation.md`.
 - **Not tested here:** paying, approving and connecting (no wallet on this machine). In this sandbox's browser
   the price read through `gateway.tenderly.co` fails its CORS preflight, so the page shows "Price unavailable";

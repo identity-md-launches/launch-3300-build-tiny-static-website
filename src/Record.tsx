@@ -2,7 +2,7 @@
 import { Fragment, useEffect } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, TIE_WORDS, tieWord } from "./format";
-import { hostOf, paragraphsOf, safeHref, SECTION_TITLES, SECTIONS, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
+import { blockNumber, hostOf, paragraphsOf, safeHref, SECTION_TITLES, SECTIONS, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
 import type { RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 
@@ -55,7 +55,7 @@ function Infobox({ m, ui }: { m: RecordModel; ui: Ui }) {
       <table>
         <tbody>
           {rows.map((r, i) => {
-            const known = r.lines.filter((id) => m.resolve(id, ""));
+            const known = r.lines.filter((id) => m.resolve(id));
             return (
               <tr key={i}>
                 <th scope="row">{r.label}</th>
@@ -69,7 +69,7 @@ function Infobox({ m, ui }: { m: RecordModel; ui: Ui }) {
                         href={`#${lineAnchor(known[0]!)}`}
                         onClick={(e) => {
                           e.preventDefault();
-                          ui.openLines(known.map((id) => m.resolve(id, "")!.id));
+                          ui.openLines(known.map((id) => m.resolve(id)!.id));
                         }}
                         aria-label={`${r.label}: open the ${known.length === 1 ? "line" : `${known.length} lines`} it rests on`}
                       >
@@ -88,8 +88,7 @@ function Infobox({ m, ui }: { m: RecordModel; ui: Ui }) {
 }
 
 /** After each sentence, one small coloured dot per kind among its lines; a dot opens those lines in Record. */
-function SentenceDots({ ids, m, ui }: { ids: string[]; m: RecordModel; ui: Ui }) {
-  const lines = ids.map((id) => m.resolve(id)).filter((l): l is Line => !!l);
+export function SentenceDots({ lines, ui }: { lines: Line[]; ui: Ui }) {
   const kinds = KINDS.filter((k) => lines.some((l) => l.kind === k));
   if (!kinds.length) return null;
   return (
@@ -132,7 +131,7 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
           {p.map((s, j) => (
             <Fragment key={j}>
               {s.text}
-              <SentenceDots ids={s.lines} m={m} ui={ui} />{" "}
+              <SentenceDots lines={s.refs} ui={ui} />{" "}
             </Fragment>
           ))}
         </p>
@@ -143,9 +142,9 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
             Edited by <span className="mono">{payerName(m.edit.activity)}</span>, checked by a research job. Not itself a checked line.
           </>
         ) : (
-          "Written by the research job from the lines in Record. Not itself a checked line."
+          "Written from Record by a research job. Not itself a checked line."
         )}{" "}
-        Each dot opens the proof, statement or claim lines behind a sentence.
+        Dots open supporting lines.
       </p>
     </div>
   );
@@ -177,37 +176,34 @@ function PanelChecks({ m }: { m: RecordModel }) {
   );
 }
 
-export function OverviewTab({ m, ui, items, price, onRebuild }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; onRebuild: () => void }) {
+export function OverviewTab({ m, ui, items, price }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string }) {
   const { page, latest, error } = m;
   return (
     <section className="tab" aria-labelledby="record-title">
       <h1 id="record-title" tabIndex={-1}>{page?.name || "IMD (imd.fun)"}</h1>
-      <p className="lead">{page?.oneLine || "A public record of imd.fun. Every line shows who said it, its source and how it was checked."}</p>
+      <p className="lead">{page?.oneLine || "Public sources and checks for imd.fun."}</p>
       <div className="row-actions">
-        <button className="btn btn-primary" onClick={onRebuild}>
+        <a className="btn btn-primary" href="#rebuild">
           Rebuild the page
-        </button>
+        </a>
         <a className="btn" href="#contribute">
           Contribute
         </a>
         <span className="price mono">{price}</span>
       </div>
 
-      {!page ? (
+      {!page && (
         <div className="card empty">
           <h2>{items === null ? "Reading the record…" : latest && !error ? "Downloading the record…" : "No page yet"}</h2>
-          <p>
-            {latest && !error
-              ? "The page job finished. Downloading and checking its file…"
-              : "The record is written by the IMD swarm. Pay for one page job with Rebuild the page and its result appears here."}
-          </p>
+          <p>{latest && !error ? "The page job finished. Downloading and checking its file…" : "Run a rebuild to publish the first record."}</p>
           {error && <p className="error">Unable to read the page: {error}</p>}
         </div>
-      ) : (
-        <div className={`overview${page.infobox.length ? " has-infobox" : ""}`}>
+      )}
+      {(page || m.summary.length > 0) && (
+        <div className={`overview${page?.infobox.length ? " has-infobox" : ""}`}>
           <Infobox m={m} ui={ui} />
           <Summary m={m} ui={ui} />
-          {!m.summary.length && (
+          {page && !m.summary.length && (
             <p className="small">
               This page has no summary yet. <a href="#suggest-edit">Suggest one</a> or read the lines in <a href="#record">Record</a>.
             </p>
@@ -219,7 +215,6 @@ export function OverviewTab({ m, ui, items, price, onRebuild }: { m: RecordModel
 
       <div className="card">
         <h2>Help build this record</h2>
-        <p>Pay the swarm from your own wallet to check one fact, add sources, or propose better summary text. Every result is read back from Ethereum.</p>
         <div className="row-actions">
           <a className="btn" href="#contribute">Confirm a fact</a>
           <a className="btn" href="#add-sources">Add sources</a>
@@ -268,7 +263,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
       ? "Proof: anyone can follow the re-run steps and get the same answer."
       : line.kind === "statement"
         ? `Statement: published on ${line.channel?.label || line.channel?.url || "a channel of the subject"}, whose tie is “${tieWord(line.channel?.tie ?? "none")}”.`
-        : `Claim: said by ${line.by || "someone other than the subject"}, not on a tied channel of the subject. Nobody has confirmed it.`;
+        : `Claim: said by ${line.by || "someone other than the subject"}, not on a tied channel of the subject.`;
   const job = origin ? { what: "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
   return (
     <div className="details" id={id}>
@@ -341,7 +336,7 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
     <ul className="settled">
       {line.links.map((k, i) => {
         const word = k.type === "confirms" ? "Confirmed by" : "Contradicted by";
-        const target = ctx.m.resolve(k.target, "");
+        const target = ctx.m.resolve(k.target);
         const answer = target ? null : ctx.m.answerRef(k.target);
         let body: React.ReactNode = <span className="mono">{k.target}</span>;
         if (target)
@@ -447,13 +442,20 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                   {f.chain || "Chain not given"}
                   {f.block ? (
                     <>
-                      , block <span className="num">{Number(f.block).toLocaleString("en-US")}</span>
+                      , block <span className="num">{blockNumber(f.block) ? BigInt(blockNumber(f.block)).toLocaleString("en-US") : f.block}</span>
                     </>
                   ) : (
                     ", block not given"
                   )}
                 </td>
               </tr>
+              {row.line.links.length > 0 && (
+                <tr className="fact-links">
+                  <td colSpan={3}>
+                    <LinkNotes line={row.line} ctx={ctx} />
+                  </td>
+                </tr>
+              )}
               {open && (
                 <tr className="fact-details">
                   <td colSpan={3}>
@@ -471,7 +473,7 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
 
 function Accounting({ m }: { m: RecordModel }) {
   const a = m.accounting;
-  const dropped = m.page?.dropped ?? [];
+  const dropped = a.dropped;
   return (
     <>
       {a.state === "loading" && <p className="small">Checking the last rebuild against the {a.files} earlier files it was given…</p>}
@@ -499,7 +501,10 @@ function Accounting({ m }: { m: RecordModel }) {
           <ul className="plain small">
             {dropped.map((d, i) => (
               <li key={i}>
-                <span className="mono">{d.id}</span> {d.why || "no reason given"}
+                <span className="mono">{d.ref}</span>
+                {d.text && <> “{d.text}”</>}
+                {": "}
+                <span className="why-dropped">{d.why || "no reason given"}</span>
               </li>
             ))}
           </ul>

@@ -137,7 +137,7 @@ function parseDiffers(v: unknown): Differ[] {
 
 export function parseSummary(v: unknown): SummarySentence[] {
   return arr(v)
-    .slice(0, 12)
+    .slice(0, 60)
     .map((s) => {
       const o = obj(s);
       const p = typeof o.paragraph === "number" ? o.paragraph : typeof o.paragraph === "string" && /^\d+$/.test(o.paragraph) ? Number(o.paragraph) : null;
@@ -185,28 +185,55 @@ export function paragraphsOf<T extends { paragraph: number | null }>(sentences: 
 
 /* ---------- Facts ---------- */
 
-const CHAINS = ["Robinhood Chain", "Ethereum", "Base", "Arbitrum", "Optimism", "Polygon", "Solana"];
-/** Reads the chain and block of a proof line from fact.chain/fact.block, else from its text and re-run steps. */
+/** Chain names matched as whole words (so "database" is not Base), and the chain ids that name them. */
+const CHAINS: { name: string; re: RegExp; id: number | null }[] = [
+  { name: "Robinhood Chain", re: /\brobinhood chain\b/i, id: null },
+  { name: "Ethereum", re: /\bethereum\b/i, id: 1 },
+  { name: "Base", re: /\bbase\b(?![\s_-]*(?:fee|url|64)\b)/i, id: 8453 },
+  { name: "Arbitrum", re: /\barbitrum\b/i, id: 42161 },
+  { name: "Optimism", re: /\boptimism\b/i, id: 10 },
+  { name: "Polygon", re: /\bpolygon\b/i, id: 137 },
+  { name: "Solana", re: /\bsolana\b/i, id: null },
+];
+
+/** The one chain a text names, by whole name or by "chain id N"; "" when it names none or more than one. */
+function chainIn(hay: string): string {
+  const found = new Set<string>();
+  for (const c of CHAINS) if (c.re.test(hay)) found.add(c.name);
+  for (const m of hay.matchAll(/\bchain(?:\s*-?\s*id)?\s*[:=]?\s*(0x[0-9a-f]+|\d+)\b/gi)) {
+    const n = Number(m[1]!.toLowerCase().startsWith("0x") ? parseInt(m[1]!, 16) : m[1]);
+    const c = CHAINS.find((x) => x.id === n);
+    found.add(c ? c.name : `chain id ${n}`);
+  }
+  if (!found.size && /\b(?:ethereum\s+)?mainnet\b/i.test(hay)) found.add("Ethereum");
+  return found.size === 1 ? [...found][0]! : "";
+}
+
+/** A block number written in decimal (26,445,600) or hex (0x1938720), as plain decimal digits. */
+export function blockNumber(v: string): string {
+  const t = v.trim().replace(/[,_\s]/g, "");
+  if (/^\d+$/.test(t)) return t.replace(/^0+(?=\d)/, "");
+  if (/^0x[0-9a-f]+$/i.test(t)) return BigInt(t).toString();
+  return "";
+}
+
+/** The one block a text names; "" when it names none or several different ones. */
+function blockIn(hay: string): string {
+  const found = new Set<string>();
+  for (const m of hay.matchAll(/\bblock\s+(?:number\s+|height\s+)?(?:#\s*)?(0x[0-9a-f]+|\d[\d,_]{2,}\d|\d{3,})\b/gi)) {
+    const b = blockNumber(m[1]!);
+    if (b) found.add(b);
+  }
+  return found.size === 1 ? [...found][0]! : "";
+}
+
+/**
+ * The chain and block of a proof line. fact.chain and fact.block are kept as given. Otherwise they are read
+ * from the re-run steps, then from the line's text, and only when exactly one chain or block is named.
+ */
 export function chainAndBlock(fact: Record<string, unknown>, text: string, rerun: string): { chain: string; block: string } {
-  let chain = str(fact.chain, 64);
-  let block = str(fact.block, 32);
-  const hay = `${text} ${rerun}`;
-  if (!chain) {
-    const lower = hay.toLowerCase();
-    let best = -1;
-    for (const c of CHAINS) {
-      const i = lower.indexOf(c.toLowerCase());
-      if (i >= 0 && (best < 0 || i < best)) {
-        best = i;
-        chain = c;
-      }
-    }
-    if (!chain && /\bchain(?:\s*id)?\s*1\b|mainnet/i.test(hay)) chain = "Ethereum";
-  }
-  if (!block) {
-    const m = /\bblock\s+(?:number\s+)?#?(\d[\d,]{2,})/i.exec(hay);
-    if (m) block = m[1]!.replace(/,/g, "");
-  }
+  const chain = str(fact.chain, 64).trim() || chainIn(rerun) || chainIn(text);
+  const block = str(fact.block, 32).trim() || blockIn(rerun) || blockIn(text);
   return { chain, block };
 }
 
@@ -599,8 +626,9 @@ export const VERDICT_WORDS: Record<Verdict, string> = {
 export function parseEdit(text: string): EditResult {
   const j = obj(JSON.parse(text));
   return {
+    // 1,500 characters of proposed text: every verdict is kept up to a bound no real edit reaches.
     sentences: arr(j.sentences)
-      .slice(0, 40)
+      .slice(0, 400)
       .map((s) => {
         const o = obj(s);
         return { text: str(o.text, 600), verdict: verdictOf(o.verdict), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean), corrected: str(o.corrected, 600), why: str(o.why, 400) };
@@ -627,22 +655,51 @@ export function lineIdsOf(text: string): { id: string; text: string }[] {
 const refKey = (s: string) => s.replace(/\s+/g, "").toUpperCase();
 
 export interface Unaccounted {
+  /** File number and line id, such as F2:L14. */
   ref: string;
+  /** The file number, F1... */
+  n: number;
   text: string;
 }
+export interface PriorLines {
+  n: number;
+  lines: { id: string; text: string }[];
+}
+
 /**
- * Every earlier line (file Fn, line id) that the rebuilt page neither carried (in a line's from) nor listed in
- * dropped. A bare id in from or dropped counts for that id in any file.
+ * The earlier lines a reference names. "F2:L14" names line L14 of file F2. A bare "L14" (an older form) names a
+ * line only when exactly one earlier file has that id; otherwise it names nothing, so it cannot clear several.
  */
-export function unaccounted(page: Pick<Page, "lines" | "dropped">, files: { n: number; lines: { id: string; text: string }[] }[]): Unaccounted[] {
+export function resolvePriorRef(ref: string, files: PriorLines[]): { ref: string; n: number; text: string }[] {
+  const r = refKey(ref);
+  const q = /^F(\d+):(.+)$/.exec(r);
+  const hits: { ref: string; n: number; text: string }[] = [];
+  for (const f of files)
+    for (const l of f.lines) {
+      const id = refKey(l.id);
+      if (q ? Number(q[1]) === f.n && q[2] === id : r === id) hits.push({ ref: `F${f.n}:${l.id}`, n: f.n, text: l.text });
+    }
+  return q ? hits.slice(0, 1) : hits.length === 1 ? hits : [];
+}
+
+/** Every earlier line (file Fn, line id) that the rebuilt page neither carried (in a line's from) nor listed in dropped. */
+export function unaccounted(page: Pick<Page, "lines" | "dropped">, files: PriorLines[]): Unaccounted[] {
   const named = new Set<string>();
-  for (const l of page.lines) for (const f of l.from) named.add(refKey(f));
-  for (const d of page.dropped) named.add(refKey(d.id));
+  for (const ref of [...page.lines.flatMap((l) => l.from), ...page.dropped.map((d) => d.id)])
+    for (const hit of resolvePriorRef(ref, files)) named.add(refKey(hit.ref));
   const out: Unaccounted[] = [];
   for (const f of files)
     for (const l of f.lines) {
       const ref = `F${f.n}:${l.id}`;
-      if (!named.has(refKey(ref)) && !named.has(refKey(l.id))) out.push({ ref, text: l.text });
+      if (!named.has(refKey(ref))) out.push({ ref, n: f.n, text: l.text });
     }
   return out;
+}
+
+/** The dropped list with each earlier line's text, when its reference names exactly one earlier line. */
+export function droppedLines(page: Pick<Page, "dropped">, files: PriorLines[]): (Dropped & { ref: string; text: string })[] {
+  return page.dropped.map((d) => {
+    const hit = resolvePriorRef(d.id, files);
+    return { ...d, ref: hit.length === 1 ? hit[0]!.ref : d.id, text: hit.length === 1 ? hit[0]!.text : "" };
+  });
 }

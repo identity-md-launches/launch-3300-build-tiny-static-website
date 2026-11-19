@@ -1,7 +1,7 @@
 /** Every paid request of this site, newest first, with its state, refusal reason, panel answer, source outcomes or edit verdicts. */
 import { artifactUrl } from "./bodies";
 import { ACTIONS } from "./config";
-import { jobLink, kindName, payerName } from "./format";
+import { jobLink, kindName, lineAnchor, payerName } from "./format";
 import { outcomeOf, outcomeText, VERDICT_WORDS } from "./page";
 import type { RecordModel } from "./model";
 import { isEditJob, isPageJob, isSourceJob, type Activity, type useActivity } from "./useActivity";
@@ -14,16 +14,25 @@ function what(a: Activity) {
   return "Job";
 }
 
-/** Whether a completed page, sources or edit result is shown now, or already folded into a newer page. */
-function standing(a: Activity, shown: Pick<RecordModel, "latest" | "after">): string {
+type Shown = Pick<RecordModel, "latest" | "after" | "foldedIn" | "editRefs">;
+
+/**
+ * Whether a completed page, sources or edit result is shown now. An earlier sources or edit result counts as
+ * folded in only when the shown rebuild was given it and accounted for every one of its lines; otherwise
+ * completion order says no more than that it came first.
+ */
+function standing(a: Activity, shown: Shown): string {
   if (a.state !== "completed" || a.req.action !== ACTIONS.research) return "";
   if (shown.latest?.req.requestId === a.req.requestId) return "Shown now";
   if (shown.after.some((x) => x.req.requestId === a.req.requestId)) return "Shown now, on top of the page";
-  if (shown.latest) return isPageJob(a.req) ? "Replaced by a newer page" : "Folded into a newer page";
-  return "";
+  if (!shown.latest) return "";
+  if (isPageJob(a.req)) return "Replaced by a newer page";
+  return shown.foldedIn.has(a.req.requestId) ? "Folded into the page shown" : "Completed before the page shown";
 }
 
-export function ActivityList({ items, error, loading, reload, shown }: ReturnType<typeof useActivity> & { shown: Pick<RecordModel, "latest" | "after"> }) {
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+export function ActivityList({ items, error, loading, reload, shown }: ReturnType<typeof useActivity> & { shown: Shown }) {
   return (
     <section id="activity" className="tab" aria-labelledby="activity-title">
       <div className="section-head">
@@ -37,6 +46,7 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
         <ul className="activity">
           {items.map((a) => {
             const st = standing(a, shown);
+            const onTop = shown.after.some((x) => x.req.requestId === a.req.requestId);
             return (
               <li key={a.req.requestId} className="card act">
                 <div className="act-top">
@@ -56,14 +66,30 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                 {a.req.action === ACTIONS.oracle && <p className="small">{a.req.title || String(a.req.bodyJson?.question ?? "")}</p>}
                 {isEditJob(a.req) && a.edit && (
                   <ul className="verdicts" aria-label="Each sentence and its verdict">
-                    {a.edit.sentences.map((s, i) => (
-                      <li key={i}>
-                        <span className={`verdict verdict-${s.verdict}`}>{VERDICT_WORDS[s.verdict]}</span>
-                        <span>{s.text}</span>
-                        {s.corrected && s.corrected !== s.text && <span className="small">Corrected to: {s.corrected}</span>}
-                        {s.why && <span className="small">{s.why}</span>}
-                      </li>
-                    ))}
+                    {a.edit.sentences.map((s, i) => {
+                      const refs = onTop ? shown.editRefs(a, s.lines, s.verdict) : [];
+                      return (
+                        <li key={i}>
+                          <span className={`verdict verdict-${s.verdict}`}>{VERDICT_WORDS[s.verdict]}</span>
+                          <span>{s.text}</span>
+                          {s.corrected && s.corrected !== s.text && <span className="small">Corrected to: {s.corrected}</span>}
+                          {s.why && <span className="small">{s.why}</span>}
+                          {s.verdict !== "unsupported" && s.lines.length > 0 && (
+                            <span className="small">
+                              Backed by{" "}
+                              {refs.length > 0
+                                ? refs.map((l, j) => (
+                                    <span key={l.id}>
+                                      {j > 0 && "; "}
+                                      <a href={`#${lineAnchor(l.id)}`}>{l.text}</a>
+                                    </span>
+                                  ))
+                                : <span className="mono">{s.lines.join(", ")}</span>}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
                 {isEditJob(a.req) && a.edit && (
@@ -85,7 +111,7 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                     })}
                   </ul>
                 )}
-                {isSourceJob(a.req) && a.sources && <p className="small">{a.sources.lines.length} line{a.sources.lines.length === 1 ? "" : "s"} added to the record</p>}
+                {isSourceJob(a.req) && a.sources && <p className="small">{onTop ? `${plural(a.sources.lines.length, "line")} added to the record` : `${plural(a.sources.lines.length, "line")} in result`}</p>}
                 {a.sourcesError && <p className="error">Unable to read the result: {a.sourcesError}</p>}
                 <p className="small">
                   Paid by <span className="mono">{payerName(a)}</span> ·{" "}
