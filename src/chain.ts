@@ -2,6 +2,7 @@
 import { decodeAbiParameters, hexToString, trim, type Hex } from "viem";
 import { ACTIONS, INTAKE, LAUNCH_BLOCK, RPCS, TAG_NEEDLE, TOPIC_COMPLETED, TOPIC_REQUESTED } from "./config";
 import { matchOracleQuestion } from "./bodies";
+import { DEFAULT_SUBJECT, isSubjectId } from "./subject";
 
 export interface RawLog {
   topics: Hex[];
@@ -69,6 +70,10 @@ export interface TaggedRequest {
   kind: string;
   /** A short title for an oracle question this site asks; "" for jobs. */
   title: string;
+  /** The subject id the request belongs to: the tag's subject, the question's "filed under" sentence, else imd.fun. */
+  subject: string;
+  /** Which oracle template the question matched ("post", "page", "contract", or a legacy preset id); "" for jobs. */
+  template: string;
   amount: bigint;
   blockNumber: bigint;
   transactionHash: Hex;
@@ -102,9 +107,11 @@ export function decodeRequested(log: RawLog): TaggedRequest | null {
   } catch {
     bodyJson = null;
   }
-  const match = action === ACTIONS.oracle ? matchOracleQuestion(bodyJson?.question) : null;
+  const match = action === ACTIONS.oracle ? matchOracleQuestion(bodyJson?.question, isSubjectId) : null;
   if (!tagged && !match) return null;
-  const tag = (bodyJson?.tag ?? {}) as { kind?: unknown };
+  const tag = (bodyJson?.tag ?? {}) as { kind?: unknown; subject?: unknown };
+  const subject = subjectOfTag(tag.subject, match?.subject);
+  if (subject === null) return null;
   return {
     requestId: log.topics[1]!,
     payer: `0x${log.topics[2]!.slice(26)}` as Hex,
@@ -113,10 +120,23 @@ export function decodeRequested(log: RawLog): TaggedRequest | null {
     bodyJson,
     kind: typeof tag.kind === "string" ? tag.kind : match?.kind ?? "unknown",
     title: match?.title ?? "",
+    subject,
+    template: match?.template ?? "",
     amount,
     blockNumber: BigInt(log.blockNumber),
     transactionHash: log.transactionHash,
   };
+}
+
+/**
+ * The subject a tag names. A string id, or an object carrying one in "subject" (a tag written as the brief's
+ * {"app","kind","subject"} nested under "subject") are both read. No subject: the oracle question's, else imd.fun.
+ * null when a subject is given but is not a valid id, so the request is not shown under any record.
+ */
+export function subjectOfTag(v: unknown, fallback?: string): string | null {
+  const raw = v && typeof v === "object" ? (v as { subject?: unknown }).subject : v;
+  if (raw === undefined || raw === null) return fallback ?? DEFAULT_SUBJECT;
+  return isSubjectId(raw) ? raw : null;
 }
 
 export interface Completion {

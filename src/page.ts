@@ -352,7 +352,7 @@ export function parsePage(text: string): Page {
     .filter((l) => l.text);
   const main = contracts.find((c) => c.main)?.address ?? "";
   return {
-    name: str(subject.name, 200) || "IMD",
+    name: str(subject.name, 200),
     oneLine: str(subject.one_line, 400),
     channels,
     contracts,

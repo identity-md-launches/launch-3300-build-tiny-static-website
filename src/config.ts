@@ -1,9 +1,9 @@
 /** Every address, chain id, route, ABI and RPC the site uses, in one place. */
 import { mainnet } from "viem/chains";
 
-export const SITE_NAME = "IMD on the record";
+export const SITE_NAME = "On the record (test)";
 export const SITE_DESCRIPTION =
-  "A public record page for IMD (imd.fun). Every line shows who said it, its source and how it was checked.";
+  "Public record pages for crypto projects. Every line shows who said it, its source and how it was checked.";
 
 export const CHAIN = mainnet; // Ethereum mainnet, chain 1, only
 export const CHAIN_ID = 1 as const;

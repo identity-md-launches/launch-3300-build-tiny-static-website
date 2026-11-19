@@ -2,17 +2,21 @@ import { describe, expect, it } from "vitest";
 import { encodeAbiParameters, keccak256, pad, stringToHex, toHex, type Hex } from "viem";
 import { readFileSync } from "node:fs";
 import { rebuildBody, editBody, EDIT_TEMPLATE } from "../src/bodies";
-import { researchBody, oracleBody, oracleShortForm, PRESETS, Q_P1, Q_P2, Q_P3, questionP4, validateP4, encodeBody, matchOracleQuestion, sourceBody, sourceObjective, planSources, numberLinks, SOURCE_TEMPLATE } from "../src/bodies";
+import { questionPost, questionPage, questionContract } from "../src/bodies";
+import { researchBody, oracleBody, oracleShortForm, LEGACY_PRESETS, Q_P1, Q_P2, Q_P3, questionP4, validateP4, encodeBody, matchOracleQuestion, sourceBody, sourceObjective, planSources, numberLinks, SOURCE_TEMPLATE } from "../src/bodies";
 import { decodeRequested, decodeCompleted, stateOf } from "../src/chain";
 import { parsePage, orderAll, safeHref, parseLines, mergeRecord, allSources, outcomeOf, outcomeText, countKinds, channelFor, underChannel, chainAndBlock } from "../src/page";
 import { normalizeAnswer, oracleIdFrom, refusalOf } from "../src/api";
 import { TOPIC_COMPLETED, TOPIC_REQUESTED } from "../src/config";
+import { refFromId } from "../src/subject";
+const IMD = refFromId("imd.fun");
+
 
 describe("bodies", () => {
   it("research body is the brief's, with the objective from templates/research.txt", () => {
     const b = researchBody();
     expect(Object.keys(b)).toEqual(["tag", "skill", "outputs", "objective"]);
-    expect(b.tag).toEqual({ app: "rec-test-1", kind: "add" });
+    expect(b.tag).toEqual({ app: "rec-test-1", kind: "add", subject: "imd.fun" });
     expect(b.objective).toBe(readFileSync("templates/research.txt", "utf8").trim());
     expect(encodeBody(b)).toContain('"app":"rec-test-1"');
   });
@@ -36,10 +40,10 @@ describe("bodies", () => {
     expect(encodeBody(oracleBody(Q_P3, "chain"))).toBe(
       `{"v":1,"question":${JSON.stringify(Q_P3)},"chainId":1,"window":{"hours":24},"answerType":"bool","panelSize":5,"quorum":4,"validForSeconds":86400}`,
     );
-    for (const p of PRESETS) expect(encodeBody(oracleBody(p.question, p.evidence))).not.toContain("tag");
+    for (const p of LEGACY_PRESETS) expect(encodeBody(oracleBody(p.question, "panel"))).not.toContain("tag");
     expect(Q_P2).toContain("costs 5 IMD");
     expect(Q_P2).not.toContain("0.5");
-    expect(PRESETS.map((p) => p.kind)).toEqual(["statement", "statement", "proof"]);
+    expect(LEGACY_PRESETS.map((p) => p.kind)).toEqual(["statement", "statement", "proof"]);
     expect(oracleShortForm(Q_P1, "panel")).toEqual({ question: Q_P1, panelSize: 5, answerType: "bool", evidence: "panel", chainId: 1 });
   });
   it("oracle bodies are byte for byte the requests IMD's free check drafted on 2026-11-19", () => {
@@ -49,12 +53,12 @@ describe("bodies", () => {
     expect(encodeBody(oracleBody(q4, "panel"))).toBe(p4);
   });
   it("finds oracle questions by wording and takes the kind from the template", () => {
-    expect(matchOracleQuestion(Q_P1)).toMatchObject({ kind: "statement", preset: "P1" });
-    expect(matchOracleQuestion(Q_P2)).toMatchObject({ kind: "statement", preset: "P2" });
-    expect(matchOracleQuestion(Q_P3)).toMatchObject({ kind: "proof", preset: "P3" });
+    expect(matchOracleQuestion(Q_P1)).toMatchObject({ kind: "statement", template: "P1", subject: "imd.fun" });
+    expect(matchOracleQuestion(Q_P2)).toMatchObject({ kind: "statement", template: "P2", subject: "imd.fun" });
+    expect(matchOracleQuestion(Q_P3)).toMatchObject({ kind: "proof", template: "P3", subject: "imd.fun" });
     const m = matchOracleQuestion(questionP4("https://x.com/a/status/1", "imd_fun", "it has 2,000 seats"));
-    expect(m).toMatchObject({ kind: "claim", preset: "P4", title: "@imd_fun posted that it has 2,000 seats" });
-    expect(matchOracleQuestion(Q_P1 + " ")).toBeNull();
+    expect(m).toMatchObject({ kind: "claim", template: "post", subject: "imd.fun", title: "@imd_fun posted that it has 2,000 seats" });
+    expect(matchOracleQuestion(Q_P1 + " ")).toMatchObject({ template: "page", subject: "imd.fun" });
     expect(matchOracleQuestion("Is the sky blue?")).toBeNull();
     expect(matchOracleQuestion(42)).toBeNull();
   });
@@ -142,43 +146,43 @@ describe("add sources", () => {
   const ch = [{ url: "https://imd.fun/", tie: "weak" as const }, { url: "https://explorer.imd.fun/", tie: "none" as const }];
   const MAIN = "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7";
   it("builds the body from templates/source.txt with numbered links and the record's channels", () => {
-    const b = sourceBody(["https://x.com/a/status/1", "https://example.com/p"], ch, MAIN);
+    const b = sourceBody(["https://x.com/a/status/1", "https://example.com/p"], ch, MAIN, IMD);
     expect(Object.keys(b)).toEqual(["tag", "skill", "outputs", "objective"]);
     expect(encodeBody({ ...b, objective: "<SOURCE_OBJECTIVE>" })).toBe(
-      '{"tag":{"app":"rec-test-1","kind":"source"},"skill":"research-report","outputs":[{"name":"lines","path":"artifacts/lines.json","mediaType":"application/json"}],"objective":"<SOURCE_OBJECTIVE>"}',
+      '{"tag":{"app":"rec-test-1","kind":"source","subject":"imd.fun"},"skill":"research-report","outputs":[{"name":"lines","path":"artifacts/lines.json","mediaType":"application/json"}],"objective":"<SOURCE_OBJECTIVE>"}',
     );
     expect(SOURCE_TEMPLATE).toBe(readFileSync("templates/source.txt", "utf8").trim());
     expect(b.objective).toBe(
-      SOURCE_TEMPLATE.replace("<URLS>", "[1] https://x.com/a/status/1; [2] https://example.com/p").replace("<CHANNELS>", "https://imd.fun/ (tie: weak), https://explorer.imd.fun/ (tie: none)").replace("<MAIN>", MAIN),
+      SOURCE_TEMPLATE.replace("<URLS>", "[1] https://x.com/a/status/1; [2] https://example.com/p").replace("<CHANNELS>", "https://imd.fun/ (tie: weak), https://explorer.imd.fun/ (tie: none)").replace("<MAIN>", MAIN).replaceAll("<SUBJECT>", "the project at imd.fun"),
     );
-    expect(b.objective).toContain(`The subject's own channels are: https://imd.fun/ (tie: weak), https://explorer.imd.fun/ (tie: none). The subject is the project at imd.fun whose main contract is ${MAIN}. A source is about the subject only if it refers to that domain, that contract or a listed channel, or plainly describes the same project; the same name is not enough. For each source set about_subject true or false and give about_why in one sentence; if false, write no lines for it. If the publisher is a listed channel with tie strong or weak, its lines have kind statement; otherwise kind claim.`);
+    expect(b.objective).toContain(`The subject's own channels are: https://imd.fun/ (tie: weak), https://explorer.imd.fun/ (tie: none). The subject is the project at imd.fun. Its main contract on the record is ${MAIN}. A source is about the subject only if it refers to that domain, that contract or a listed channel, or plainly describes the same project; the same name is not enough. For each source set about_subject true or false and give about_why in one sentence; if false, write no lines for it. If the publisher is a listed channel with tie strong or weak, its lines have kind statement; otherwise kind claim.`);
     expect(b.objective).toContain("Write lines about the subject, not about the source itself.");
     expect(b.objective).toContain("If you read a source through another host, such as a mirror or cache, put that host in read_via.");
     expect(b.objective).toContain("In differs set level: conflict only when both lines cannot be true at once, otherwise question.");
     expect(b.objective).toContain("JSON keys: tag, sources[{id,url,type,publisher,published_at,read_at,could_open,read_via,about_subject,about_why,publisher_is_subject_channel}], lines[{id,source,section,text,kind,by,quote}], differs[{lines[],why,level}], ignored_instructions[], notes.");
-    expect(b.objective).not.toMatch(/<URLS>|<CHANNELS>|<MAIN>/);
-    expect(sourceObjective([], [], "")).toContain("channels are: none known. The subject is the project at imd.fun whose main contract is not known.");
-    expect(sourceObjective(["https://a.com/$&"], ch, MAIN)).toContain("[1] https://a.com/$&.");
+    expect(b.objective).not.toMatch(/<URLS>|<CHANNELS>|<MAIN>|<SUBJECT>/);
+    expect(sourceObjective([], [], "", IMD)).toContain("channels are: none known. The subject is the project at imd.fun. Its main contract on the record is not known.");
+    expect(sourceObjective(["https://a.com/$&"], ch, MAIN, IMD)).toContain("[1] https://a.com/$&.");
     expect(b.objective).toContain("Sources: [1] https://x.com/a/status/1; [2] https://example.com/p. Output exactly one file");
     expect(numberLinks([])).toBe("");
   });
   it("accepts only https links up to 300 characters with no quotes or spaces, and drops repeats", () => {
-    const p = planSources(["https://a.com/x", "http://b.com", "https://a.com/x", "https://c.com/\"q", "https://d.com/a b", "https://" + "e".repeat(293) + ".com", "", "  https://f.com/ok  ", "ftp://g.com"].join("\n"), ch, MAIN);
+    const p = planSources(["https://a.com/x", "http://b.com", "https://a.com/x", "https://c.com/\"q", "https://d.com/a b", "https://" + "e".repeat(293) + ".com", "", "  https://f.com/ok  ", "ftp://g.com"].join("\n"), ch, MAIN, IMD);
     expect(p.links).toEqual(["https://a.com/x", "https://f.com/ok"]);
     expect(p.rejected.map((r) => r.why)).toEqual(["not an https link", "already listed", "has a quote or a space", "has a quote or a space", "longer than 300 characters", "not an https link"]);
   });
   it("stops at 20 links and keeps the objective under 7,500 characters, counting what still fits", () => {
     const many = Array.from({ length: 25 }, (_, i) => `https://example.com/${i}`).join("\n");
-    const p = planSources(many, ch, MAIN);
+    const p = planSources(many, ch, MAIN, IMD);
     expect(p.links.length).toBe(20);
     expect(p.slotsLeft).toBe(0);
     expect(p.rejected.filter((r) => r.why.startsWith("past the limit")).length).toBe(5);
     const long = Array.from({ length: 20 }, (_, i) => `https://example.com/${i}/${"x".repeat(270)}`).join("\n");
-    const q = planSources(long, ch, MAIN);
+    const q = planSources(long, ch, MAIN, IMD);
     expect(q.objective.length).toBeLessThan(7500);
-    expect(sourceObjective([...q.links, `https://example.com/20/${"x".repeat(270)}`], ch, MAIN).length).toBeGreaterThanOrEqual(7500);
+    expect(sourceObjective([...q.links, `https://example.com/20/${"x".repeat(270)}`], ch, MAIN, IMD).length).toBeGreaterThanOrEqual(7500);
     expect(q.rejected.every((r) => r.why === "does not fit under 7,500 characters")).toBe(true);
-    const empty = planSources("", ch, MAIN);
+    const empty = planSources("", ch, MAIN, IMD);
     expect(empty.slotsLeft).toBe(20);
     expect(empty.moreAtMost).toBeGreaterThan(0);
     expect(empty.moreAtMost).toBeLessThanOrEqual(20);
@@ -284,14 +288,17 @@ describe("add sources", () => {
 
 describe("agents.md", () => {
   const md = readFileSync("public/agents.md", "utf8");
-  it("publishes the rebuild body, the edit template, the source template, the tag-free oracle body and every preset question", () => {
-    expect(md).toContain(encodeBody(rebuildBody({ files: [], answers: [] })));
+  it("publishes the rebuild body, the edit and source templates, the tag-free oracle body, the three question templates and the subject rules", () => {
+    expect(md).toContain(encodeBody(rebuildBody({ files: [], answers: [] }, IMD)));
     expect(md).toContain(EDIT_TEMPLATE);
-    expect(md).toContain(encodeBody({ ...editBody("x", { files: [], answers: [] }, []), objective: "<EDIT_OBJECTIVE>" }));
+    expect(md).toContain(encodeBody({ ...editBody("x", { files: [], answers: [] }, [], IMD), objective: "<EDIT_OBJECTIVE>" }));
     expect(md).toContain("[F1] https://api.imd.fun/artifacts/");
     expect(md).toContain(SOURCE_TEMPLATE);
-    expect(md).toContain(encodeBody(oracleBody(Q_P1, "panel")));
-    for (const p of PRESETS) expect(md).toContain(p.question);
+    expect(md).toContain(questionPost("<URL>", "<HANDLE>", "<TEXT>", "<subject id>"));
+    expect(md).toContain(questionPage("<URL>", "<TEXT>", "<subject id>"));
+    expect(md).toContain(questionContract("<CHAIN ID>", "<FUNCTION SIGNATURE>", "<ADDRESS>", "<VALUE>", "<subject id>"));
+    expect(md).toContain('"subject":"<subject id>"');
+    expect(md).toContain("Folded in.");
     expect(md).toContain("0xa43e6f75ee006411f79ac1c84120606c2330de82");
     expect(md).toContain("priceOf");
     expect(md).toContain("`<MAIN>`");
@@ -304,6 +311,6 @@ describe("agents.md", () => {
 
 describe("source rules", () => {
   it("never renders result values as HTML", () => {
-    for (const f of ["src/App.tsx", "src/Record.tsx", "src/ActivityList.tsx", "src/wallet.tsx", "src/page.ts"]) expect(readFileSync(f, "utf8")).not.toMatch(/dangerouslySetInnerHTML|innerHTML/);
+    for (const f of ["src/App.tsx", "src/Home.tsx", "src/Record.tsx", "src/ActivityList.tsx", "src/wallet.tsx", "src/page.ts", "src/keyfacts.ts"]) expect(readFileSync(f, "utf8")).not.toMatch(/dangerouslySetInnerHTML|innerHTML/);
   });
 });

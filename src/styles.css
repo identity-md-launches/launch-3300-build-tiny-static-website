@@ -109,18 +109,67 @@ section { display: grid; gap: var(--space-4); min-width: 0; }
 .tab > h1:focus, .tab-title:focus, .section-head h1:focus { outline: none; }
 .tab-title { font-size: var(--text-title); letter-spacing: -0.01em; }
 
-/* Overview: the key facts box beside the summary on wide screens, above it on phones. */
+/* Overview: key facts first, full width, above the summary. */
 .overview { display: grid; gap: var(--space-6); align-items: start; }
-@media (min-width: 52rem) {
-  .overview.has-infobox { grid-template-columns: minmax(0, 1fr) 20rem; }
-  .overview.has-infobox .infobox { grid-column: 2; grid-row: 1 / span 3; }
+.keyfacts { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
+.keyfacts h2 { font-size: var(--text-heading); }
+.keyfacts table { width: 100%; border-collapse: collapse; }
+.keyfacts th, .keyfacts td { text-align: start; vertical-align: top; padding: var(--space-2) 0; border-top: 1px solid var(--color-border); }
+.keyfacts th { width: 11rem; padding-inline-end: var(--space-3); font-weight: 600; color: var(--color-text-secondary); font-size: var(--text-small); padding-top: calc(var(--space-2) + 2px); }
+.kf-value { overflow-wrap: anywhere; padding-inline-end: var(--space-3) !important; }
+.kf-badge { text-align: end !important; white-space: nowrap; }
+/* Phones: label above value, badge under the value, so nothing is squeezed. */
+@media (max-width: 40rem) {
+  .keyfacts tr { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--color-border); padding: var(--space-2) 0; }
+  .keyfacts th, .keyfacts td { border-top: 0; padding: 0; width: auto; }
+  .kf-badge { text-align: start !important; white-space: normal; padding-top: var(--space-1) !important; }
 }
-.infobox { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
-.infobox h2 { font-size: var(--text-heading); }
-.infobox table { width: 100%; border-collapse: collapse; font-size: var(--text-small); }
-.infobox th, .infobox td { text-align: start; vertical-align: top; padding: var(--space-2) 0; border-top: 1px solid var(--color-border); }
-.infobox th { width: 38%; padding-inline-end: var(--space-3); font-weight: 600; color: var(--color-text-secondary); }
-.infobox td { overflow-wrap: anywhere; }
+.badge {
+  display: inline-flex; align-items: center; min-height: 24px; padding: 2px var(--space-2); border-radius: 999px;
+  font-size: var(--text-small); font-weight: 600; text-decoration: none; background: var(--color-bg-hover); color: var(--color-text);
+}
+a.badge { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.badge-proof, .badge-strong { background: var(--green-50); color: var(--green-800); }
+.badge-statement, .badge-weak { background: var(--blue-50); color: var(--blue-800); }
+.badge-claim { background: var(--orange-50); color: var(--orange-800); }
+.badge-none { background: var(--color-bg-hover); color: var(--color-text-secondary); }
+.copy {
+  margin-inline-start: var(--space-2); min-height: 24px; min-width: 44px; padding: 0 var(--space-2); border-radius: 6px;
+  border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text); font: inherit; font-size: var(--text-small); cursor: pointer;
+}
+@media (hover: hover) { .copy:hover { background: var(--color-bg-hover); } }
+
+/* Subject tabs sit at the top of the subject's page. */
+main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc(-1 * var(--space-4)); width: 100%; }
+.brand-test { color: var(--color-text-secondary); font-weight: 400; }
+
+/* Home: the list and its search beside the Add form on wide screens; the form follows the list on phones. */
+.home-grid { display: grid; gap: var(--space-6); align-items: start; }
+@media (min-width: 52rem) { .home-grid { grid-template-columns: minmax(0, 1fr) 20rem; } }
+.home-list { display: grid; gap: var(--space-3); min-width: 0; }
+.search-row { display: flex; gap: var(--space-2); align-items: stretch; }
+.search-row input { flex: 1; min-width: 0; }
+.add-jump { flex: none; }
+@media (min-width: 52rem) { .add-jump { display: none; } }
+.subjects { list-style: none; margin: 0; padding: 0; display: grid; }
+.subject { display: grid; gap: var(--space-1); padding: var(--space-3) 0; border-top: 1px solid var(--color-border); min-width: 0; }
+.subject-link { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); font-weight: 600; font-size: var(--text-heading); min-height: 24px; justify-self: start; overflow-wrap: anywhere; }
+.subject-id { font-weight: 400; font-size: var(--text-small); color: var(--color-text-secondary); }
+.subject-line { color: var(--color-text-secondary); }
+.subject-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); color: var(--color-text-secondary); }
+.count-kind { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.add { align-content: start; }
+.add h2 { font-size: var(--text-heading); }
+.add .form { padding-top: 0; }
+
+/* The question template choice. */
+.choice { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.choice legend { font-size: var(--text-small); font-weight: 600; padding: 0; margin-bottom: var(--space-2); }
+.choice-item { display: inline-flex !important; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3); margin: 0 !important; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg); font-weight: 600; cursor: pointer; }
+.choice-item:has(input:checked) { border-color: var(--color-accent-solid); background: var(--color-accent-subtle); }
+.choice-item input { margin: 0; accent-color: var(--color-accent-solid); }
+select { font: inherit; min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg); color: var(--color-text); }
+
 .rests { color: var(--color-text-secondary); white-space: nowrap; }
 .summary { display: grid; gap: var(--space-3); min-width: 0; }
 .summary h2 { font-size: var(--text-title); }

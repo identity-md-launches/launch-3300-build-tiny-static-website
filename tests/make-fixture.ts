@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { encodeAbiParameters, pad, stringToHex, toHex, type Hex } from "viem";
 import { rebuildBody, sourceBody, editBody, oracleBody, Q_P1, encodeBody, artifactUrl, researchBody } from "../src/bodies";
 import { LAUNCH_BLOCK, TOPIC_REQUESTED, TOPIC_COMPLETED } from "../src/config";
+import { refFromId } from "../src/subject";
+const IMD = refFromId("imd.fun");
 const sha = (s: string) => createHash("sha256").update(Buffer.from(s, "utf8")).digest("hex");
 const L = Number(LAUNCH_BLOCK);
 const files: Record<string, string> = {};
@@ -44,11 +46,11 @@ const edit = put({
 });
 const reqs = [
   { n: 1, action: "job.open@job-1", body: researchBody(), file: ["page", page1], cb: 100 },
-  { n: 2, action: "job.open@job-1", body: sourceBody(["https://news.example/a"], [], ""), file: ["lines", src1], cb: 101 },
+  { n: 2, action: "job.open@job-1", body: sourceBody(["https://news.example/a"], [], "", IMD), file: ["lines", src1], cb: 101 },
   { n: 6, action: "oracle.request@oracle-1", body: oracleBody(Q_P1, "panel"), file: null, cb: 102 },
-  { n: 3, action: "job.open@job-1", body: rebuildBody(prior), file: ["page", page2], cb: 103 },
-  { n: 4, action: "job.open@job-1", body: sourceBody(["https://blog.example/b"], [], ""), file: ["lines", src2], cb: 104 },
-  { n: 5, action: "job.open@job-1", body: editBody("x", prior, []), file: ["edit", edit], cb: 105 },
+  { n: 3, action: "job.open@job-1", body: rebuildBody(prior, IMD), file: ["page", page2], cb: 103 },
+  { n: 4, action: "job.open@job-1", body: sourceBody(["https://blog.example/b"], [], "", IMD), file: ["lines", src2], cb: 104 },
+  { n: 5, action: "job.open@job-1", body: editBody("x", prior, [], IMD), file: ["edit", edit], cb: 105 },
 ];
 const hx = (n: number) => toHex(n) as Hex;
 const out = { head: L + 200, requests: [] as unknown[], completions: [] as unknown[], intake: {} as Record<string, unknown>, results: {} as Record<string, unknown>, files, page2, src2, edit, oracleId: "11111111-2222-4333-8444-555555555555" };

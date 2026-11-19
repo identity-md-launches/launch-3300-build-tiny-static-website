@@ -5,7 +5,7 @@ import type { Hex } from "viem";
 import { loadTaggedRequests, stateOf, getBlockTime, type Completion, type TaggedRequest } from "./chain";
 import { cacheGet, cacheSet, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
-import { parseEdit, parseLines, type EditResult, type SourceLines } from "./page";
+import { parseEdit, parseLines, parsePage, type EditResult, type Page, type SourceLines } from "./page";
 import { config } from "./wallet";
 
 export interface Activity {
@@ -23,8 +23,14 @@ export interface Activity {
   sourcesError: string | null;
   /** A completed edit job's edit.json, hash-checked and parsed. */
   edit: EditResult | null;
-  /** SHA-256 of a completed sources or edit job's result file, for <PRIOR>. */
+  /** SHA-256 of a completed page, sources or edit job's result file: its artifact id, for <PRIOR>. */
   fileHash: string | null;
+  /** A completed page job's page.json, hash-checked and parsed. */
+  page: Page | null;
+  /** Where a page file was read: the job id and the route (api.imd.fun or an IPFS gateway). */
+  via: { jobId: string | null; path: "api" | "ipfs" } | null;
+  /** When the result was written: the completion's block time, or null while pending or unknown. */
+  doneTime: number | null;
 }
 
 export const isSourceJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "source";
@@ -58,7 +64,7 @@ async function ensOf(addr: Hex): Promise<string | null> {
   }
 }
 
-async function timeOf(r: TaggedRequest): Promise<number | null> {
+async function timeOf(r: { blockNumber: bigint }): Promise<number | null> {
   const key = `time:${r.blockNumber}`;
   const c = cacheGet<number>(key);
   if (c) return c;
@@ -103,22 +109,27 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
   let sourcesError: string | null = null;
   let edit: EditResult | null = null;
   let fileHash: string | null = null;
-  if ((isSourceJob(req) || isEditJob(req)) && state === "completed" && completion) {
-    const name = isEditJob(req) ? "edit" : "lines";
+  let page: Page | null = null;
+  let via: Activity["via"] = null;
+  if ((isSourceJob(req) || isEditJob(req) || isPageJob(req)) && state === "completed" && completion) {
+    const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : "lines";
     try {
       const f = await fetchResearchPage(req, completion, jobId, name);
       fileHash = f.hash ?? null;
       if (name === "edit") {
         edit = parseEdit(f.text);
         sources = edit.data;
+      } else if (name === "page") {
+        page = parsePage(f.text);
+        via = { jobId: f.jobId, path: f.path };
       } else sources = parseLines(f.text);
       jobId ??= f.jobId;
     } catch (e) {
       sourcesError = e instanceof Error ? e.message : `The ${name} file could not be read`;
     }
   }
-  const [time, ens] = await Promise.all([timeOf(req), ensOf(req.payer)]);
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash };
+  const [time, ens, doneTime] = await Promise.all([timeOf(req), ensOf(req.payer), completion ? timeOf(completion) : Promise.resolve(null)]);
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash, page, via, doneTime };
 }
 
 export function useActivity() {

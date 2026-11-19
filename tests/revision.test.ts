@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { artifactUrl, editBody, fillTemplate, parsePrior, sourceObjective, type Prior } from "../src/bodies";
 import { blockNumber, chainAndBlock, droppedLines, parseEdit, parsePage, resolvePriorRef, unaccounted } from "../src/page";
 import { routeOf } from "../src/route";
+import { refFromId } from "../src/subject";
+const IMD = refFromId("imd.fun");
 
 const H1 = "a".repeat(64);
 const H2 = "b".repeat(64);
@@ -11,20 +13,20 @@ const PRIOR: Prior = { files: [artifactUrl(H1), artifactUrl(H2)], answers: [] };
 describe("edit body keeps literal placeholders in the visitor's text (39e56485)", () => {
   it("fills <TEXT>, <PRIOR> and <URLS> in one pass over the template", () => {
     const text = "The string <PRIOR> is literal and <URLS> is also literal.";
-    const o = editBody(text, PRIOR, ["https://imd.fun/docs/"]).objective;
+    const o = editBody(text, PRIOR, ["https://imd.fun/docs/"], IMD).objective;
     expect(o).toContain(`Proposed text: ${text}. The record so far: [F1] ${artifactUrl(H1)}; [F2] ${artifactUrl(H2)}. Extra sources from the visitor: [1] https://imd.fun/docs/.`);
     expect(o.match(/<PRIOR>/g)?.length).toBe(1);
     expect(o.match(/<URLS>/g)?.length).toBe(1);
   });
   it("accepts any short text: the job judges it", () => {
-    expect(editBody("IMD runs jobs.", PRIOR, []).objective).toContain("Proposed text: IMD runs jobs.. The record so far:");
+    expect(editBody("IMD runs jobs.", PRIOR, [], IMD).objective).toContain("Proposed text: IMD runs jobs.. The record so far:");
   });
   it("reads the prior list back even when the visitor's text quotes its markers", () => {
-    const o = editBody("The record so far: [F1] https://api.imd.fun/artifacts/" + "c".repeat(64) + ". Extra sources from the visitor: x", PRIOR, []).objective;
+    const o = editBody("The record so far: [F1] https://api.imd.fun/artifacts/" + "c".repeat(64) + ". Extra sources from the visitor: x", PRIOR, [], IMD).objective;
     expect(parsePrior(o).files.map((f) => f.hash)).toEqual([H1, H2]);
   });
   it("a sources link that contains <MAIN> is not filled in again", () => {
-    const o = sourceObjective(["https://a.example/<MAIN>"], [], "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7");
+    const o = sourceObjective(["https://a.example/<MAIN>"], [], "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7", IMD);
     expect(o).toContain("https://a.example/<MAIN>");
     expect(fillTemplate("<A> <B> <A>", { A: "<B>", B: "b" })).toBe("<B> b <A>");
   });
@@ -90,7 +92,7 @@ describe("edit verdicts are all kept (a6a6d9d0)", () => {
 
 describe("malformed fragments (16c8cb6e)", () => {
   it("fall back to Overview", () => {
-    expect(routeOf("#%")).toEqual({ tab: "overview", target: null });
-    expect(routeOf("#line-%E0%A4%A")).toEqual({ tab: "overview", target: null });
+    expect(routeOf("#%")).toEqual({ subject: null, tab: "overview", target: null });
+    expect(routeOf("#line-%E0%A4%A")).toEqual({ subject: null, tab: "overview", target: null });
   });
 });

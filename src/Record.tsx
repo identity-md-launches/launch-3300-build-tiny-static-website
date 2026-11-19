@@ -1,7 +1,9 @@
-/** The record's tabs: Overview (key facts, summary, panel), Record (filter, sections, one facts table) and Sources. */
-import { Fragment, useEffect } from "react";
+/** The record's tabs: Overview (key facts, summary), Record (filter, sections, one facts table) and Sources. */
+import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
-import { jobLink, kindName, lineAnchor, payerName, TIE_WORDS, tieWord } from "./format";
+import { jobLink, kindName, lineAnchor, payerName, shortHex, TIE_WORDS, tieWord } from "./format";
+import { keyFacts, splitAddresses, type KeyRow } from "./keyfacts";
+import { to } from "./route";
 import { blockNumber, hostOf, paragraphsOf, safeHref, SECTION_TITLES, SECTIONS, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
 import type { RecordModel } from "./model";
 import type { Activity } from "./useActivity";
@@ -46,45 +48,91 @@ const panelAnchor = (a: Activity) => `panel-${a.req.requestId.slice(2, 14)}`;
 
 /* ---------- Overview ---------- */
 
-function Infobox({ m, ui }: { m: RecordModel; ui: Ui }) {
-  const rows = m.page?.infobox ?? [];
+function Copy({ value }: { value: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="copy"
+      aria-label={done ? "Copied" : `Copy address ${value}`}
+      onClick={() => {
+        void navigator.clipboard?.writeText(value).then(() => {
+          setDone(true);
+          window.setTimeout(() => setDone(false), 1500);
+        });
+      }}
+    >
+      {done ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+/** A value with every 0x address shortened in monospace, each with a copy button; linked when it has a url. */
+function KeyValue({ row }: { row: KeyRow }) {
+  const parts = splitAddresses(row.value);
+  const body = parts.map((p, i) =>
+    p.address ? (
+      <span key={i} className="mono" title={p.text}>
+        {shortHex(p.text)}
+      </span>
+    ) : (
+      <Fragment key={i}>{p.text}</Fragment>
+    ),
+  );
+  return (
+    <>
+      {safeHref(row.url) ? <ExtLink url={row.url} className="break">{body}</ExtLink> : <span className="break">{body}</span>}
+      {parts.filter((p) => p.address).map((p, i) => (
+        <Copy key={i} value={p.text} />
+      ))}
+      {row.note && <span className="small"> {row.note}</span>}
+    </>
+  );
+}
+
+function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
+  const { rows } = useKeyFacts(m);
   if (!rows.length) return null;
   return (
-    <aside className="infobox" aria-labelledby="infobox-title">
-      <h2 id="infobox-title">Key facts</h2>
+    <section className="keyfacts" aria-labelledby="keyfacts-title">
+      <h2 id="keyfacts-title">Key facts</h2>
       <table>
         <tbody>
-          {rows.map((r, i) => {
-            const known = r.lines.filter((id) => m.resolve(id));
-            return (
-              <tr key={i}>
-                <th scope="row">{r.label}</th>
-                <td>
-                  {safeHref(r.url) ? <ExtLink url={r.url} className="break">{r.value}</ExtLink> : <span className="break">{r.value}</span>}
-                  {known.length > 0 && (
-                    <>
-                      {" "}
-                      <a
-                        className="rests"
-                        href={`#${lineAnchor(known[0]!)}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          ui.openLines(known.map((id) => m.resolve(id)!.id));
-                        }}
-                        aria-label={`${r.label}: open the ${known.length === 1 ? "line" : `${known.length} lines`} it rests on`}
-                      >
-                        {known.length === 1 ? "line" : `${known.length} lines`}
-                      </a>
-                    </>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <th scope="row">{r.label}</th>
+              <td className="kf-value">
+                <KeyValue row={r} />
+              </td>
+              <td className="kf-badge">
+                {r.badge &&
+                  (r.lines.length ? (
+                    <a
+                      className={`badge badge-${r.badge.tone}`}
+                      href={to(lineAnchor(r.lines[0]!.id))}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        ui.openLines(r.lines.map((l) => l.id));
+                      }}
+                      aria-label={`${r.label}: ${r.badge.text}. Open the ${r.lines.length === 1 ? "line" : `${r.lines.length} lines`} it rests on`}
+                    >
+                      {r.badge.text}
+                    </a>
+                  ) : (
+                    <span className={`badge badge-${r.badge.tone}`}>{r.badge.text}</span>
+                  ))}
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
-    </aside>
+    </section>
   );
+}
+
+export function useKeyFacts(m: RecordModel) {
+  const all = m.sections.flatMap((s) => s.rows.map((r) => r.line));
+  return keyFacts(m.page, m.resolve, all);
 }
 
 /** After each sentence, one small coloured dot per kind among its lines; a dot opens those lines in Record. */
@@ -100,7 +148,7 @@ export function SentenceDots({ lines, ui }: { lines: Line[]; ui: Ui }) {
           <a
             key={k}
             className={`sdot kind-${k}`}
-            href={`#${lineAnchor(of[0]!.id)}`}
+            href={to(lineAnchor(of[0]!.id))}
             title={label}
             aria-label={`Open ${label} in Record`}
             onClick={(e) => {
@@ -122,7 +170,7 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
     <div className="summary">
       <div className="section-head">
         <h2>Summary</h2>
-        <a className="btn btn-small" href="#suggest-edit">
+        <a className="btn btn-small" href={to("suggest-edit")}>
           Edit
         </a>
       </div>
@@ -150,11 +198,11 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
   );
 }
 
-function PanelChecks({ m }: { m: RecordModel }) {
+function PanelAnswers({ m }: { m: RecordModel }) {
   if (!m.panel.length) return null;
   return (
-    <div className="card">
-      <h2>Checked by a panel</h2>
+    <div className="card" id="panel-answers">
+      <h2>Panel answers</h2>
       <ul className="lines">
         {[...m.panel].reverse().map((a) => (
           <li key={a.req.requestId} className="panel-row" id={panelAnchor(a)} tabIndex={-1}>
@@ -180,13 +228,13 @@ export function OverviewTab({ m, ui, items, price }: { m: RecordModel; ui: Ui; i
   const { page, latest, error } = m;
   return (
     <section className="tab" aria-labelledby="record-title">
-      <h1 id="record-title" tabIndex={-1}>{page?.name || "IMD (imd.fun)"}</h1>
-      <p className="lead">{page?.oneLine || "Public sources and checks for imd.fun."}</p>
+      <h1 id="record-title" tabIndex={-1}>{page?.name || m.subject.id}</h1>
+      <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
       <div className="row-actions">
-        <a className="btn btn-primary" href="#rebuild">
-          Rebuild the page
+        <a className="btn btn-primary" href={to("rebuild")}>
+          {page ? "Rebuild the page" : "Create the page"}
         </a>
-        <a className="btn" href="#contribute">
+        <a className="btn" href={to("contribute")}>
           Contribute
         </a>
         <span className="price mono">{price}</span>
@@ -195,30 +243,28 @@ export function OverviewTab({ m, ui, items, price }: { m: RecordModel; ui: Ui; i
       {!page && (
         <div className="card empty">
           <h2>{items === null ? "Reading the record…" : latest && !error ? "Downloading the record…" : "No page yet"}</h2>
-          <p>{latest && !error ? "The page job finished. Downloading and checking its file…" : "Run a rebuild to publish the first record."}</p>
+          <p>{latest && !error ? "The page job finished. Downloading and checking its file…" : `Run a rebuild to publish the first record of ${m.subject.id}.`}</p>
           {error && <p className="error">Unable to read the page: {error}</p>}
         </div>
       )}
       {(page || m.summary.length > 0) && (
-        <div className={`overview${page?.infobox.length ? " has-infobox" : ""}`}>
-          <Infobox m={m} ui={ui} />
+        <div className="overview">
+          <KeyFacts m={m} ui={ui} />
           <Summary m={m} ui={ui} />
           {page && !m.summary.length && (
             <p className="small">
-              This page has no summary yet. <a href="#suggest-edit">Suggest one</a> or read the lines in <a href="#record">Record</a>.
+              This page has no summary yet. <a href={to("suggest-edit")}>Suggest one</a> or read the lines in <a href={to("record")}>Record</a>.
             </p>
           )}
         </div>
       )}
 
-      <PanelChecks m={m} />
-
       <div className="card">
         <h2>Help build this record</h2>
         <div className="row-actions">
-          <a className="btn" href="#contribute">Confirm a fact</a>
-          <a className="btn" href="#add-sources">Add sources</a>
-          <a className="btn" href="#suggest-edit">Suggest an edit</a>
+          <a className="btn" href={to("confirm")}>Confirm a fact</a>
+          <a className="btn" href={to("add-sources")}>Add sources</a>
+          <a className="btn" href={to("suggest-edit")}>Suggest an edit</a>
         </div>
       </div>
     </section>
@@ -241,7 +287,7 @@ function SourceNumbers({ keys, numbers }: { keys: string[]; numbers: Map<string,
       {keys.map((k) => {
         const s = numbers.get(k);
         return s ? (
-          <a key={k} className="chip mono" href={`#source-${s.n}`} aria-label={`Source ${s.n}`}>
+          <a key={k} className="chip mono" href={to(`source-${s.n}`)} aria-label={`Source ${s.n}`}>
             {s.n}
           </a>
         ) : (
@@ -342,7 +388,7 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
         if (target)
           body = (
             <a
-              href={`#${lineAnchor(target.id)}`}
+              href={to(lineAnchor(target.id))}
               onClick={(e) => {
                 e.preventDefault();
                 ctx.ui.openLines([target.id]);
@@ -351,7 +397,7 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
               {target.text}
             </a>
           );
-        else if (answer) body = answer.activity ? <a href={`#${panelAnchor(answer.activity)}`}>{answer.text}</a> : <span>{answer.text}</span>;
+        else if (answer) body = answer.activity ? <a href={to(panelAnchor(answer.activity))}>{answer.text}</a> : <span>{answer.text}</span>;
         return (
           <li key={i} className={`settled-${k.type}`}>
             <span className="settled-word">{word}:</span> {body}
@@ -553,7 +599,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
       {!page && !m.jobs.length ? (
         <div className="card empty">
           <p>No lines yet. Lines appear here once a page job, a sources job or an edit has completed.</p>
-          <a className="btn" href="#contribute">Contribute</a>
+          <a className="btn" href={to("contribute")}>Contribute</a>
         </div>
       ) : (
         <>
@@ -582,6 +628,8 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
             </div>
           ))}
           {counts.all > 0 && shown.length === 0 && <p className="small">No lines of this kind.</p>}
+          <PanelAnswers m={m} />
+          <OtherChannels m={m} />
           {page && page.openQuestions.length > 0 && (
             <div className="card">
               <h2>Not known yet</h2>
@@ -595,6 +643,25 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
         </>
       )}
     </section>
+  );
+}
+
+/** Channels of the subject that the key facts table does not show. */
+function OtherChannels({ m }: { m: RecordModel }) {
+  const { otherChannels } = useKeyFacts(m);
+  if (!otherChannels.length) return null;
+  return (
+    <div className="card" id="other-channels">
+      <h2>Other channels</h2>
+      <ul className="channels">
+        {otherChannels.map((c, i) => (
+          <li key={i}>
+            <ExtLink url={c.url}>{c.label || c.url}</ExtLink>
+            <span className={`tie tie-${TIE_WORDS[c.tie] ? c.tie : "none"}`}>{tieWord(c.tie)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

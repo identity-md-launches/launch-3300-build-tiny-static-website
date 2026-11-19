@@ -3,31 +3,25 @@ import { artifactUrl } from "./bodies";
 import { ACTIONS } from "./config";
 import { jobLink, kindName, lineAnchor, payerName } from "./format";
 import { outcomeOf, outcomeText, VERDICT_WORDS } from "./page";
-import type { RecordModel } from "./model";
+import { STANDING_WORDS, type RecordModel } from "./model";
+import { TEMPLATE_TITLES, type Template } from "./bodies";
+import { to } from "./route";
 import { isEditJob, isPageJob, isSourceJob, type Activity, type useActivity } from "./useActivity";
 
 function what(a: Activity) {
-  if (a.req.action !== ACTIONS.research) return `Question · ${kindName(a.req.kind)}`;
+  if (a.req.action !== ACTIONS.research) return `Question · ${TEMPLATE_TITLES[a.req.template as Template] ?? kindName(a.req.kind)}`;
   if (isSourceJob(a.req)) return "Sources";
   if (isEditJob(a.req)) return "Edit";
   if (isPageJob(a.req)) return "Page rebuild";
   return "Job";
 }
 
-type Shown = Pick<RecordModel, "latest" | "after" | "foldedIn" | "editRefs">;
+type Shown = Pick<RecordModel, "standing" | "after" | "editRefs">;
 
-/**
- * Whether a completed page, sources or edit result is shown now. An earlier sources or edit result counts as
- * folded in only when the shown rebuild was given it and accounted for every one of its lines; otherwise
- * completion order says no more than that it came first.
- */
+/** Shown now, folded in (its artifact URL is in the objective of the page shown), or not yet folded in. */
 function standing(a: Activity, shown: Shown): string {
-  if (a.state !== "completed" || a.req.action !== ACTIONS.research) return "";
-  if (shown.latest?.req.requestId === a.req.requestId) return "Shown now";
-  if (shown.after.some((x) => x.req.requestId === a.req.requestId)) return "Shown now, on top of the page";
-  if (!shown.latest) return "";
-  if (isPageJob(a.req)) return "Replaced by a newer page";
-  return shown.foldedIn.has(a.req.requestId) ? "Folded into the page shown" : "Completed before the page shown";
+  const s = shown.standing(a);
+  return s ? STANDING_WORDS[s] : "";
 }
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
@@ -40,7 +34,7 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
         <button className="btn" onClick={() => void reload()} disabled={loading}>{loading ? "Reading chain…" : "Refresh"}</button>
       </div>
       {error && <p className="error">Unable to read the chain: {error}. Try Refresh.</p>}
-      {items && items.length === 0 && !error && <div className="card"><p>No requests yet. Every paid request from this page appears here, newest first.</p></div>}
+      {items && items.length === 0 && !error && <div className="card"><p>No requests yet. Every paid request for this project appears here, newest first.</p></div>}
       {items === null && <div className="card"><p>Reading requests from Ethereum…</p></div>}
       {items && items.length > 0 && (
         <ul className="activity">
@@ -81,7 +75,7 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                                 ? refs.map((l, j) => (
                                     <span key={l.id}>
                                       {j > 0 && "; "}
-                                      <a href={`#${lineAnchor(l.id)}`}>{l.text}</a>
+                                      <a href={to(lineAnchor(l.id))}>{l.text}</a>
                                     </span>
                                   ))
                                 : <span className="mono">{s.lines.join(", ")}</span>}

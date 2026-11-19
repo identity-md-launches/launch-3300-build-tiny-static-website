@@ -7,27 +7,37 @@ import {
   EDIT_MAX_LINKS,
   EDIT_MAX_TEXT,
   MAX_OBJECTIVE,
-  PRESETS,
   SOURCE_MAX_LINKS,
+  TEMPLATE_KIND,
+  TEMPLATE_TITLES,
   cleanEditText,
   editBody,
   encodeBody,
-  oracleBody,
   planEditLinks,
   planSources,
   priorText,
-  questionP4,
+  questionContract,
+  questionPage,
+  questionPost,
   rebuildBody,
   sourceBody,
+  templateBody,
+  validateContract,
+  validatePage,
   validateP4,
+  type Prior,
+  type Template,
 } from "./bodies";
 import { OverviewTab, RecordTab, SourcesTab, type Filter, type Ui } from "./Record";
 import { ActivityList } from "./ActivityList";
 import { ConnectSheet, config } from "./wallet";
 import { rememberSent, useActivity } from "./useActivity";
-import { useRecordModel, type RecordModel } from "./model";
+import { planRebuild, subjectRefFor, useRecordModel, type RecordModel } from "./model";
 import { lineAnchor } from "./format";
-import { TABS, routeOf } from "./route";
+import { TABS, routeOf, setLinkSubject, subjectHref, to } from "./route";
+import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
+import { Home } from "./Home";
+import type { Activity } from "./useActivity";
 
 type RecordState = RecordModel;
 const actionId = (a: string) => pad(stringToHex(a), { dir: "right", size: 32 });
@@ -46,8 +56,10 @@ function usePrice(action: string) {
   return failed ? "Price unavailable" : price === null ? "Reading price…" : imd(price);
 }
 
-interface Ask {
+export interface Ask {
   title: string;
+  /** The subject the request belongs to; after paying, the site opens its Activity. */
+  subject?: string;
   action: string;
   /** What the request is (add, source, proof, statement, claim), remembered with the sent transaction. */
   kind: string;
@@ -61,8 +73,9 @@ interface Ask {
 function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: RecordState; price: string }) {
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
-  const plan = useMemo(() => planSources(text, rec.channels, rec.main), [text, rec.channels, rec.main]);
+  const plan = useMemo(() => planSources(text, rec.channels, rec.main, rec.subject), [text, rec.channels, rec.main, rec.subject]);
   const n = plan.links.length;
+  const name = rec.page?.name || rec.subject.id;
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!rec.ready) {
@@ -75,7 +88,7 @@ function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Recor
       return;
     }
     setErr("");
-    onAsk({ title: `Add ${n} source${n === 1 ? "" : "s"}`, action: ACTIONS.research, kind: "source", body: sourceBody(plan.links, rec.channels, rec.main) });
+    onAsk({ title: `Add ${n} source${n === 1 ? "" : "s"}`, subject: rec.subject.id, action: ACTIONS.research, kind: "source", body: sourceBody(plan.links, rec.channels, rec.main, rec.subject) });
   };
   const fit =
     plan.slotsLeft === 0
@@ -86,7 +99,7 @@ function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Recor
   return (
     <div className="card" id="add-sources">
       <h3>Add sources</h3>
-      <p>One research job reads each link and adds what it says about imd.fun to the record, as a statement if one of imd.fun's tied channels published it and a claim if not. Sources that are not about imd.fun add nothing.</p>
+      <p>One research job reads each link and adds what it says about {name} to the record, as a statement if one of its tied channels published it and a claim if not. Sources that are not about {name} add nothing.</p>
       <form className="form" onSubmit={submit} noValidate>
         <label htmlFor="src-links">Links, one per line</label>
         <textarea id="src-links" name="links" rows={5} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder={"https://x.com/name/status/123\nhttps://example.com/article"}
@@ -113,10 +126,11 @@ function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: Recor
 }
 
 /** "Rebuild the page": the research action, starting from the page shown now and everything completed after it. */
-function rebuildAsk(rec: RecordState): Ask {
-  const body = rebuildBody(rec.prior);
+export function rebuildAsk(prior: Prior, subject: SubjectRef, hasPage: boolean): Ask {
+  const body = rebuildBody(prior, subject);
   return {
-    title: "Rebuild the page",
+    title: hasPage ? `Rebuild the page of ${subject.id}` : `Create the page of ${subject.id}`,
+    subject: subject.id,
     action: ACTIONS.research,
     kind: "add",
     body,
@@ -144,15 +158,15 @@ function SnapshotNote({ rec, onRefresh, refreshing }: { rec: RecordState; onRefr
 }
 
 function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: Ask) => void; rec: RecordState; price: string; onRefresh: () => void; refreshing: boolean }) {
-  const ask = rebuildAsk(rec);
+  const ask = rebuildAsk(rec.prior, rec.subject, !!rec.page);
   const prior = priorText(rec.prior);
   const ready = rec.snapshot.ok;
   return (
     <div className="card" id="rebuild">
-      <h3>Rebuild the page</h3>
+      <h3>{rec.page ? "Rebuild the page" : "Create the page"}</h3>
       <p>
-        One page job starts from the page shown now and every sources and edit result completed after it, carries each line forward or says why it dropped it, merges
-        repeats, and then looks for what is new.
+        One page job starts from the page shown now and every page, sources and edit result it has not folded in yet, carries each line forward or says why it dropped
+        it, merges repeats, and then looks for what is new. It researches {describeSubject(rec.subject)}.
       </p>
       {ready ? (
         <>
@@ -161,6 +175,12 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
               ? "There is no page yet, so this job starts from nothing."
               : `It is given ${rec.prior.files.length} earlier file${rec.prior.files.length === 1 ? "" : "s"} and ${rec.prior.answers.length} panel answer${rec.prior.answers.length === 1 ? "" : "s"}.`}
           </p>
+          {(rec.leftOut > 0 || rec.answersLeftOut > 0) && (
+            <p className="warn">
+              {rec.leftOut > 0 && `${rec.leftOut} older result${rec.leftOut === 1 ? " is" : "s are"} left out to keep the objective under 7,500 characters; it takes the newest that fit. `}
+              {rec.answersLeftOut > 0 && `${rec.answersLeftOut} older panel answer${rec.answersLeftOut === 1 ? " is" : "s are"} left out for the same reason.`}
+            </p>
+          )}
           <details>
             <summary>Read the objective</summary>
             <p className="objective">{String(ask.body.objective)}</p>
@@ -172,7 +192,7 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
       {ready && ask.warning && <p className="warn">{ask.warning}</p>}
       <div className="row-actions">
         <button className="btn btn-primary" onClick={() => (ready ? onAsk(ask) : undefined)} disabled={!ready}>
-          {ready ? "Rebuild the page" : rec.snapshot.loading ? "Reading the record…" : "Record not read"}
+          {ready ? (rec.page ? "Rebuild the page" : "Create the page") : rec.snapshot.loading ? "Reading the record…" : "Record not read"}
         </button>
         <span className="price mono">{price}</span>
       </div>
@@ -214,10 +234,10 @@ function SuggestEdit({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
       document.getElementById("edit-text")?.focus();
       return;
     }
-    const body = editBody(clean, rec.prior, plan.links);
+    const body = editBody(clean, rec.prior, plan.links, rec.subject);
     if (body.objective.length >= MAX_OBJECTIVE) return setErr(`The finished objective is over ${MAX_OBJECTIVE.toLocaleString("en-US")} characters. Shorten the text or drop a link.`);
     setErr("");
-    onAsk({ title: "Suggest an edit", action: ACTIONS.research, kind: "edit", body });
+    onAsk({ title: "Suggest an edit", subject: rec.subject.id, action: ACTIONS.research, kind: "edit", body });
   };
   return (
     <div className="card" id="suggest-edit" tabIndex={-1}>
@@ -262,23 +282,108 @@ function SuggestEdit({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
   );
 }
 
-function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState; onRefresh: () => void; refreshing: boolean }) {
-  const oraclePrice = usePrice(ACTIONS.oracle);
-  const [p4, setP4] = useState({ url: "", handle: "", text: "" });
-  const [p4Err, setP4Err] = useState<ReturnType<typeof validateP4>>({});
+const field = (id: string, err?: string) => ({ id, "aria-invalid": !!err, "aria-describedby": err ? `${id}-err` : undefined });
+const Err = ({ id, msg }: { id: string; msg?: string }) => (msg ? <p id={`${id}-err`} className="error">{msg}</p> : null);
 
-  const askP4 = (e: React.FormEvent) => {
+/** "Confirm a fact": three short forms, one per question template, each ending with the subject's "filed under" sentence. */
+function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState }) {
+  const oraclePrice = usePrice(ACTIONS.oracle);
+  const [tpl, setTpl] = useState<Template>("post");
+  const [f, setF] = useState({ url: "", handle: "", text: "", chain: String(rec.subject.chainId ?? 1), signature: "", address: rec.subject.address || rec.main, value: "" });
+  const [errs, setErrs] = useState<Record<string, string | undefined>>({});
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
+  const sid = rec.subject.id;
+  const question =
+    tpl === "post"
+      ? questionPost(f.url || "<URL>", f.handle || "<HANDLE>", f.text || "<TEXT>", sid)
+      : tpl === "page"
+        ? questionPage(f.url || "<URL>", f.text || "<TEXT>", sid)
+        : questionContract(f.chain || "<CHAIN ID>", f.signature || "<FUNCTION SIGNATURE>", f.address || "<ADDRESS>", f.value || "<VALUE>", sid);
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const errs = validateP4(p4.url, p4.handle, p4.text);
-    setP4Err(errs);
-    if (Object.keys(errs).length) {
-      (document.getElementById(errs.url ? "p4-url" : errs.handle ? "p4-handle" : "p4-text") as HTMLElement | null)?.focus();
+    const found: Record<string, string | undefined> =
+      tpl === "post" ? validateP4(f.url, f.handle, f.text) : tpl === "page" ? validatePage(f.url, f.text) : validateContract(f.chain, f.signature, f.address, f.value);
+    setErrs(found);
+    const first = Object.keys(found)[0];
+    if (first) {
+      document.getElementById(`q-${first}`)?.focus();
       return;
     }
-    const q = questionP4(p4.url.trim(), p4.handle.trim().replace(/^@/, ""), p4.text.trim().replace(/[.?]+$/, ""));
-    onAsk({ title: "Confirm a post", action: ACTIONS.oracle, kind: "claim", body: oracleBody(q, "panel") });
+    onAsk({ title: `Confirm: ${TEMPLATE_TITLES[tpl].toLowerCase()}`, subject: sid, action: ACTIONS.oracle, kind: TEMPLATE_KIND[tpl], body: templateBody(tpl, question, Number(f.chain)) });
   };
+  return (
+    <div className="card" id="confirm" tabIndex={-1}>
+      <h3>Confirm a fact</h3>
+      <p>
+        A panel of 5 agents answers true or false; 4 must agree. The answer is filed under this record and shows on the line it confirms or contradicts. Each question costs{" "}
+        <span className="mono">{oraclePrice}</span>.
+      </p>
+      <form className="form" onSubmit={submit} noValidate>
+        <fieldset className="choice">
+          <legend>What to check</legend>
+          {(Object.keys(TEMPLATE_TITLES) as Template[]).map((k) => (
+            <label key={k} className="choice-item">
+              <input type="radio" name="template" value={k} checked={tpl === k} onChange={() => { setTpl(k); setErrs({}); }} />
+              {TEMPLATE_TITLES[k]}
+            </label>
+          ))}
+        </fieldset>
+        {tpl !== "contract" && (
+          <>
+            <label htmlFor="q-url">{tpl === "post" ? "Post link" : "Page link"}</label>
+            <input {...field("q-url", errs.url)} name="url" type="url" inputMode="url" autoComplete="url" spellCheck={false}
+              placeholder={tpl === "post" ? "https://x.com/name/status/123" : "https://example.com/docs"} value={f.url} onChange={set("url")} />
+            <Err id="q-url" msg={errs.url} />
+          </>
+        )}
+        {tpl === "post" && (
+          <>
+            <label htmlFor="q-handle">Handle of the account that posted it</label>
+            <input {...field("q-handle", errs.handle)} name="handle" type="text" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="name" value={f.handle} onChange={set("handle")} />
+            <Err id="q-handle" msg={errs.handle} />
+          </>
+        )}
+        {tpl !== "contract" && (
+          <>
+            <label htmlFor="q-text">{tpl === "post" ? "What the post says" : "What the page says"}</label>
+            <input {...field("q-text", errs.text)} name="text" type="text" autoComplete="off" placeholder="a job costs 0.5 IMD" value={f.text} onChange={set("text")} />
+            <Err id="q-text" msg={errs.text} />
+          </>
+        )}
+        {tpl === "contract" && (
+          <>
+            <label htmlFor="q-chain">Chain</label>
+            <select {...field("q-chain", errs.chain)} name="chain" value={f.chain} onChange={set("chain")}>
+              {CHAIN_CHOICES.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+              ))}
+            </select>
+            <Err id="q-chain" msg={errs.chain} />
+            <label htmlFor="q-address">Contract address</label>
+            <input {...field("q-address", errs.address)} name="address" type="text" className="mono" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="0x…" value={f.address} onChange={set("address")} />
+            <Err id="q-address" msg={errs.address} />
+            <label htmlFor="q-signature">Function to call</label>
+            <input {...field("q-signature", errs.signature)} name="signature" type="text" className="mono" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="totalSupply()" value={f.signature} onChange={set("signature")} />
+            <Err id="q-signature" msg={errs.signature} />
+            <label htmlFor="q-value">Value it should return</label>
+            <input {...field("q-value", errs.value)} name="value" type="text" autoComplete="off" placeholder="2000" value={f.value} onChange={set("value")} />
+            <Err id="q-value" msg={errs.value} />
+          </>
+        )}
+        <details>
+          <summary>Read the question</summary>
+          <p className="objective">{question}</p>
+        </details>
+        <div className="row-actions">
+          <button className="btn" type="submit">Review the question</button>
+          <span className="price mono">{oraclePrice}</span>
+        </div>
+      </form>
+    </div>
+  );
+}
 
+function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState; onRefresh: () => void; refreshing: boolean }) {
   return (
     <section className="tab" aria-labelledby="actions-title">
       <h1 id="actions-title" className="tab-title" tabIndex={-1}>
@@ -287,41 +392,7 @@ function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { o
       <p className="lead">Every action is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
       <div className="grid">
         <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} />
-
-        <div className="card" id="confirm">
-          <h3>Confirm a fact</h3>
-          <p>
-            A panel of 5 agents answers true or false; 4 must agree. Each question costs <span className="mono">{oraclePrice}</span>.
-          </p>
-          <ul className="presets">
-            {PRESETS.map((p) => (
-              <li key={p.id}>
-                <button className="btn preset" onClick={() => onAsk({ title: p.title, action: ACTIONS.oracle, kind: p.kind, body: oracleBody(p.question, p.evidence) })}>
-                  <span>Check: {p.title}</span>
-                  <span className="small">{p.note}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          <form className="form" onSubmit={askP4} noValidate>
-            <h4>Check a post on X</h4>
-            <label htmlFor="p4-url">Post link</label>
-            <input id="p4-url" name="url" type="url" inputMode="url" autoComplete="url" placeholder="https://x.com/name/status/123"
-              value={p4.url} onChange={(e) => setP4({ ...p4, url: e.target.value })} aria-invalid={!!p4Err.url} aria-describedby={p4Err.url ? "p4-url-err" : undefined} />
-            {p4Err.url && <p id="p4-url-err" className="error">{p4Err.url}</p>}
-            <label htmlFor="p4-handle">Handle of the account that posted it</label>
-            <input id="p4-handle" name="handle" type="text" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="imd_fun"
-              value={p4.handle} onChange={(e) => setP4({ ...p4, handle: e.target.value })} aria-invalid={!!p4Err.handle} aria-describedby={p4Err.handle ? "p4-handle-err" : undefined} />
-            {p4Err.handle && <p id="p4-handle-err" className="error">{p4Err.handle}</p>}
-            <label htmlFor="p4-text">What the post says</label>
-            <input id="p4-text" name="text" type="text" autoComplete="off" placeholder="the swarm has 2,000 seats"
-              value={p4.text} onChange={(e) => setP4({ ...p4, text: e.target.value })} aria-invalid={!!p4Err.text} aria-describedby={p4Err.text ? "p4-text-err" : undefined} />
-            {p4Err.text && <p id="p4-text-err" className="error">{p4Err.text}</p>}
-            <button className="btn" type="submit">Review the post check</button>
-          </form>
-        </div>
-
+        <ConfirmCard key={rec.subject.id} onAsk={onAsk} rec={rec} />
         <AddSources onAsk={onAsk} rec={rec} price={researchPrice} />
         <SuggestEdit onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} />
       </div>
@@ -468,7 +539,7 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
     </div>
   );
 }
-/* ---------- Tabs, with their own links ---------- */
+/* ---------- Routes: home, and each subject's tabs ---------- */
 
 function useRoute() {
   const [route, setRoute] = useState(() => ({ ...routeOf(location.hash), n: 0 }));
@@ -480,12 +551,15 @@ function useRoute() {
   return route;
 }
 
-export default function App() {
-  const activity = useActivity();
-  const [ask, setAsk] = useState<Ask | null>(null);
-  const researchPrice = usePrice(ACTIONS.research);
-  const rec = useRecordModel(activity.items, activity.error);
-  const route = useRoute();
+function SubjectView({ subject, items, activity, route, onAsk, researchPrice }: {
+  subject: string;
+  items: Activity[] | null;
+  activity: ReturnType<typeof useActivity>;
+  route: ReturnType<typeof useRoute>;
+  onAsk: (a: Ask) => void;
+  researchPrice: string;
+}) {
+  const rec = useRecordModel(items, activity.error, subject);
   const [filter, setFilter] = useState<Filter>("all");
   const [openSet, setOpenSet] = useState<Set<string>>(() => new Set());
   const toggle = useCallback(
@@ -502,7 +576,7 @@ export default function App() {
     if (!ids.length) return;
     setFilter("all");
     setOpenSet((s) => new Set([...s, ...ids]));
-    const h = `#${lineAnchor(ids[0]!)}`;
+    const h = to(lineAnchor(ids[0]!));
     if (location.hash === h) dispatchEvent(new HashChangeEvent("hashchange"));
     else location.hash = h;
   }, []);
@@ -516,7 +590,7 @@ export default function App() {
     if (t && !el) return; // not rendered yet: runs again when the record loads
     if (el) {
       el.scrollIntoView?.({ block: "start" });
-      const f = el.querySelector<HTMLElement>(".row-toggle") ?? (el.tabIndex >= 0 || el.hasAttribute("tabindex") ? el : el.querySelector<HTMLElement>("textarea, button, summary, a"));
+      const f = el.querySelector<HTMLElement>(".row-toggle") ?? (el.tabIndex >= 0 || el.hasAttribute("tabindex") ? el : el.querySelector<HTMLElement>("textarea, button, summary, a, input"));
       if (route.n > 0) f?.focus({ preventScroll: true });
       if (el instanceof HTMLDetailsElement) el.open = true;
     } else if (route.n > 0) {
@@ -525,38 +599,88 @@ export default function App() {
     }
   }, [route, lines, rec.page]);
 
+  const name = rec.page?.name || subject;
+  useEffect(() => {
+    document.title = `${name} · On the record (test)`;
+  }, [name]);
+
   const refresh = () => void activity.reload();
+  return (
+    <>
+      <nav aria-label={`${name} tabs`} className="tabs">
+        {TABS.map((t) => (
+          <a key={t.id} href={subjectHref(subject, t.id)} aria-current={route.tab === t.id ? "page" : undefined}>
+            {t.label}
+          </a>
+        ))}
+      </nav>
+      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} />}
+      {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
+      {route.tab === "sources" && <SourcesTab m={rec} />}
+      {route.tab === "activity" && <ActivityList {...activity} items={items} shown={rec} />}
+      {route.tab === "contribute" && <ContributeTab onAsk={onAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} />}
+    </>
+  );
+}
+
+export default function App() {
+  const activity = useActivity();
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const researchPrice = usePrice(ACTIONS.research);
+  const route = useRoute();
+  const subject = route.subject;
+  if (subject) setLinkSubject(subject);
+  const items = useMemo(() => (activity.items === null || !subject ? activity.items : activity.items.filter((a) => a.req.subject === subject)), [activity.items, subject]);
+  useEffect(() => {
+    if (!subject) document.title = "On the record (test)";
+  }, [subject]);
+
+  /** The home form: the Rebuild dialog for that subject, starting from its record when it already has one. */
+  const addProject = (input: { domain: string; address: string; chain: string }): string | null => {
+    if (Object.keys(validateSubject(input)).length) return "Fix the fields above.";
+    if (activity.items === null) return "Wait until the list has loaded from Ethereum.";
+    const typed = refFromInput(input);
+    const mine = activity.items.filter((a) => a.req.subject === typed.id);
+    const known = subjectRefFor(typed.id, mine, null);
+    const ref: SubjectRef = typed.address ? typed : known;
+    const plan = planRebuild(mine, ref);
+    if (!plan.ok) return `An earlier result of ${ref.id} could not be read yet. Open its page and use Refresh.`;
+    setAsk(rebuildAsk(plan.prior, ref, plan.hasPage));
+    return null;
+  };
+
   return (
     <>
       <a className="skip" href="#root-main" onClick={(e) => { e.preventDefault(); document.getElementById("root-main")?.focus(); }}>Skip to content</a>
       <header className="top">
         <div className="top-row">
-          <a className="brand" href="#overview">IMD record</a>
+          <a className="brand" href="#/">On the record <span className="brand-test">(test)</span></a>
           <ConnectSheet />
         </div>
-        <nav aria-label="Tabs" className="tabs">
-          {TABS.map((t) => (
-            <a key={t.id} href={`#${t.id}`} aria-current={route.tab === t.id ? "page" : undefined}>
-              {t.label}
-            </a>
-          ))}
-        </nav>
       </header>
       <main id="root-main" tabIndex={-1}>
-        {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={activity.items} price={researchPrice} />}
-        {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
-        {route.tab === "sources" && <SourcesTab m={rec} />}
-        {route.tab === "activity" && <ActivityList {...activity} shown={rec} />}
-        {route.tab === "contribute" && <ContributeTab onAsk={setAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} />}
+        {subject ? (
+          <SubjectView key={subject} subject={subject} items={items} activity={activity} route={route} onAsk={setAsk} researchPrice={researchPrice} />
+        ) : (
+          <Home items={activity.items} error={activity.error} loading={activity.loading} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} />
+        )}
         <footer className="about">
-          <p>About: this is a test. Payments go to IMD and are not refunded. Nobody can edit this page by hand; every line comes from a paid research job or panel answer read from Ethereum.</p>
+          <p>About: this is a test. Payments go to IMD and are not refunded. Nobody can edit a record by hand; every line comes from a paid research job or panel answer read from Ethereum.</p>
           <p>
             For agents: <a href="./agents.md">agents.md</a> lists the Intake call, the exact bodies and the read routes.
           </p>
         </footer>
       </main>
-      {ask && <PayDialog ask={ask} onClose={() => setAsk(null)} onSent={() => void activity.reload()} />}
+      {ask && (
+        <PayDialog
+          ask={ask}
+          onClose={() => setAsk(null)}
+          onSent={() => {
+            void activity.reload();
+            if (ask.subject && route.subject !== ask.subject) location.hash = subjectHref(ask.subject, "activity");
+          }}
+        />
+      )}
     </>
   );
 }
-
