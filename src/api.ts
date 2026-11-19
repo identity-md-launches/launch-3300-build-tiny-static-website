@@ -33,6 +33,7 @@ export interface IntakeEntry {
   requestId: string;
   state?: string;
   reason?: string | null;
+  detail?: string | null;
   admission?: { result?: { kind?: string; jobId?: string; requestId?: string } } | null;
   completion?: { status?: number; uri?: string; resultHash?: string } | null;
 }
@@ -72,6 +73,19 @@ async function fetchVerified(file: ResultFile): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
+/** Reason and detail of a refused or failed request, as plain text from GET /intake/1/:transactionHash. */
+export interface Refusal {
+  reason: string;
+  detail: string;
+}
+export function refusalOf(entry: IntakeEntry | null): Refusal | null {
+  if (!entry) return null;
+  const clean = (s: unknown) => (typeof s === "string" ? s.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 400) : "");
+  const reason = clean(entry.reason);
+  const detail = clean(entry.detail).replace(/^:\s*/, "");
+  return reason || detail ? { reason, detail } : null;
+}
+
 export interface PageFetch {
   text: string;
   jobId: string | null;
@@ -79,21 +93,22 @@ export interface PageFetch {
 }
 
 /**
- * The research page for one completed request.
+ * One named output file of a completed job request ("page" for research, "lines" for sources).
  * Primary: jobId from GET /intake/1/:tx, then GET /jobs/:id/result, the file named "page", GET /artifacts/{hash}.
  * Fallback: the completion's uri (ipfs://CID/result.json) through a gateway, checked against resultHash.
  */
-export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHint: string | null): Promise<PageFetch> {
-  const cached = cacheGet<PageFetch>(`page:${r.requestId}`);
+export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHint: string | null, fileName = "page"): Promise<PageFetch> {
+  const key = `${fileName}:${r.requestId}`;
+  const cached = cacheGet<PageFetch>(key);
   if (cached) return cached;
   let firstError: unknown = null;
   if (jobIdHint) {
     try {
       const result = await getJson<JobResult>(`${API}/jobs/${jobIdHint}/result`);
-      const file = result.files?.find((f) => f.name === "page");
-      if (!file) throw new Error('The job result has no file named "page"');
+      const file = result.files?.find((f) => f.name === fileName);
+      if (!file) throw new Error(`The job result has no file named "${fileName}"`);
       const out: PageFetch = { text: await fetchVerified(file), jobId: jobIdHint, path: "api" };
-      cacheSet(`page:${r.requestId}`, out);
+      cacheSet(key, out);
       return out;
     } catch (e) {
       firstError = e;
@@ -108,10 +123,10 @@ export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHi
         const bytes = new Uint8Array(await res.arrayBuffer());
         if (keccak256(bytes).toLowerCase() !== c.resultHash.toLowerCase()) continue;
         const result = JSON.parse(new TextDecoder().decode(bytes)) as JobResult;
-        const file = result.files?.find((f) => f.name === "page");
+        const file = result.files?.find((f) => f.name === fileName);
         if (!file) continue;
         const out: PageFetch = { text: await fetchVerified(file), jobId: result.jobId ?? jobIdHint, path: "ipfs" };
-        cacheSet(`page:${r.requestId}`, out);
+        cacheSet(key, out);
         return out;
       } catch (e) {
         firstError ??= e;

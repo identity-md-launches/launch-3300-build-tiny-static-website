@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getEnsName } from "wagmi/actions";
 import type { Hex } from "viem";
 import { loadTaggedRequests, stateOf, getBlockTime, type Completion, type TaggedRequest } from "./chain";
-import { cacheGet, cacheSet, fetchOracle, getIntakeEntry, oracleIdFrom, type OracleRead } from "./api";
+import { cacheGet, cacheSet, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
+import { ACTIONS } from "./config";
+import { parseLines, type SourceLines } from "./page";
 import { config } from "./wallet";
 
 export interface Activity {
@@ -14,7 +16,14 @@ export interface Activity {
   ens: string | null;
   jobId: string | null;
   oracle: OracleRead | null;
+  /** Reason and detail from GET /intake/1/:tx, for refused or failed requests. */
+  refusal: Refusal | null;
+  /** A completed source job's lines.json, hash-checked and parsed. */
+  sources: SourceLines | null;
+  sourcesError: string | null;
 }
+
+export const isSourceJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "source";
 
 export interface SentTx {
   hash: Hex;
@@ -54,10 +63,14 @@ async function timeOf(r: TaggedRequest): Promise<number | null> {
 
 async function follow(req: TaggedRequest, completion: Completion | undefined): Promise<Activity> {
   const state = stateOf(completion);
+  const final = state !== "pending";
   const jobKey = `job:${req.requestId}`;
+  const whyKey = `why:${req.requestId}`;
   let jobId = cacheGet<string>(jobKey);
   let oracleId: string | null = cacheGet<string>(`oid:${req.requestId}`);
-  if (!jobId || (!oracleId && req.action.startsWith("oracle."))) {
+  let refusal: Refusal | null = cacheGet<Refusal>(whyKey);
+  const needsWhy = (state === "refused" || state === "failed") && !refusal;
+  if (needsWhy || !jobId || (!oracleId && req.action.startsWith("oracle."))) {
     const entry = await getIntakeEntry(req);
     const r = entry?.admission?.result;
     if (r?.jobId) {
@@ -66,18 +79,33 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
     }
     oracleId = oracleIdFrom(entry, completion);
     if (oracleId) cacheSet(`oid:${req.requestId}`, oracleId);
+    if (state === "refused" || state === "failed") {
+      refusal = refusalOf(entry);
+      if (refusal && final) cacheSet(whyKey, refusal);
+    }
   }
   let oracle: OracleRead | null = null;
   if (req.action.startsWith("oracle.") && oracleId) {
     try {
-      oracle = await fetchOracle(oracleId, state !== "pending");
+      oracle = await fetchOracle(oracleId, final);
       jobId ??= oracle.jobId;
     } catch {
       oracle = null;
     }
   }
+  let sources: SourceLines | null = null;
+  let sourcesError: string | null = null;
+  if (isSourceJob(req) && state === "completed" && completion) {
+    try {
+      const f = await fetchResearchPage(req, completion, jobId, "lines");
+      sources = parseLines(f.text);
+      jobId ??= f.jobId;
+    } catch (e) {
+      sourcesError = e instanceof Error ? e.message : "The lines file could not be read";
+    }
+  }
   const [time, ens] = await Promise.all([timeOf(req), ensOf(req.payer)]);
-  return { req, completion, state, time, ens, jobId, oracle };
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError };
 }
 
 export function useActivity() {

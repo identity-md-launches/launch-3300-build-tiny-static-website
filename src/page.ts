@@ -147,3 +147,115 @@ export function safeHref(url: string): string | null {
     return null;
   }
 }
+
+/* ---------- Source jobs (artifacts/lines.json) ---------- */
+
+export interface SourceRef {
+  id: string;
+  url: string;
+  type: string;
+  publisher: string;
+  publishedAt: string;
+  readAt: string;
+  couldOpen: boolean | null;
+  isChannel: boolean;
+}
+export interface SourceLine extends Line {
+  /** The line's one source, from the same file. */
+  source: SourceRef | null;
+}
+export interface SourceLines {
+  sources: SourceRef[];
+  lines: SourceLine[];
+  differs: { lines: string[]; why: string }[];
+}
+
+/**
+ * Turns an untrusted lines.json into plain strings. Kinds are never raised: a line is a statement only when
+ * its source's publisher is one of the subject's channels; everything else, proof included, is a claim.
+ * Sources that could not be opened contribute no lines.
+ */
+export function parseLines(text: string): SourceLines {
+  const j = obj(JSON.parse(text));
+  const sources: SourceRef[] = arr(j.sources).slice(0, 40).map((s) => {
+    const o = obj(s);
+    return {
+      id: str(o.id, 64),
+      url: str(o.url, 600),
+      type: str(o.type, 64),
+      publisher: str(o.publisher, 200),
+      publishedAt: str(o.published_at, 64),
+      readAt: str(o.read_at, 64),
+      couldOpen: typeof o.could_open === "boolean" ? o.could_open : null,
+      isChannel: o.publisher_is_subject_channel === true,
+    };
+  });
+  const byId = new Map(sources.map((s) => [s.id, s]));
+  const lines: SourceLine[] = arr(j.lines)
+    .slice(0, 200)
+    .map((l) => {
+      const o = obj(l);
+      const sourceId = str(o.source, 64);
+      const source = byId.get(sourceId) ?? null;
+      const statement = str(o.kind).toLowerCase() === "statement" && source?.isChannel === true;
+      return {
+        id: str(o.id, 64),
+        section: str(o.section, 64),
+        text: str(o.text, 600),
+        kind: (statement ? "statement" : "claim") as Line["kind"],
+        by: str(o.by, 200) || source?.publisher || "",
+        sources: sourceId ? [sourceId] : [],
+        quote: str(o.quote, 400),
+        rerun: "",
+        source,
+      };
+    })
+    .filter((l) => l.text && l.source?.couldOpen !== false);
+  return {
+    sources,
+    lines,
+    differs: arr(j.differs).map((d) => {
+      const o = obj(d);
+      return { lines: arr(o.lines).map((x) => str(x, 64)), why: str(o.why, 400) };
+    }),
+  };
+}
+
+/** A record row: a research line, or a line added by a source job (with who paid and where the job is). */
+export interface RecordRow extends Row {
+  origin: { payer: string; jobHref: string } | null;
+}
+export interface SourceJob {
+  key: string;
+  data: SourceLines;
+  payer: string;
+  jobHref: string;
+}
+
+/**
+ * Every section in order: the research lines first, then each completed source job's lines, each job's
+ * differs pairs kept together (the second line directly under the first).
+ */
+export function mergeRecord(page: Page | null, jobs: SourceJob[]): { section: string; rows: RecordRow[] }[] {
+  const asPage = (j: SourceJob): Page => ({
+    name: "",
+    oneLine: "",
+    channels: [],
+    sources: [],
+    openQuestions: [],
+    lines: j.data.lines.map((l) => ({ ...l, id: `${j.key}:${l.id}` })),
+    differs: j.data.differs.map((d) => ({ why: d.why, lines: d.lines.map((x) => `${j.key}:${x}`) })),
+  });
+  const pages = jobs.map((j) => ({ job: j, page: asPage(j), placed: new Set<string>() }));
+  const named = new Set<string>([...(page?.lines ?? []), ...pages.flatMap((p) => p.page.lines)].map((l) => l.section));
+  const sections = [...SECTIONS.filter((s) => named.has(s)), ...[...named].filter((s) => !(SECTIONS as readonly string[]).includes(s))];
+  const placedResearch = new Set<string>();
+  return sections
+    .map((section) => {
+      const rows: RecordRow[] = page ? orderSection(page, section, placedResearch).map((r) => ({ ...r, origin: null })) : [];
+      for (const p of pages)
+        rows.push(...orderSection(p.page, section, p.placed).map((r) => ({ ...r, origin: { payer: p.job.payer, jobHref: p.job.jobHref } })));
+      return { section, rows };
+    })
+    .filter((s) => s.rows.length > 0);
+}

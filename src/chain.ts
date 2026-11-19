@@ -1,6 +1,7 @@
 /** Reads the Intake's events from public RPCs, with no wallet. */
 import { decodeAbiParameters, hexToString, trim, type Hex } from "viem";
-import { INTAKE, LAUNCH_BLOCK, RPCS, TAG_NEEDLE, TOPIC_COMPLETED, TOPIC_REQUESTED } from "./config";
+import { ACTIONS, INTAKE, LAUNCH_BLOCK, RPCS, TAG_NEEDLE, TOPIC_COMPLETED, TOPIC_REQUESTED } from "./config";
+import { matchOracleQuestion } from "./bodies";
 
 export interface RawLog {
   topics: Hex[];
@@ -66,12 +67,18 @@ export interface TaggedRequest {
   body: string;
   bodyJson: Record<string, unknown> | null;
   kind: string;
+  /** A short title for an oracle question this site asks; "" for jobs. */
+  title: string;
   amount: bigint;
   blockNumber: bigint;
   transactionHash: Hex;
 }
 
-/** Decodes one Requested log; returns null when it does not carry this site's tag. */
+/**
+ * Decodes one Requested log and keeps it when it is this site's: a body tagged "app":"rec-test-1" (jobs, and
+ * oracle requests sent before the tag was dropped), or an oracle request whose question is exactly a preset
+ * question or matches the post-check pattern. The kind comes from the tag, else from the template that matched.
+ */
 export function decodeRequested(log: RawLog): TaggedRequest | null {
   if (log.topics[0]?.toLowerCase() !== TOPIC_REQUESTED) return null;
   const [body, , , , amount] = decodeAbiParameters(
@@ -85,22 +92,27 @@ export function decodeRequested(log: RawLog): TaggedRequest | null {
     log.data,
   );
   const text = hexToString(body);
-  if (!text.includes(TAG_NEEDLE)) return null;
+  const action = hexToString(trim(log.topics[3]!, { dir: "right" }));
+  const tagged = text.includes(TAG_NEEDLE);
+  if (!tagged && action !== ACTIONS.oracle) return null;
   let bodyJson: Record<string, unknown> | null = null;
   try {
     const parsed = JSON.parse(text);
-    if (parsed && typeof parsed === "object") bodyJson = parsed as Record<string, unknown>;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) bodyJson = parsed as Record<string, unknown>;
   } catch {
     bodyJson = null;
   }
+  const match = action === ACTIONS.oracle ? matchOracleQuestion(bodyJson?.question) : null;
+  if (!tagged && !match) return null;
   const tag = (bodyJson?.tag ?? {}) as { kind?: unknown };
   return {
     requestId: log.topics[1]!,
     payer: `0x${log.topics[2]!.slice(26)}` as Hex,
-    action: hexToString(trim(log.topics[3]!, { dir: "right" })),
+    action,
     body: text,
     bodyJson,
-    kind: typeof tag.kind === "string" ? tag.kind : "unknown",
+    kind: typeof tag.kind === "string" ? tag.kind : match?.kind ?? "unknown",
+    title: match?.title ?? "",
     amount,
     blockNumber: BigInt(log.blockNumber),
     transactionHash: log.transactionHash,

@@ -3,15 +3,17 @@ import { formatUnits, pad, stringToHex, type Hex } from "viem";
 import { useAccount } from "wagmi";
 import { readContract, waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import { ACTIONS, CHAIN_ID, EMPTY_SELECTOR, ERC20_ABI, ETHERSCAN, EXPLORER, IMD, INTAKE, INTAKE_ABI, ZERO_ADDRESS } from "./config";
-import { PRESETS, RESEARCH_OBJECTIVE, encodeBody, oracleBody, questionP4, researchBody, validateP4, type Kind } from "./bodies";
+import { PRESETS, RESEARCH_OBJECTIVE, SOURCE_MAX_LINKS, encodeBody, oracleBody, planSources, questionP4, researchBody, sourceBody, validateP4 } from "./bodies";
 import { fetchResearchPage } from "./api";
-import { orderAll, parsePage, safeHref, SECTION_TITLES, type Line, type Page } from "./page";
+import { mergeRecord, parsePage, safeHref, SECTION_TITLES, type Line, type Page, type RecordRow, type SourceJob, type SourceLine } from "./page";
 import { ConnectSheet, config } from "./wallet";
-import { rememberSent, useActivity, type Activity } from "./useActivity";
+import { isSourceJob, rememberSent, useActivity, type Activity } from "./useActivity";
 
 const actionId = (a: string) => pad(stringToHex(a), { dir: "right", size: 32 });
 const imd = (v: bigint) => `${formatUnits(v, 18)} IMD`;
 const shortHex = (h: string) => `${h.slice(0, 6)}…${h.slice(-4)}`;
+const payerName = (a: Activity) => a.ens ?? shortHex(a.req.payer);
+const kindName = (k: string) => (k === "proof" ? "Proof" : k === "statement" ? "Statement" : "Claim");
 const jobLink = (jobId: string | null, tx: string) => (jobId ? `${EXPLORER}/jobs/${jobId}` : `${ETHERSCAN}/tx/${tx}`);
 
 async function readPrice(action: string): Promise<bigint> {
@@ -30,51 +32,88 @@ function usePrice(action: string) {
 interface Ask {
   title: string;
   action: string;
+  /** What the request is (add, source, proof, statement, claim), remembered with the sent transaction. */
+  kind: string;
   body: Record<string, unknown>;
   warning?: string;
 }
 
 /* ---------- Record ---------- */
 
-function KindLabel({ line }: { line: Line }) {
-  const name = line.kind === "proof" ? "Proof" : line.kind === "statement" ? "Statement" : "Claim";
+/** The tie words shown to visitors, for the page's strong, weak and none. */
+const TIE_WORDS: Record<string, string> = { strong: "confirmed on chain", weak: "names the contract", none: "not confirmed" };
+const tieWord = (t: string) => TIE_WORDS[t] ?? TIE_WORDS.none!;
+
+function KindLabel({ line, showBy }: { line: Line; showBy?: boolean }) {
   return (
     <span className={`label label-${line.kind}`}>
-      {name}
-      {line.kind === "claim" && line.by ? ` · ${line.by}` : ""}
+      {kindName(line.kind)}
+      {(line.kind === "claim" || showBy) && line.by ? ` · ${line.by}` : ""}
     </span>
   );
 }
 
-function LineRow({ line, page, check, differs }: { line: Line; page: Page; check: { text: string; href: string }; differs?: string }) {
-  const num = (id: string) => page.sources.findIndex((s) => s.id === id) + 1;
+function LineRow({ row, page, check }: { row: RecordRow; page: Page | null; check: { text: string; href: string } }) {
+  const { line, origin } = row;
+  const differs = row.differsWith ? row.why || " " : undefined;
+  const num = (id: string) => (page ? page.sources.findIndex((s) => s.id === id) + 1 : 0);
+  const src = origin ? (line as SourceLine).source : null;
+  const srcHref = src ? safeHref(src.url) : null;
   return (
     <li className={`line${differs ? " line-differs" : ""}`}>
-      {differs && <p className="differs-note">Differs from the line above{differs ? `: ${differs}` : ""}</p>}
+      {differs && <p className="differs-note">Differs from the line above{differs.trim() ? `: ${differs}` : ""}</p>}
       <p className="line-text">{line.text}</p>
       {line.quote && line.kind !== "proof" && <p className="quote">“{line.quote}”</p>}
       {line.rerun && line.kind === "proof" && <p className="quote">Re-run: {line.rerun}</p>}
       <div className="line-meta">
-        <KindLabel line={line} />
-        {line.sources.map((s) => {
-          const n = num(s);
-          return n > 0 ? (
-            <a key={s} className="chip mono" href={`#source-${n}`} aria-label={`Source ${n}`}>
-              {n}
+        <KindLabel line={line} showBy={!!origin} />
+        {origin ? (
+          srcHref ? (
+            <a className="chip chip-wide" href={srcHref} target="_blank" rel="noopener noreferrer nofollow" title={src!.url} aria-label={`Source: ${src!.url}`}>
+              {hostOf(src!.url)}
             </a>
           ) : (
-            <span key={s} className="chip mono" title="Source not listed">
-              ?
-            </span>
-          );
-        })}
-        <a className="checked" href={check.href} target="_blank" rel="noopener noreferrer">
-          {check.text}
-        </a>
+            <span className="chip chip-wide">{src?.url ? "source" : "?"}</span>
+          )
+        ) : (
+          line.sources.map((s) => {
+            const n = num(s);
+            return n > 0 ? (
+              <a key={s} className="chip mono" href={`#source-${n}`} aria-label={`Source ${n}`}>
+                {n}
+              </a>
+            ) : (
+              <span key={s} className="chip mono" title="Source not listed">
+                ?
+              </span>
+            );
+          })
+        )}
+        {!origin && (
+          <a className="checked" href={check.href} target="_blank" rel="noopener noreferrer">
+            {check.text}
+          </a>
+        )}
       </div>
+      {origin && (
+        <p className="small">
+          added from a source by {origin.payer},{" "}
+          <a href={origin.jobHref} target="_blank" rel="noopener noreferrer">
+            research job
+          </a>
+        </p>
+      )}
     </li>
   );
 }
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "source";
+  }
+};
 
 function ExtLink({ url, children }: { url: string; children: React.ReactNode }) {
   const href = safeHref(url);
@@ -87,7 +126,8 @@ function ExtLink({ url, children }: { url: string; children: React.ReactNode }) 
   );
 }
 
-function Record({ items, onAsk, price }: { items: Activity[] | null; onAsk: (a: Ask) => void; price: string }) {
+/** The newest completed research page, downloaded, hash-checked and parsed. */
+function useRecordPage(items: Activity[] | null) {
   const latest = useMemo(() => items?.find((a) => a.req.action === ACTIONS.research && a.req.kind === "add" && a.state === "completed"), [items]);
   const [page, setPage] = useState<Page | null>(null);
   const [via, setVia] = useState<{ jobId: string | null; path: string } | null>(null);
@@ -102,8 +142,53 @@ function Record({ items, onAsk, price }: { items: Activity[] | null; onAsk: (a: 
       })
       .catch((e) => setError(e instanceof Error ? e.message : "The page could not be read"));
   }, [latest]);
-  const panel = (items ?? []).filter((a) => a.req.action === ACTIONS.oracle && a.state === "completed");
-  const research = () => onAsk({ title: "Research this page", action: ACTIONS.research, body: researchBody() });
+  /** Ready once the chain was read and the page, if there is one, has loaded or failed. */
+  const ready = items !== null && (!latest || page !== null || error !== null);
+  const channels = (page?.channels ?? []).map((c) => safeHref(c.url)).filter((u): u is string => !!u);
+  return { latest, page, via, error, ready, channels };
+}
+
+type RecordState = ReturnType<typeof useRecordPage>;
+
+function PanelChecks({ items }: { items: Activity[] }) {
+  const panel = items.filter((a) => a.req.action === ACTIONS.oracle && a.state === "completed");
+  if (!panel.length) return null;
+  return (
+    <div className="card">
+      <h2>Checked by a panel</h2>
+      <ul className="lines">
+        {panel.map((a) => (
+          <li key={a.req.requestId} className="line">
+            <p className="line-text">{a.req.title || String(a.req.bodyJson?.question ?? "").slice(0, 120)}</p>
+            <div className="line-meta">
+              <span className={`answer answer-${a.oracle?.answer ?? "none"}`}>{a.oracle?.answer ?? "no answer"}</span>
+              <span className="small">
+                panel, {a.oracle?.agreed ?? "?"} of {a.oracle?.panelSize ?? "?"} agreed
+              </span>
+              <span className={`label label-${a.req.kind}`}>{kindName(a.req.kind)}</span>
+              <a className="checked" href={jobLink(a.jobId, a.req.transactionHash)} target="_blank" rel="noopener noreferrer">
+                {a.jobId ? "Open the request" : "Open the transaction"}
+              </a>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Record({ items, rec, onAsk, price }: { items: Activity[] | null; rec: RecordState; onAsk: (a: Ask) => void; price: string }) {
+  const { latest, page, via, error } = rec;
+  const sourceJobs: SourceJob[] = useMemo(
+    () =>
+      (items ?? [])
+        .filter((a) => isSourceJob(a.req) && a.state === "completed" && a.sources)
+        .reverse()
+        .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash) })),
+    [items],
+  );
+  const sections = useMemo(() => mergeRecord(page, sourceJobs), [page, sourceJobs]);
+  const research = () => onAsk({ title: "Research this page", action: ACTIONS.research, kind: "add", body: researchBody() });
   const researchCheck = { text: "research job", href: latest ? jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash) : EXPLORER };
 
   return (
@@ -132,14 +217,19 @@ function Record({ items, onAsk, price }: { items: Activity[] | null; onAsk: (a: 
       {page && (
         <>
           {page.channels.length > 0 && (
-            <ul className="channels" aria-label="Channels">
-              {page.channels.map((c, i) => (
-                <li key={i}>
-                  <ExtLink url={c.url}>{c.label || c.url}</ExtLink>
-                  <span className={`tie tie-${c.tie}`}>tie: {c.tie}</span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="channels" aria-label="Channels">
+                {page.channels.map((c, i) => (
+                  <li key={i}>
+                    <ExtLink url={c.url}>{c.label || c.url}</ExtLink>
+                    <span className={`tie tie-${TIE_WORDS[c.tie] ? c.tie : "none"}`}>{tieWord(c.tie)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="small tie-key">
+                Confirmed on chain: a contract, ENS record or deployer wallet points to it. Names the contract: it publishes the main contract's address. Not confirmed: neither.
+              </p>
+            </>
           )}
           <div className="row-actions">
             <button className="btn btn-primary" onClick={research}>
@@ -148,39 +238,25 @@ function Record({ items, onAsk, price }: { items: Activity[] | null; onAsk: (a: 
             <a className="btn" href="#actions">
               Confirm a fact
             </a>
+            <a className="btn" href="#add-sources">
+              Add sources
+            </a>
           </div>
-          {orderAll(page).map(({ section, rows }) => (
-            <div key={section} className="card">
-              <h2>{SECTION_TITLES[section] ?? section}</h2>
-              <ul className="lines">
-                {rows.map(({ line, differsWith, why }) => (
-                  <LineRow key={line.id || line.text} line={line} page={page} check={researchCheck} differs={differsWith ? why || " " : undefined} />
-                ))}
-              </ul>
-            </div>
-          ))}
         </>
       )}
 
-      {panel.length > 0 && (
-        <div className="card">
-          <h2>Checked by a panel</h2>
+      <PanelChecks items={items ?? []} />
+
+      {sections.map(({ section, rows }) => (
+        <div key={section} className="card">
+          <h2>{SECTION_TITLES[section] ?? section}</h2>
           <ul className="lines">
-            {panel.map((a) => (
-              <li key={a.req.requestId} className="line">
-                <p className="line-text">{String(a.req.bodyJson?.question ?? "")}</p>
-                <div className="line-meta">
-                  <span className={`label label-${a.req.kind}`}>{a.req.kind.charAt(0).toUpperCase() + a.req.kind.slice(1)}</span>
-                  <span className="answer">Answer: {a.oracle?.answer ?? "none"}</span>
-                  <a className="checked" href={jobLink(a.jobId, a.req.transactionHash)} target="_blank" rel="noopener noreferrer">
-                    panel, {a.oracle?.agreed ?? "?"} of {a.oracle?.panelSize ?? "?"} agreed
-                  </a>
-                </div>
-              </li>
+            {rows.map((row) => (
+              <LineRow key={row.line.id || row.line.text} row={row} page={page} check={researchCheck} />
             ))}
           </ul>
         </div>
-      )}
+      ))}
 
       {page && page.openQuestions.length > 0 && (
         <div className="card">
@@ -219,13 +295,64 @@ function Record({ items, onAsk, price }: { items: Activity[] | null; onAsk: (a: 
 
 /* ---------- Actions ---------- */
 
-function Actions({ onAsk, researchPrice }: { onAsk: (a: Ask) => void; researchPrice: string }) {
+function AddSources({ onAsk, rec, price }: { onAsk: (a: Ask) => void; rec: RecordState; price: string }) {
+  const [text, setText] = useState("");
+  const [err, setErr] = useState("");
+  const plan = useMemo(() => planSources(text, rec.channels), [text, rec.channels]);
+  const n = plan.links.length;
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rec.ready) {
+      setErr("Wait until the record has loaded, so its channels can be named.");
+      return;
+    }
+    if (n === 0) {
+      setErr("Paste at least one https link, one per line.");
+      document.getElementById("src-links")?.focus();
+      return;
+    }
+    setErr("");
+    onAsk({ title: `Add ${n} source${n === 1 ? "" : "s"}`, action: ACTIONS.research, kind: "source", body: sourceBody(plan.links, rec.channels) });
+  };
+  const fit =
+    plan.slotsLeft === 0
+      ? `${SOURCE_MAX_LINKS} of ${SOURCE_MAX_LINKS} links: no more will fit.`
+      : plan.moreAtMost === plan.slotsLeft
+        ? `${n} of ${SOURCE_MAX_LINKS} links. ${plan.slotsLeft} more will fit.`
+        : `${n} of ${SOURCE_MAX_LINKS} links. ${plan.moreAtMost} more will fit at full length (300 characters), more if shorter: ${plan.charsLeft.toLocaleString("en-US")} characters left.`;
+  return (
+    <div className="card" id="add-sources">
+      <h3>Add sources</h3>
+      <p>One research job reads each link and adds what it says about imd.fun to the record, as a statement if one of imd.fun's channels published it and a claim if not.</p>
+      <form className="form" onSubmit={submit} noValidate>
+        <label htmlFor="src-links">Links, one per line</label>
+        <textarea id="src-links" name="links" rows={5} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder={"https://x.com/name/status/123\nhttps://example.com/article"}
+          value={text} onChange={(e) => setText(e.target.value)} aria-invalid={!!err} aria-describedby={`src-fit${err ? " src-err" : ""}`} />
+        <p id="src-fit" className="small" aria-live="polite">{fit}</p>
+        {plan.rejected.length > 0 && (
+          <ul className="plain small skipped" aria-label="Lines left out">
+            {plan.rejected.map((r, i) => (
+              <li key={i}>
+                Left out, {r.why}: <span className="mono break">{r.line.length > 80 ? `${r.line.slice(0, 79)}…` : r.line}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="small">Only https links up to 300 characters, with no quotes or spaces. Repeats are dropped.</p>
+        {err && <p id="src-err" className="error">{err}</p>}
+        <div className="row-actions">
+          <button className="btn" type="submit">Review the source job</button>
+          <span className="price mono">{price}</span>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Actions({ onAsk, researchPrice, rec }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState }) {
   const oraclePrice = usePrice(ACTIONS.oracle);
   const [p4, setP4] = useState({ url: "", handle: "", text: "" });
   const [p4Err, setP4Err] = useState<ReturnType<typeof validateP4>>({});
-  const [free, setFree] = useState({ q: "", kind: "claim" as Kind });
-  const [freeErr, setFreeErr] = useState("");
-  const urlRef = useRef<HTMLInputElement>(null);
 
   const askP4 = (e: React.FormEvent) => {
     e.preventDefault();
@@ -236,23 +363,7 @@ function Actions({ onAsk, researchPrice }: { onAsk: (a: Ask) => void; researchPr
       return;
     }
     const q = questionP4(p4.url.trim(), p4.handle.trim().replace(/^@/, ""), p4.text.trim().replace(/[.?]+$/, ""));
-    onAsk({ title: "Confirm a post", action: ACTIONS.oracle, body: oracleBody("claim", q, "panel") });
-  };
-  const askFree = (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = free.q.trim();
-    if (q.length < 10 || q.length > 2000) {
-      setFreeErr("Write a yes or no question of 10 to 2,000 characters.");
-      document.getElementById("free-q")?.focus();
-      return;
-    }
-    setFreeErr("");
-    onAsk({
-      title: "Ask your own question",
-      action: ACTIONS.oracle,
-      body: oracleBody(free.kind, q, free.kind === "proof" ? "chain" : "panel"),
-      warning: "Unchecked wording: the panel may refuse it, and the payment is not refunded.",
-    });
+    onAsk({ title: "Confirm a post", action: ACTIONS.oracle, kind: "claim", body: oracleBody(q, "panel") });
   };
 
   return (
@@ -269,7 +380,7 @@ function Actions({ onAsk, researchPrice }: { onAsk: (a: Ask) => void; researchPr
             <p className="objective">{RESEARCH_OBJECTIVE}</p>
           </details>
           <div className="row-actions">
-            <button className="btn btn-primary" onClick={() => onAsk({ title: "Research this page", action: ACTIONS.research, body: researchBody() })}>
+            <button className="btn btn-primary" onClick={() => onAsk({ title: "Research this page", action: ACTIONS.research, kind: "add", body: researchBody() })}>
               Research this page
             </button>
             <span className="price mono">{researchPrice}</span>
@@ -284,7 +395,7 @@ function Actions({ onAsk, researchPrice }: { onAsk: (a: Ask) => void; researchPr
           <ul className="presets">
             {PRESETS.map((p) => (
               <li key={p.id}>
-                <button className="btn preset" onClick={() => onAsk({ title: p.title, action: ACTIONS.oracle, body: oracleBody(p.kind, p.question, p.evidence) })}>
+                <button className="btn preset" onClick={() => onAsk({ title: p.title, action: ACTIONS.oracle, kind: p.kind, body: oracleBody(p.question, p.evidence) })}>
                   <span>Check: {p.title}</span>
                   <span className="small">{p.note}</span>
                 </button>
@@ -295,7 +406,7 @@ function Actions({ onAsk, researchPrice }: { onAsk: (a: Ask) => void; researchPr
           <form className="form" onSubmit={askP4} noValidate>
             <h4>Check a post on X</h4>
             <label htmlFor="p4-url">Post link</label>
-            <input ref={urlRef} id="p4-url" name="url" type="url" inputMode="url" autoComplete="url" placeholder="https://x.com/name/status/123"
+            <input id="p4-url" name="url" type="url" inputMode="url" autoComplete="url" placeholder="https://x.com/name/status/123"
               value={p4.url} onChange={(e) => setP4({ ...p4, url: e.target.value })} aria-invalid={!!p4Err.url} aria-describedby={p4Err.url ? "p4-url-err" : undefined} />
             {p4Err.url && <p id="p4-url-err" className="error">{p4Err.url}</p>}
             <label htmlFor="p4-handle">Handle of the account that posted it</label>
@@ -308,23 +419,9 @@ function Actions({ onAsk, researchPrice }: { onAsk: (a: Ask) => void; researchPr
             {p4Err.text && <p id="p4-text-err" className="error">{p4Err.text}</p>}
             <button className="btn" type="submit">Review the post check</button>
           </form>
-
-          <form className="form" onSubmit={askFree} noValidate>
-            <h4>Ask your own question</h4>
-            <p className="warn">Unchecked wording, may be refused, payment is not refunded.</p>
-            <label htmlFor="free-q">Yes or no question</label>
-            <textarea id="free-q" name="question" rows={3} value={free.q} onChange={(e) => setFree({ ...free, q: e.target.value })}
-              aria-invalid={!!freeErr} aria-describedby={freeErr ? "free-q-err" : undefined} />
-            {freeErr && <p id="free-q-err" className="error">{freeErr}</p>}
-            <label htmlFor="free-kind">What kind of fact</label>
-            <select id="free-kind" name="kind" value={free.kind} onChange={(e) => setFree({ ...free, kind: e.target.value as Kind })}>
-              <option value="proof">Proof: from chain data</option>
-              <option value="statement">Statement: imd.fun said it</option>
-              <option value="claim">Claim: someone else said it</option>
-            </select>
-            <button className="btn" type="submit">Review your question</button>
-          </form>
         </div>
+
+        <AddSources onAsk={onAsk} rec={rec} price={researchPrice} />
       </div>
     </section>
   );
@@ -411,8 +508,7 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
         chainId: CHAIN_ID,
       });
       setTx(h);
-      const kind = String((ask.body.tag as { kind?: string }).kind ?? "");
-      rememberSent({ hash: h, kind, action: ask.action, at: Date.now() });
+      rememberSent({ hash: h, kind: ask.kind, action: ask.action, at: Date.now() });
       await waitForTransactionReceipt(config, { hash: h, chainId: CHAIN_ID });
       setStep("sent");
       onSent();
@@ -491,13 +587,28 @@ function ActivityList({ items, error, loading, reload }: ReturnType<typeof useAc
                 <span className="small">{a.time ? new Date(a.time).toLocaleString() : `block ${a.req.blockNumber}`}</span>
               </div>
               <p className="act-what">
-                {a.req.action === ACTIONS.research ? "Research" : "Question"} · {a.req.kind}
-                {a.req.action === ACTIONS.oracle && a.state === "completed" && a.oracle ? ` · answer: ${a.oracle.answer ?? "none"} (${a.oracle.agreed ?? "?"} of ${a.oracle.panelSize ?? "?"} agreed)` : ""}
-                {a.completion?.reason ? ` · ${a.completion.reason}` : ""}
+                {a.req.action === ACTIONS.research ? (isSourceJob(a.req) ? "Sources" : "Research") : `Question · ${kindName(a.req.kind)}`}
+                {a.req.action === ACTIONS.oracle && a.state === "completed" && a.oracle ? ` · answer: ${a.oracle.answer ?? "none"} (panel, ${a.oracle.agreed ?? "?"} of ${a.oracle.panelSize ?? "?"} agreed)` : ""}
               </p>
-              {a.req.action === ACTIONS.oracle && <p className="small">{String(a.req.bodyJson?.question ?? "")}</p>}
+              {(a.state === "refused" || a.state === "failed") && (
+                <p className="why">
+                  {a.state === "refused" ? "Refused" : "Failed"}: {a.refusal ? [a.refusal.reason, a.refusal.detail].filter(Boolean).join(": ") : a.completion?.reason || "no reason given yet"}
+                </p>
+              )}
+              {a.req.action === ACTIONS.oracle && <p className="small">{a.req.title || String(a.req.bodyJson?.question ?? "")}</p>}
+              {isSourceJob(a.req) && a.sources && a.sources.sources.some((s) => s.couldOpen === false) && (
+                <ul className="plain small" aria-label="Sources not opened">
+                  {a.sources.sources.filter((s) => s.couldOpen === false).map((s, i) => (
+                    <li key={i}>
+                      could not open: <span className="mono break">{s.url || s.id}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {isSourceJob(a.req) && a.sources && <p className="small">{a.sources.lines.length} line{a.sources.lines.length === 1 ? "" : "s"} added to the record</p>}
+              {a.sourcesError && <p className="error">Unable to read the lines: {a.sourcesError}</p>}
               <p className="small">
-                Paid by <span className="mono">{a.ens ?? shortHex(a.req.payer)}</span> ·{" "}
+                Paid by <span className="mono">{payerName(a)}</span> ·{" "}
                 <a href={jobLink(a.jobId, a.req.transactionHash)} target="_blank" rel="noopener noreferrer">
                   {a.jobId ? "Open on explorer.imd.fun" : "Open the transaction"}
                 </a>
@@ -516,6 +627,7 @@ export default function App() {
   const activity = useActivity();
   const [ask, setAsk] = useState<Ask | null>(null);
   const researchPrice = usePrice(ACTIONS.research);
+  const rec = useRecordPage(activity.items);
   return (
     <>
       <a className="skip" href="#root-main">Skip to content</a>
@@ -528,11 +640,14 @@ export default function App() {
         <ConnectSheet />
       </header>
       <main id="root-main" tabIndex={-1}>
-        <Record items={activity.items} onAsk={setAsk} price={researchPrice} />
-        <Actions onAsk={setAsk} researchPrice={researchPrice} />
+        <Record items={activity.items} rec={rec} onAsk={setAsk} price={researchPrice} />
+        <Actions onAsk={setAsk} researchPrice={researchPrice} rec={rec} />
         <ActivityList {...activity} />
         <footer className="about">
           <p>About: this is a test. Payments go to IMD and are not refunded. Nobody can edit this page by hand; every line comes from a paid research job or panel answer read from Ethereum.</p>
+          <p>
+            For agents: <a href="./agents.md">agents.md</a> lists the Intake call, the exact bodies and the read routes.
+          </p>
         </footer>
       </main>
       {ask && <PayDialog ask={ask} onClose={() => setAsk(null)} onSent={() => void activity.reload()} />}

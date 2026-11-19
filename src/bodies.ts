@@ -1,8 +1,10 @@
 /** The exact request bodies the site sends. Pure functions, so tests can pin every byte. */
 import objective from "../templates/research.txt?raw";
+import sourceTemplate from "../templates/source.txt?raw";
 import { APP_TAG } from "./config";
 
 export const RESEARCH_OBJECTIVE = objective.trim();
+export const SOURCE_TEMPLATE = sourceTemplate.trim();
 
 export type Kind = "proof" | "statement" | "claim";
 
@@ -16,13 +18,13 @@ export function researchBody() {
 }
 
 /**
- * An oracle body. The brief's fields, plus the two the free check drafted into its `request`
- * on 2026-11-19: `window` (required by the Intake, 24 hours closing 5 blocks behind the head)
- * and `evidence: "panel"` for questions answered from web pages or posts rather than chain data.
+ * An oracle body. It carries no "tag": the Intake refused one with body_invalid, Unrecognized key "tag"
+ * (tx 0xadda56ad…d8df). Exactly these keys, in this order: v, question, chainId, window, answerType,
+ * evidence (only when "panel"), panelSize, quorum, validForSeconds. `window` and `evidence: "panel"`
+ * are what IMD's free check drafted for these questions.
  */
-export function oracleBody(kind: Kind, question: string, evidence: "chain" | "panel") {
+export function oracleBody(question: string, evidence: "chain" | "panel") {
   return {
-    tag: { app: APP_TAG, kind },
     v: 1,
     question,
     chainId: 1,
@@ -33,6 +35,11 @@ export function oracleBody(kind: Kind, question: string, evidence: "chain" | "pa
     quorum: 4,
     validForSeconds: 86400,
   };
+}
+
+/** The short form IMD's free check (POST /requests/check) takes for the same question. */
+export function oracleShortForm(question: string, evidence: "chain" | "panel") {
+  return { question, panelSize: 5, answerType: "bool", evidence, chainId: 1 };
 }
 
 export const Q_P1 =
@@ -75,6 +82,114 @@ export function validateP4(url: string, handle: string, text: string) {
   const t = text.trim();
   if (t.length < 3 || t.length > 400) errors.text = "Write what the post says in 3 to 400 characters.";
   return errors;
+}
+
+/** What an oracle question is, read back from its wording: a preset, or the post check. */
+export interface OracleMatch {
+  kind: Kind;
+  title: string;
+  preset: Preset["id"] | "P4";
+}
+
+const P4_PATTERN = /^Does the post at (\S+), published by the X account @([A-Za-z0-9_]{1,15}), state that ([\s\S]+?)\? Answer true only if /;
+
+/** Recognises a question this site asks: exactly a preset's wording, or the post-check pattern. Anything else is null. */
+export function matchOracleQuestion(question: unknown): OracleMatch | null {
+  if (typeof question !== "string") return null;
+  const p = PRESETS.find((x) => x.question === question);
+  if (p) return { kind: p.kind, title: p.title, preset: p.id };
+  const m = P4_PATTERN.exec(question);
+  if (m) {
+    const text = m[3]!.length > 90 ? `${m[3]!.slice(0, 89)}…` : m[3]!;
+    return { kind: "claim", title: `@${m[2]} posted that ${text}`, preset: "P4" };
+  }
+  return null;
+}
+
+/* ---------- Add sources ---------- */
+
+export const SOURCE_MAX_LINKS = 20;
+export const SOURCE_MAX_URL = 300;
+/** The finished objective must stay under this many characters. */
+export const SOURCE_MAX_OBJECTIVE = 7500;
+
+/** The numbered links, as they replace <URLS>: "[1] https://a; [2] https://b". */
+export const numberLinks = (urls: string[]) => urls.map((u, i) => `[${i + 1}] ${u}`).join("; ");
+
+export function sourceObjective(urls: string[], channels: string[]) {
+  return SOURCE_TEMPLATE.replace("<URLS>", numberLinks(urls)).replace("<CHANNELS>", channels.length ? channels.join(", ") : "none known");
+}
+
+export function sourceBody(urls: string[], channels: string[]) {
+  return {
+    tag: { app: APP_TAG, kind: "source" },
+    skill: "research-report",
+    outputs: [{ name: "lines", path: "artifacts/lines.json", mediaType: "application/json" }],
+    objective: sourceObjective(urls, channels),
+  };
+}
+
+/** Why one pasted line is not used, or null when it is a usable link. */
+export function linkProblem(line: string): string | null {
+  if (line.length > SOURCE_MAX_URL) return `longer than ${SOURCE_MAX_URL} characters`;
+  if (/["'`\s]/.test(line)) return "has a quote or a space";
+  if (!line.startsWith("https://")) return "not an https link";
+  try {
+    const u = new URL(line);
+    if (u.protocol !== "https:" || !u.hostname.includes(".")) return "not an https link";
+  } catch {
+    return "not an https link";
+  }
+  return null;
+}
+
+export interface SourcePlan {
+  links: string[];
+  rejected: { line: string; why: string }[];
+  objective: string;
+  charsLeft: number;
+  /** How many more links of the longest allowed length still fit. */
+  moreAtMost: number;
+  /** How many more links fit by count alone (at most 20 in all). */
+  slotsLeft: number;
+}
+
+/** Splits the pasted text into usable links, in order, keeping as many as fit under 7,500 characters and 20 links. */
+export function planSources(text: string, channels: string[]): SourcePlan {
+  const links: string[] = [];
+  const seen = new Set<string>();
+  const rejected: SourcePlan["rejected"] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const why = linkProblem(line);
+    if (why) {
+      rejected.push({ line, why });
+      continue;
+    }
+    const key = new URL(line).href;
+    if (seen.has(key)) {
+      rejected.push({ line, why: "already listed" });
+      continue;
+    }
+    if (links.length >= SOURCE_MAX_LINKS) {
+      rejected.push({ line, why: `past the limit of ${SOURCE_MAX_LINKS} links` });
+      continue;
+    }
+    if (sourceObjective([...links, line], channels).length >= SOURCE_MAX_OBJECTIVE) {
+      rejected.push({ line, why: "does not fit under 7,500 characters" });
+      continue;
+    }
+    seen.add(key);
+    links.push(line);
+  }
+  const objective = sourceObjective(links, channels);
+  const charsLeft = SOURCE_MAX_OBJECTIVE - 1 - objective.length;
+  const slotsLeft = SOURCE_MAX_LINKS - links.length;
+  let moreAtMost = 0;
+  const longest = "https://" + "x".repeat(SOURCE_MAX_URL - 8);
+  while (moreAtMost < slotsLeft && sourceObjective([...links, ...Array(moreAtMost + 1).fill(longest)], channels).length < SOURCE_MAX_OBJECTIVE) moreAtMost++;
+  return { links, rejected, objective, charsLeft, moreAtMost, slotsLeft };
 }
 
 /** Compact UTF-8 JSON, exactly the bytes the Intake receives. */

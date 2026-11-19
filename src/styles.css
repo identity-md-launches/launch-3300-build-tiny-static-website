@@ -134,10 +134,16 @@ section { display: grid; gap: var(--space-4); min-width: 0; }
 .label-claim { background: var(--orange-50); color: var(--orange-800); white-space: normal; }
 .chip { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; padding: 0 6px; border-radius: 6px; background: var(--color-bg-hover); color: var(--color-text); font-size: var(--text-small); text-decoration: none; }
 .checked { font-size: var(--text-small); color: var(--color-text-secondary); }
-.answer { font-size: var(--text-small); font-weight: 600; }
+.answer { font-size: var(--text-small); font-weight: 600; padding: 2px var(--space-2); border-radius: 999px; background: var(--color-bg-hover); }
+.answer-true { background: var(--green-50); color: var(--green-800); }
+.answer-false { background: #fdecea; color: var(--color-error); }
+.chip-wide { padding: 0 var(--space-2); max-width: 100%; overflow-wrap: anywhere; }
+.break { overflow-wrap: anywhere; }
 .channels { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
 .channels li { display: flex; gap: var(--space-2); align-items: baseline; overflow-wrap: anywhere; }
 .tie { font-size: var(--text-small); color: var(--color-text-secondary); }
+.tie-strong { color: var(--green-800); }
+.tie-key { max-width: 70ch; margin-top: calc(-1 * var(--space-2)); }
 .plain { margin: 0; padding-inline-start: 1.25em; display: grid; gap: var(--space-2); }
 .sources { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
 .sources li { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-3); }
@@ -168,6 +174,8 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .act { gap: var(--space-1); }
 .act-top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
 .act-what { font-weight: 600; overflow-wrap: anywhere; }
+.why { color: var(--color-error); font-size: var(--text-small); overflow-wrap: anywhere; }
+.skipped { color: var(--orange-800); }
 .state { font-size: var(--text-small); font-weight: 600; padding: 2px var(--space-2); border-radius: 999px; background: var(--color-bg-hover); }
 .state-completed { background: var(--green-50); color: var(--green-800); }
 .state-refused, .state-failed { background: #fdecea; color: var(--color-error); }

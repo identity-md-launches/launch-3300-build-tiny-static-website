@@ -1,73 +1,78 @@
-# Validation: IMD on the record
+# Validation: IMD on the record, revision 2
+
+This revision: oracle bodies without `tag`, oracle requests found by wording, refusal reasons in
+Activity, "Checked by a panel" above the sections, the "Add sources" action, the research objective
+additions, tie wording, `/agents.md`, and the request checks. Look, wallet code and the research body's
+tag are unchanged.
 
 ## 1. Scope and assumptions
 
-- Scope: the one-page site in `src/`, exported to `dist/`, covering the record, the actions (research,
-  P1 to P4, free text), the pay dialog, the connect sheet, Activity and the About line.
+- Scope: `src/`, `templates/`, `public/agents.md`, exported to `dist/`.
 - Assumptions:
-  - The launch block is `26445600`, the mainnet head at build time. No `rec-test-1` body exists in the
-    200,000 blocks before it.
-  - Every oracle body adds `window: {hours: 24}`, and web or post questions add `evidence: "panel"`,
-    as the free check drafted. This is because IMD's docs mark `window` as required by the Intake.
-  - Panel answers are shown in a "Checked by a panel" card, because the brief does not tie a preset
-    question to a research line id.
-  - ENS names come from viem's reverse lookup (a read).
-- Excluded: themes and localization, since the brief asks for neither.
+  - `<URLS>` is filled as `[1] https://a; [2] https://b`, so each source has an id the job can name.
+  - `<CHANNELS>` is the record's channel URLs joined by `, `, or `none known` before any research. The
+    Add sources button waits until the record has loaded.
+  - "How many more will fit" is counted for links of the longest allowed length (300 characters), so the
+    number is never too high; the characters left are shown too.
+  - A source line is shown as a statement only when its source has `publisher_is_subject_channel: true`;
+    otherwise as a claim (kinds are never raised, and the template forbids `proof`).
+  - The "link to the request" for a panel row is explorer.imd.fun's job page for the oracle's job
+    (explorer has no oracle page: `/oracle/<id>` answered 404), or the transaction before a job id is known.
+- Excluded: themes and localisation (not asked).
 
-## 2. Coverage, the six Better Interface domains
+## 2. Request checks (item 9)
+
+Run on 2026-11-19 against `POST https://api.imd.fun/requests/check`; the full table is in `README.md`.
+Research body, sources body, P1, P2, P3 and P4 short forms: all 200 with `blockers: []`. P3 has one
+`wording` suggestion (not a blocker). The drafted P1, P2 and P4 requests are byte for byte the bodies this
+site sends; none has a `tag`.
+
+## 3. Coverage, the six Better Interface domains
 
 | Domain | Status | What was checked |
 | --- | --- | --- |
-| Accessibility | Checked (source) | Native buttons and links; one `h1` with h2/h3 below; skip link; `:focus-visible` ring 2px; Escape closes both dialogs and focus returns; `inert` on `main` while a dialog is open; labelled inputs; inline errors with `aria-invalid` and `aria-describedby`; focus moves to the first error; `role="status"` lines; × has `aria-label`; targets at least 44px (chips 24px); reduced motion turns off the press scale. **Unperformed:** keyboard walk in a browser, screen reader, forced colours, 200% zoom |
-| Layout | Checked (source) | Space before lines; group gaps at least twice the in-group gaps; one 16px inline margin; no fixed heights on text; wrapping rows; late breakpoints at 40rem and 52rem; safe-area insets on header and sheet. **Unperformed:** rendered overflow at 320, 390 and 1440 |
-| Writing | Checked | Verb-first buttons ("Research this page", "Review your question", "Pay 0.5 IMD"); sentence case; errors say how to fix; the empty state points to the next action; links describe their destination; no "oops" and no exclamation marks |
-| Typography | Checked (source) | Five sizes; two families; two weights; 16px inputs; balance and pretty wrapping; mono only for data. **Unperformed:** rendered wrapping |
-| Colors | Checked (declared pairs) | Primitive and semantic token tiers; one accent; contrast computed from declared hex pairs (all at least 5.39:1, listed in DESIGN.md). Status is never colour alone: every label and state carries text. **Unperformed:** measurement on the rendered page |
-| UI | Checked (source) | Concentric radii (16 outer, 10 inner); shadow only on sheets with no border; no cards inside cards after fix F2; named transition properties; press scale 0.96; icons sized by attribute |
+| Accessibility | Checked (source, DOM) | Native `textarea` with a visible label; the live count is `aria-live="polite"` (`src/App.tsx:331`); the error is linked by `aria-describedby` and focus moves to the field; refusal text is plain text, and HTML in `detail` renders as text (DOM test); every new link has a descriptive name, and the source chip has `aria-label="Source: <url>"`; answers carry the word, not only a colour. **Unperformed:** keyboard walk and screen reader in a browser |
+| Layout | Checked (source) | New cards reuse `.card`; Add sources falls into the action grid; long URLs wrap (`.break`, `.chip-wide` with `overflow-wrap: anywhere`); no fixed heights. **Unperformed:** rendered overflow at 320, 390, 1440 |
+| Writing | Checked | Verb-first buttons ("Review the source job", "Open the request"); tie words in plain language with one key line; errors say what to do ("Paste at least one https link, one per line."); left-out lines say why; no exclamation marks, no em dashes in new copy |
+| Typography | Checked (source) | No new font size, weight or family: the new rules use `--text-small` and existing weights, so the scale stays at five sizes |
+| Colors | Checked (declared pairs) | New uses reuse existing pairs: `true` pill green 5.89:1, `false` pill error on `#fdecea` 6.63:1, "confirmed on chain" `#146c36` on white, "Left out" orange on card 6.44:1. Computed from declared hex values, not measured |
+| UI | Checked (source) | One accent per area (fix F2); answer and state pills reuse the pill shape; no card inside a card; no `transition: all` |
 
-## 3. Findings and fixes
+## 4. Findings and fixes
 
 | # | Sev | Where | Finding | Fix | Recheck |
 | --- | --- | --- | --- | --- | --- |
-| F1 | Medium | `src/styles.css:71` | `.mono` at 0.9em added 14.4px and 11.7px sizes, pushing the scale past six sizes | `.mono` inherits the size around it | `grep font-size` shows five tokens only |
-| F2 | Medium | `src/styles.css:124` | `.line` was a white rounded box inside a grey card (a card inside a card) | Lines are now padded rows with a 1px separator; `differs` uses a leading rule | Source rechecked |
-| F3 | Low | `src/styles.css:185` | The × used a one-off 20px size | It uses `--text-title` | Source rechecked |
-| F4 | Medium | `src/wallet.tsx:56` | The connect sheet opened inside the pay dialog cleared the dialog's `inert` when it closed | The sheet only removes `inert` if it set it | Typecheck and build pass |
-| F5 | High (brief) | `src/bodies.ts:26` | The brief's oracle body has no `window`, which the docs say is required; a refused body is a spent payment | Added the check's drafted `window` (and `evidence: "panel"` for web or post questions) | Unit test pins the body |
-| F6 | Low, open | `src/App.tsx` (header outside `main`) | While a dialog is open the header stays in the tab order, so focus is not fully trapped | Not fixed. The header holds only the brand, links and the wallet control | — |
+| F1 | High (brief) | `src/bodies.ts:26` | Oracle bodies carried `tag`, which the Intake refuses (`body_invalid`) | Tag removed; key order pinned by a unit test and equal to the check's drafted request | `npm test` |
+| F2 | Medium | `src/App.tsx:344` | Add sources used a second accent-filled button in the actions area | Neutral `.btn`, like "Review the post check" | Source rechecked |
+| F3 | Low | `src/App.tsx:170` | The panel row's link read "the request" | "Open the request" / "Open the transaction" | DOM test |
+| F4 | Low | `src/App.tsx:72` | The source chip's name was only the host | `aria-label="Source: <url>"`, `title` keeps the full URL | Source rechecked |
+| F5 | Low | `src/App.tsx:229` | The tie key line was long for the first screen's word budget | Shortened to 25 words | Source rechecked |
+| F6 | Low, open | `src/wallet.tsx` | In the DOM test the Coinbase wallet SDK tried to reach `cca-lite.coinbase.com` | Not changed: the brief says to keep the wallet code as it is | — |
+| F7 | Low, open | `src/App.tsx` (header outside `main`) | While a dialog is open the header stays in the tab order (carried from revision 1) | Not fixed | — |
 
-## 4. Verification (commands actually run)
+## 5. Verification (commands actually run)
 
-- `npm run typecheck` (`tsc --noEmit`): exit 0, after `@types/node` was added for the tests.
-- `npm test` (vitest): 1 file, 10 of 10 tests pass.
-- `npm run build`: exit 0. Output: `dist/index.html`, 6 JS chunks, 1 CSS file, `favicon.svg`,
-  `og.png`; 1,337,142 bytes. `index.html` refers only to `./` URLs and has a title, description,
-  favicon, `og:title` and `og:image`.
-- Search of `dist/assets/*.js` for analytics hosts (googletagmanager, google-analytics, segment,
-  mixpanel, posthog): none found.
-- Live reads from Node on 2026-11-19:
-  - `priceOf("job.open@job-1", IMD)` and `priceOf("oracle.request@oracle-1", IMD)` both returned
-    `500000000000000000`.
-  - Real Intake logs were decoded into `Requested` and `Completed`.
-  - `GET /intake/1/<tx>` returned 200 with ACAO `*`; `/jobs`, `/oracle/requests` and `/artifacts`
-    also send ACAO `*`.
-  - The artifact hash is SHA-256 (matched on job `e985fe54-…` file `report`).
-- The free request check: results are in `README.md`. Research `blockers: []`; P1, P2 and P3 (short
-  form) `blockers: []`; P3 has one `wording` suggestion.
-- **Taste probe:** run as
-  `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste`. First result:
-  Playwright not found. It was installed outside the repo (`$HOME/.imd-taste`), but its Chromium
-  exited 127 with `libglib-2.0.so.0: cannot open shared object file`, and 19 more system libraries are
-  missing. `apt-get download` could not fetch them without root. **The probe did not run**, and there
-  are no screenshots.
-- **Interaction test** `tests/e2e.mjs` (Playwright, mocked RPC and API, 29 check calls at 320, 390 and
-  1440, including the pay dialog, presets, P4 errors, free-text warning, connect sheet, phone rows and
-  the empty state): written but **not executed**, for the same Chromium failure.
+- `npm run typecheck` / the `tsc --noEmit` step of `npm run build`: exit 0.
+- `npm test`: 19 of 19 unit tests pass (`tests/unit.test.ts`).
+- `npm run build`: exit 0; `dist/index.html` refers only to `./` URLs; `dist/agents.md` is present.
+- `npx vite-node scripts/agents-md.ts`: wrote `public/agents.md`; a unit test checks it holds the exact
+  research body, the source template, the tag-free oracle body and every preset question.
+- DOM interaction test (happy-dom, scratch only, not submitted): 8 of 8 pass. It renders the real `App`
+  with mocked RPC (including Multicall3, which wagmi's config batches price reads through) and mocked
+  api.imd.fun, using the live record's real `page.json`.
+- **Taste probe:** `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` with
+  Playwright 1.62 installed outside the repository. It exited 1: `listen EPERM: operation not permitted
+  127.0.0.1`, because this machine's sandbox does not allow binding a local port. Chromium also cannot
+  start here (`bootstrap_check_in … MachPortRendezvousServer: Permission denied`), and Firefox and WebKit
+  did not start within 200 seconds. **The probe did not run; no screenshot exists.** To run it, allow
+  local binding (`sandbox.network.allowLocalBinding: true`) and run the command above.
+- **`tests/e2e.mjs`:** updated for this revision (untagged oracle fixtures, refusal detail, panel card
+  position, tie wording, Add sources, agents.md link, no free text) and syntax-checked with
+  `node --check`; **not executed**, for the same reason.
 
-## 5. Completion
+## 6. Completion
 
-**Incomplete.** The build, typecheck, unit tests and design review from source are done for the stated
-scope. The required browser checks are missing: the taste probe, rendered screenshots at 320, 390 and
-1440, the keyboard walk, and measured contrast. Chromium cannot start on this machine. Wallet flows
-(connect, approve, pay) cannot be exercised without a wallet. This is the worker's own report, not an
-independent certification.
+The requested changes are built, unit-tested and checked in a DOM. Browser rendering at 320, 390 and
+1440, the probe's measurements and screenshots, the keyboard walk and measured contrast remain
+unperformed on this machine. Wallet flows (connect, approve, pay) cannot be exercised without a wallet.
+This is the worker's own report, not an independent certification.
