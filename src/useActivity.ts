@@ -7,6 +7,7 @@ import { cacheGet, cacheSet, fetchOracle, fetchResearchPage, getIntakeEntry, ora
 import { ACTIONS } from "./config";
 import { parseEdit, parseLines, parsePage, rejectionOf, type EditResult, type Page, type SourceLines } from "./page";
 import { config } from "./wallet";
+import { domainOfId } from "./subject";
 
 export interface Activity {
   req: TaggedRequest;
@@ -128,7 +129,7 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
         edit = parseEdit(f.text);
         sources = edit.data;
       } else if (name === "page") {
-        page = parsePage(f.text);
+        page = parsePage(f.text, domainOfId(req.subject));
         via = { jobId: f.jobId, path: f.path };
       } else sources = parseLines(f.text);
       jobId ??= f.jobId;

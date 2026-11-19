@@ -174,11 +174,14 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
             {prior === "none"
               ? "There is no page yet, so this job starts from nothing."
               : `It is given ${rec.prior.files.length} earlier file${rec.prior.files.length === 1 ? "" : "s"} and ${rec.prior.answers.length} panel answer${rec.prior.answers.length === 1 ? "" : "s"}.`}
+            {(rec.prior.reconsider?.length ?? 0) > 0 &&
+              ` The page shown dropped lines, so ${rec.prior.reconsider!.length} file${rec.prior.reconsider!.length === 1 ? "" : "s"} they came from ${rec.prior.reconsider!.length === 1 ? "is" : "are"} listed again, marked “reconsider dropped lines”: the job carries those lines forward unless one is a duplicate, off subject or replaced by the same speaker.`}
           </p>
-          {(rec.leftOut > 0 || rec.answersLeftOut > 0) && (
+          {(rec.leftOut > 0 || rec.answersLeftOut > 0 || rec.reconsiderLeftOut > 0) && (
             <p className="warn">
               {rec.leftOut > 0 && `${rec.leftOut} older result${rec.leftOut === 1 ? " is" : "s are"} left out to keep the objective under 7,500 characters; it takes the newest that fit. `}
-              {rec.answersLeftOut > 0 && `${rec.answersLeftOut} older panel answer${rec.answersLeftOut === 1 ? " is" : "s are"} left out for the same reason.`}
+              {rec.answersLeftOut > 0 && `${rec.answersLeftOut} older panel answer${rec.answersLeftOut === 1 ? " is" : "s are"} left out for the same reason. `}
+              {rec.reconsiderLeftOut > 0 && `${rec.reconsiderLeftOut} file${rec.reconsiderLeftOut === 1 ? "" : "s"} to reconsider ${rec.reconsiderLeftOut === 1 ? "is" : "are"} left out for the same reason.`}
             </p>
           )}
           <details>

@@ -93,11 +93,16 @@ and send only when \`blockers\` is \`[]\`.
 \`templates/rebuild.txt\` with \`<SUBJECT>\` filled as above and \`<PRIOR>\` filled in as a numbered list:
 \`[F1]\` the artifact URL of the page result shown now, then \`[F2]\`... the artifact URL of every completed page,
 sources and edit result of the same subject that is **not folded in** (see below), oldest first, including
-earlier pages that were replaced without being named; then \`[A1]\`... each completed panel answer of the subject
+earlier pages that were replaced without being named; then, when the page shown has \`dropped\` entries, the
+artifact URL of each file those entries came from (\`F<n>:<id>\` names file F<n> of the objective of the request
+that produced the page shown), each once and followed by \`(reconsider dropped lines)\`, numbered on from the
+others and left out if already listed; then \`[A1]\`... each completed panel answer of the subject
 as \`question title = answer, N of M, request URL\`; all joined with \`; \`. With nothing yet, \`<PRIOR>\` is
 \`none\`. If the list would push the objective to 7,500 characters or more, the site says so and keeps F1 and the
-newest result files that fit with no panel answers, then adds the newest panel answers that fit in the room left:
-answers never push a result file out.
+newest result files that fit with no panel answers, then the files to reconsider that fit, then the newest panel
+answers that fit in the room left: neither answers nor files to reconsider ever push a result file out. The record
+has no size limit: a rebuild drops an earlier line only as an exact duplicate of a line it kept, as not about the
+subject, or as replaced by a newer statement from the same speaker.
 
 **Folded in.** A result (page, sources or edit) is folded into the page shown only if its artifact URL
 (\`${API}/artifacts/<sha-256>\`) appears in the objective of the request that produced the page shown, read from
@@ -113,12 +118,16 @@ With one page, one sources result after it and one panel answer, \`<PRIOR>\` rea
 
 ${fence(priorText(example))}
 
+When that page also dropped lines from a file of the rebuild that produced it, the file is listed again:
+
+${fence(priorText({ ...example, reconsider: ["https://api.imd.fun/artifacts/<HASH OF A FILE THE PAGE DROPPED LINES FROM>"] }))}
+
 ## Suggest an edit body (\`${ACTIONS.research}\`)
 
 ${fence(encodeBody({ ...editBody("x", none, [], IMD_REF), objective: "<EDIT_OBJECTIVE>" }), "json")}
 
 \`<EDIT_OBJECTIVE>\` is this text. \`<SUBJECT>\` is filled as above, \`<TEXT>\` is the visitor's summary text (at most ${EDIT_MAX_TEXT.toLocaleString("en-US")} characters,
-spaces collapsed, paragraphs separated by one blank line), \`<PRIOR>\` is the same list as for a rebuild, and
+spaces collapsed, paragraphs separated by one blank line), \`<PRIOR>\` is the same list as for a rebuild without files to reconsider, and
 \`<URLS>\` is up to ${EDIT_MAX_LINKS} numbered links under the Add sources rules (\`none\` without links).
 
 ${fence(EDIT_TEMPLATE)}
@@ -217,18 +226,23 @@ A source job writes \`artifacts/lines.json\`:
 \`lines[{id,source,section,text,kind,by,quote}]\`, \`differs[{lines[],why,level}]\`, \`ignored_instructions[]\`, \`notes\`.
 
 The site applies one label rule to every result, old or new: a line shows as a **statement** only when its
-publisher (its \`by\`, or the URL of its source) is one of the record's channels with tie \`strong\` or \`weak\`.
-A line marked statement whose channel has tie \`none\`, or whose publisher is not a channel, shows as a
-**claim**. A source job's line is never a proof. Lines from a source with \`could_open: false\` or
+publisher (its \`by\`, or the URL of its source) is one of the record's channels labelled "Own domain" or
+"Verified on chain". Every channel is shown with one label: **Own domain** when its host is the subject's domain
+or a subdomain of it (never for a chain:address subject); else **Verified on chain** for tie \`strong\`; else
+**Not verified** (tie \`weak\` or \`none\` off the domain). A line marked statement whose channel is Not verified,
+or whose publisher is not a channel, shows as a **claim**. A source job's line is never a proof. Lines from a source with \`could_open: false\` or
 \`about_subject: false\` are not shown; Activity lists each source as \`N lines\`, \`could not open\` or
 \`read, not about this subject: <about_why>\`. \`differs\` with \`level: "conflict"\` shows as "Conflicts with the
 line above"; \`"question"\` or no level as "Compare with the line above". Proof lines with \`fact\` show as a table
 of name, value, chain and block (read from the line's text and re-run steps), all in one table under On chain.
-The Overview's key facts table shows \`infobox\` rows, each with a badge the site works out from the lines the
-row rests on: "Proven on chain" if any is a proof, else "Stated by <channel>" for a statement, else "Reported by
-<who>" for a claim; a row that is a channel shows its tie ("Confirmed on chain", "Names the contract" or "Not
-confirmed"). Until a rebuild writes \`infobox\`, the table is built from the page: channels with their tie,
-contracts (main first), and proof facts for token symbol and supply. Every completed panel answer of the subject
+The Overview's key facts table shows \`infobox\` rows, each with a badge the site works out only from the kinds
+of the lines the row rests on: "Proven on chain" if any is a proof, else "Stated by <channel name>" for a
+statement, else "Reported by <who>" for a claim. Only the Website and Official accounts rows also show their
+channel's label (Own domain, Verified on chain or Not verified). Without \`infobox\`, the table shows at most:
+Website (the channel at the subject's domain), Main contract, and one token symbol proof and one supply proof;
+it never lists every channel and contract. The infobox rows a rebuild writes are, in order: Website, Token,
+Main contract, Chains, Supply, Seats, Price, Deployed by, Founder or creator, Contributors, Official accounts,
+Launched. Every completed panel answer of the subject
 is listed under "Panel answers", always the last section of the Record tab, also before the first page.
 A line's \`links\` show as "Confirmed by" or "Contradicted by" with the linked proof line or panel answer (\`A<n>\`
 from the rebuild's \`<PRIOR>\`).

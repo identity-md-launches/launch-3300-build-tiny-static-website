@@ -295,20 +295,30 @@ export interface Prior {
   /** F1 is the page result shown now, F2... every sources or edit result completed after it. Artifact URLs. */
   files: string[];
   answers: PriorAnswer[];
+  /**
+   * Artifact URLs of the files the page shown dropped entries from (read from the objective of the request that
+   * produced it). Listed after files, numbered on from them, each marked "reconsider dropped lines".
+   */
+  reconsider?: string[];
 }
+/** The mark after a file in <PRIOR> whose dropped lines the rebuild must carry forward unless a drop reason applies. */
+export const RECONSIDER_MARK = "reconsider dropped lines";
 export const artifactUrl = (hash: string) => `https://api.imd.fun/artifacts/${hash}`;
 
-/** "[F1] https://api.imd.fun/artifacts/<hash>; [F2] …; [A1] <title> = true, 5 of 5, <request URL>", or "none" with no page. */
+/**
+ * "[F1] https://api.imd.fun/artifacts/<hash>; [F2] …; [F3] <url> (reconsider dropped lines); [A1] <title> = true,
+ * 5 of 5, <request URL>", or "none" with no page.
+ */
 export function priorText(p: Prior): string {
   if (!p.files.length) return "none";
-  const f = p.files.map((u, i) => `[F${i + 1}] ${u}`);
+  const f = [...p.files.map((u) => u), ...(p.reconsider ?? []).map((u) => `${u} (${RECONSIDER_MARK})`)].map((u, i) => `[F${i + 1}] ${u}`);
   const a = p.answers.map((x, i) => `[A${i + 1}] ${x.title} = ${x.answer}, ${x.agreed ?? "?"} of ${x.size ?? "?"}, ${x.url}`);
   return [...f, ...a].join("; ");
 }
 
 /** Reads a <PRIOR> list back out of an objective this site sent, so F and A numbers can be resolved later. */
-export function parsePrior(objective: unknown): { files: { n: number; url: string; hash: string }[]; answers: { n: number; text: string; url: string }[] } {
-  const out = { files: [] as { n: number; url: string; hash: string }[], answers: [] as { n: number; text: string; url: string }[] };
+export function parsePrior(objective: unknown): { files: { n: number; url: string; hash: string; reconsider: boolean }[]; answers: { n: number; text: string; url: string }[] } {
+  const out = { files: [] as { n: number; url: string; hash: string; reconsider: boolean }[], answers: [] as { n: number; text: string; url: string }[] };
   if (typeof objective !== "string") return out;
   // From the last marker: in an edit the visitor's text comes first and may quote these words.
   const at = Math.max(...["Start from the earlier results: ", "The record so far: "].map((k) => objective.lastIndexOf(k)));
@@ -319,8 +329,11 @@ export function parsePrior(objective: unknown): { files: { n: number; url: strin
     const n = Number(x[2]);
     const body = x[3]!.trim();
     if (x[1] === "F") {
-      const h = /\/artifacts\/([0-9a-f]{64})$/.exec(body);
-      out.files.push({ n, url: body, hash: h ? h[1]! : "" });
+      const mark = ` (${RECONSIDER_MARK})`;
+      const reconsider = body.endsWith(mark);
+      const url = reconsider ? body.slice(0, -mark.length) : body;
+      const h = /\/artifacts\/([0-9a-f]{64})$/.exec(url);
+      out.files.push({ n, url, hash: h ? h[1]! : "", reconsider });
     } else {
       const i = body.lastIndexOf(", ");
       out.answers.push({ n, text: i > 0 ? body.slice(0, i) : body, url: i > 0 ? body.slice(i + 2) : "" });
@@ -350,7 +363,8 @@ export const EDIT_MAX_TEXT = 1500;
 export const EDIT_MAX_LINKS = 5;
 
 export function editObjective(text: string, p: Prior, urls: string[], subject: SubjectRef) {
-  return fillTemplate(EDIT_TEMPLATE, { SUBJECT: describeSubject(subject), TEXT: text, PRIOR: priorText(p), URLS: urls.length ? numberLinks(urls) : "none" });
+  // An edit checks summary text; the files a rebuild reconsiders are not part of what it is given.
+  return fillTemplate(EDIT_TEMPLATE, { SUBJECT: describeSubject(subject), TEXT: text, PRIOR: priorText({ files: p.files, answers: p.answers }), URLS: urls.length ? numberLinks(urls) : "none" });
 }
 
 export function editBody(text: string, p: Prior, urls: string[], subject: SubjectRef) {

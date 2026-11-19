@@ -33,7 +33,7 @@ import {
   type Unaccounted,
   type Verdict,
 } from "./page";
-import { chainIdOf, contractFromObjective, refFromId, type SubjectRef } from "./subject";
+import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
 import { isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
 
 export interface Accounting {
@@ -101,7 +101,7 @@ export function coreOf(items: Activity[]): Core {
   const jobs: SourceJob[] = after
     .filter((a) => a.sources)
     .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash) }));
-  const sections = mergeRecord(page, jobs);
+  const sections = mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? ""));
   return { latest, page, results, folded, unfolded, after, jobs, sections, counts: countKinds(sections) };
 }
 
@@ -122,26 +122,51 @@ export function subjectRefFor(id: string, items: Activity[], page: Page | null):
 }
 
 /**
+ * The files to mark "reconsider dropped lines": the artifact URLs of the files the page shown's dropped entries
+ * came from ("F2:L14" names file F2 of the objective that produced the page shown), in file order, each once,
+ * leaving out any URL already listed.
+ */
+export function reconsiderFiles(dropped: Pick<Dropped, "id">[], given: { n: number; url: string; hash: string }[], listed: string[] = []): string[] {
+  const ns = new Set(dropped.flatMap((d) => {
+    const m = /^F(\d+):/i.exec(d.id.trim());
+    return m ? [Number(m[1])] : [];
+  }));
+  const out: string[] = [];
+  for (const f of [...given].sort((a, b) => a.n - b.n))
+    if (ns.has(f.n) && f.hash && !out.includes(f.url) && !listed.includes(f.url)) out.push(f.url);
+  return out;
+}
+
+/**
  * Keeps <PRIOR> under 7,500 characters: F1 always, then the newest results that fit with no answers (oldest
- * dropped first), then the newest panel answers that fit in the room left. Answers never push a result out. Returns which results made it in.
+ * dropped first), then the files to reconsider in the room left, then the newest panel answers that fit in the
+ * room left. Neither answers nor files to reconsider ever push a result out. Returns which results made it in.
  */
 export function fitPrior(
   page: string | null,
   results: { id: string; url: string }[],
   answers: PriorAnswer[],
   measure: (p: Prior) => number,
-): { prior: Prior; included: Set<string>; leftOut: number; answersLeftOut: number } {
+  reconsider: string[] = [],
+): { prior: Prior; included: Set<string>; leftOut: number; answersLeftOut: number; reconsiderLeftOut: number } {
   // Files come first: F1, then the newest results that fit with no answers at all. Answers only take the room left.
   let rs = [...results];
+  let rc: string[] = [];
   let as: PriorAnswer[] = [];
-  const make = (): Prior => ({ files: [...(page ? [page] : []), ...rs.map((r) => r.url)], answers: as });
+  const make = (): Prior => ({ files: [...(page ? [page] : []), ...rs.map((r) => r.url)], answers: as, ...(rc.length ? { reconsider: rc } : {}) });
   while (rs.length > 0 && measure(make()) >= MAX_OBJECTIVE) rs = rs.slice(1);
+  const wanted = page ? reconsider.filter((u) => u !== page && !rs.some((r) => r.url === u)) : [];
+  for (let k = wanted.length; k > 0; k--) {
+    rc = wanted.slice(0, k);
+    if (measure(make()) < MAX_OBJECTIVE) break;
+    rc = [];
+  }
   for (let k = answers.length; k > 0; k--) {
     as = answers.slice(answers.length - k);
     if (measure(make()) < MAX_OBJECTIVE) break;
     as = [];
   }
-  return { prior: make(), included: new Set(rs.map((r) => r.id)), leftOut: results.length - rs.length, answersLeftOut: answers.length - as.length };
+  return { prior: make(), included: new Set(rs.map((r) => r.id)), leftOut: results.length - rs.length, answersLeftOut: answers.length - as.length, reconsiderLeftOut: wanted.length - rc.length };
 }
 
 export type Standing = "shown" | "folded" | "next" | "left-out" | "";
@@ -221,6 +246,8 @@ export interface RecordModel {
   /** How many results not folded in were left out of <PRIOR> to stay under 7,500 characters, and panel answers. */
   leftOut: number;
   answersLeftOut: number;
+  /** Files to reconsider that did not fit in <PRIOR>. */
+  reconsiderLeftOut: number;
   panel: Activity[];
   /** Panel answers A1... as the shown rebuild was given them. */
   answerRef: (target: string) => { text: string; activity: Activity | undefined } | null;
@@ -246,10 +273,12 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   }, [after]);
 
   const panel = useMemo(() => (items ?? []).filter((a) => a.req.action === ACTIONS.oracle && a.state === "completed" && a.completion).sort(completionOrder), [items]);
+  const given = useMemo(() => parsePrior(latest?.req.bodyJson?.objective), [latest]);
   const fit = useMemo(() => {
     const results = unfolded.filter((a) => a.fileHash).map((a) => ({ id: a.req.requestId, url: artifactUrl(a.fileHash!) }));
-    return fitPrior(page && pageHash ? artifactUrl(pageHash) : null, results, answersOf(items ?? []), (p) => rebuildObjective(p, subject).length);
-  }, [items, unfolded, page, pageHash, subject]);
+    const again = reconsiderFiles(page?.dropped ?? [], given.files);
+    return fitPrior(page && pageHash ? artifactUrl(pageHash) : null, results, answersOf(items ?? []), (p) => rebuildObjective(p, subject).length, again);
+  }, [items, unfolded, page, pageHash, subject, given]);
 
   const sourceList = useMemo(() => allSources(page, jobs), [page, jobs]);
   const byId = useMemo(() => new Map(sections.flatMap((s) => s.rows.map((r) => [r.line.id, r.line] as const))), [sections]);
@@ -290,7 +319,6 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
       })
     : (page?.summary ?? []).map((s) => ({ ...s, refs: s.lines.flatMap((id) => (byId.has(id.trim()) ? [byId.get(id.trim())!] : [])) }));
 
-  const given = useMemo(() => parsePrior(latest?.req.bodyJson?.objective), [latest]);
   const answerRef = (target: string) => {
     const m = /^A(\d+)$/i.exec(target.trim());
     if (!m) return null;
@@ -370,6 +398,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     prior: fit.prior,
     leftOut: fit.leftOut,
     answersLeftOut: fit.answersLeftOut,
+    reconsiderLeftOut: fit.reconsiderLeftOut,
     panel,
     answerRef,
     accounting,
@@ -402,6 +431,7 @@ export function planRebuild(items: Activity[], subject: SubjectRef) {
   const pageHash = core.latest?.fileHash ?? null;
   const unread = core.unfolded.some((a) => !a.fileHash) || (!!core.latest && (!core.page || !pageHash));
   const results = core.unfolded.filter((a) => a.fileHash).map((a) => ({ id: a.req.requestId, url: artifactUrl(a.fileHash!) }));
-  const fit = fitPrior(core.page && pageHash ? artifactUrl(pageHash) : null, results, answersOf(items), (p) => rebuildObjective(p, subject).length);
+  const again = reconsiderFiles(core.page?.dropped ?? [], parsePrior(core.latest?.req.bodyJson?.objective).files);
+  const fit = fitPrior(core.page && pageHash ? artifactUrl(pageHash) : null, results, answersOf(items), (p) => rebuildObjective(p, subject).length, again);
   return { ...fit, ok: !unread, hasPage: !!core.page };
 }

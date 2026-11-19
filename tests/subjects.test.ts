@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Hex } from "viem";
-import { artifactUrl, encodeBody, matchOracleQuestion, questionContract, questionPage, questionPost, rebuildBody, rebuildObjective, sourceBody, editBody, templateBody, validateContract, validatePage, filedUnder } from "../src/bodies";
+import { artifactUrl, type Prior, encodeBody, matchOracleQuestion, questionContract, questionPage, questionPost, rebuildBody, rebuildObjective, sourceBody, editBody, templateBody, validateContract, validatePage, filedUnder } from "../src/bodies";
 import { subjectOfTag } from "../src/chain";
-import { badgeOf, keyFacts, splitAddresses } from "../src/keyfacts";
-import { coreOf, fitPrior, isFoldedInto, planRebuild, subjectRefFor, subjectSummaries } from "../src/model";
+import { badgeOf, keyFacts, splitAddresses, statusBadge, TIE_ROWS, websiteOf } from "../src/keyfacts";
+import { coreOf, fitPrior, isFoldedInto, planRebuild, reconsiderFiles, subjectRefFor, subjectSummaries } from "../src/model";
 import { rejectionOf } from "../src/page";
 import { parsePage, type Line } from "../src/page";
 import { describeSubject, isSubjectId, normDomain, refFromId, refFromInput, subjectIdOf, validateSubject } from "../src/subject";
@@ -187,35 +187,129 @@ describe("key facts", () => {
     expect(badgeOf([line("a", "claim", { by: "a blog" })])!.text).toBe("Reported by a blog");
     expect(badgeOf([])).toBeNull();
   });
-  it("builds the table from the page until a rebuild writes infobox: channels with tie, contracts main first, symbol and supply", () => {
+  it("without infobox, shows at most Website, Main contract, one symbol proof and one supply proof; never every channel and contract", () => {
     const p = parsePage(
       JSON.stringify({
-        subject: { name: "Ex", channels: [{ label: "Website", url: "https://example.com/", tie: "weak" }], contracts: [{ address: "0x2222222222222222222222222222222222222222", chain: "8453", main: false }, { address: A, chain: "Ethereum", main: true }] },
-        lines: [{ id: "L1", section: "on_chain", text: "Symbol is EX.", kind: "proof", rerun: `call symbol() on ${A}`, fact: { name: "Token symbol", value: "EX", unit: "" }, sources: ["S1"] }],
+        subject: {
+          name: "Ex",
+          channels: [
+            { label: "@ex", url: "https://x.com/ex", tie: "strong" },
+            { label: "Docs", url: "https://docs.example.com/", tie: "none" },
+            { label: "Home", url: "https://example.com/", tie: "weak" },
+          ],
+          contracts: [{ address: "0x2222222222222222222222222222222222222222", chain: "8453", main: false }, { address: A, chain: "Ethereum", main: true }],
+        },
+        lines: [
+          { id: "L1", section: "on_chain", text: "Symbol is EX.", kind: "proof", rerun: `call symbol() on ${A}`, fact: { name: "Token symbol", value: "EX", unit: "" }, sources: ["S1"] },
+          { id: "L2", section: "on_chain", text: "Supply is 10.", kind: "proof", rerun: "call totalSupply()", fact: { name: "Total supply", value: "10", unit: "EX" }, sources: ["S1"] },
+          { id: "L3", section: "on_chain", text: "Seats are 2.", kind: "proof", rerun: "call seatSupply()", fact: { name: "Seat supply", value: "2", unit: "" }, sources: ["S1"] },
+          { id: "L4", section: "on_chain", text: "Old symbol is EXO.", kind: "proof", rerun: "call symbol()", fact: { name: "Old symbol", value: "EXO", unit: "" }, sources: ["S1"] },
+          { id: "L5", section: "money", text: "It is free.", kind: "statement", by: "Home", sources: ["S2"] },
+        ],
+        sources: [{ id: "S2", ref: "https://example.com/pricing" }],
       }),
+      "example.com",
     );
     const k = keyFacts(p, () => undefined, p.lines);
     expect(k.fromInfobox).toBe(false);
-    expect(k.rows.map((r) => [r.label, r.badge?.text ?? null])).toEqual([
-      ["Website", "Names the contract"],
-      ["Main contract", "Proven on chain"],
-      ["Contract", null],
-      ["Token symbol", "Proven on chain"],
+    expect(k.rows.map((r) => [r.label, r.badge?.text ?? null, r.status?.text ?? null])).toEqual([
+      ["Website", "Stated by Home", "Own domain"],
+      ["Main contract", "Proven on chain", null],
+      ["Token symbol", "Proven on chain", null],
+      ["Total supply", "Proven on chain", null],
     ]);
+    expect(k.rows[0]!.url).toBe("https://example.com/");
     expect(k.rows[1]!.note).toBe("on Ethereum");
+    expect(k.rows.some((r) => r.value === "0x2222222222222222222222222222222222222222")).toBe(false);
+    expect(k.otherChannels.map((c) => c.label)).toEqual(["@ex", "Docs"]);
+    // No channel on the domain and none called Website: no Website row; no main contract: no contract row.
+    const q = parsePage(JSON.stringify({ subject: { name: "Q", channels: [{ label: "@q", url: "https://x.com/q", tie: "strong" }], contracts: [{ address: A, chain: "1", main: false }] } }), "q.org");
+    expect(keyFacts(q, () => undefined, q.lines).rows).toEqual([]);
   });
-  it("with infobox, a channel row shows its tie and channels not in the table are listed apart", () => {
+  it("with infobox, badges come only from the kinds of a row's lines; only Website and Official accounts show the channel's label", () => {
     const p = parsePage(
       JSON.stringify({
-        subject: { name: "Ex", channels: [{ label: "Website", url: "https://example.com/", tie: "strong" }, { label: "@ex", url: "https://x.com/ex", tie: "none" }] },
-        infobox: [{ label: "Website", value: "example.com", url: "https://example.com", lines: [] }, { label: "Token", value: `EX (${A})`, lines: ["L1"] }],
-        lines: [{ id: "L1", section: "money", text: "Token is EX.", kind: "claim", by: "a blog", sources: ["S1"] }],
+        subject: {
+          name: "Ex",
+          channels: [
+            { label: "Website", url: "https://example.com/", tie: "none" },
+            { label: "@ex", url: "https://x.com/ex", tie: "strong" },
+            { label: "Blog", url: "https://blog.other.org/", tie: "weak" },
+          ],
+        },
+        infobox: [
+          { label: "Website", value: "example.com", url: "https://example.com", lines: [] },
+          { label: "Token", value: `EX (${A})`, lines: ["L1"] },
+          { label: "Official accounts", value: "@ex", url: "https://x.com/ex", lines: ["L2"] },
+          { label: "Founder or creator", value: "Blog", url: "https://blog.other.org/", lines: ["L3"] },
+        ],
+        lines: [
+          { id: "L1", section: "money", text: "Token is EX.", kind: "claim", by: "a blog", sources: ["S1"] },
+          { id: "L2", section: "people", text: "The account posts news.", kind: "statement", by: "@ex", sources: ["S2"] },
+          { id: "L3", section: "people", text: "Ann made it.", kind: "statement", by: "Blog", sources: ["S3"] },
+        ],
+        sources: [{ id: "S2", ref: "https://x.com/ex/status/1" }, { id: "S3", ref: "https://blog.other.org/post" }],
       }),
+      "example.com",
     );
     const k = keyFacts(p, (id) => p.lines.find((l) => l.id === id), p.lines);
-    expect(k.rows.map((r) => r.badge?.text)).toEqual(["Confirmed on chain", "Reported by a blog"]);
-    expect(k.otherChannels.map((c) => c.label)).toEqual(["@ex"]);
+    expect(k.rows.map((r) => [r.label, r.badge?.text ?? null, r.status?.text ?? null])).toEqual([
+      ["Website", null, "Own domain"],
+      ["Token", "Reported by a blog", null],
+      ["Official accounts", "Stated by @ex", "Verified on chain"],
+      // A Blog with tie weak is Not verified: its line shows as a claim, and the row shows no channel label.
+      ["Founder or creator", "Reported by Blog", null],
+    ]);
+    expect(k.otherChannels).toEqual([]);
+    expect(statusBadge(p.channels[2]!, "example.com")).toEqual({ text: "Not verified", tone: "unverified" });
+    expect(TIE_ROWS.test("Official account")).toBe(true);
     expect(splitAddresses(`EX (${A})`)).toEqual([{ text: "EX (", address: false }, { text: A, address: true }, { text: ")", address: false }]);
+  });
+  it("websiteOf prefers the domain itself, then any subdomain, then a channel labelled Website", () => {
+    const ch = (label: string, url: string) => ({ label, url, tie: "none" as const });
+    expect(websiteOf([ch("Docs", "https://docs.ex.com"), ch("Site", "https://www.ex.com/")], "ex.com")?.label).toBe("Site");
+    expect(websiteOf([ch("@ex", "https://x.com/ex"), ch("Docs", "https://docs.ex.com")], "ex.com")?.label).toBe("Docs");
+    expect(websiteOf([ch("@ex", "https://x.com/ex"), ch("Website", "https://ex.app")], "")?.label).toBe("Website");
+    expect(websiteOf([ch("@ex", "https://x.com/ex")], "ex.com")).toBeNull();
+  });
+});
+
+describe("bringing back lines dropped for space", () => {
+  it("lists the files the page shown dropped entries from, marked reconsider, after the results; never pushing a result out", () => {
+    const given = [
+      { n: 1, url: artifactUrl(h("1")), hash: h("1") },
+      { n: 2, url: artifactUrl(h("2")), hash: h("2") },
+      { n: 3, url: artifactUrl(h("3")), hash: h("3") },
+      { n: 4, url: "not an artifact", hash: "" },
+    ];
+    const dropped = [{ id: "F3:L2" }, { id: "F1:L9" }, { id: " f3:L4" }, { id: "F4:L1" }, { id: "L7" }, { id: "F9:L1" }];
+    expect(reconsiderFiles(dropped, given)).toEqual([artifactUrl(h("1")), artifactUrl(h("3"))]);
+    expect(reconsiderFiles(dropped, given, [artifactUrl(h("1"))])).toEqual([artifactUrl(h("3"))]);
+    expect(reconsiderFiles([], given)).toEqual([]);
+    const ref = refFromId("example.com");
+    const measure = (p: Prior) => rebuildObjective(p, ref).length;
+    const fit = fitPrior(artifactUrl(h("f")), [{ id: "r", url: artifactUrl(h("9")) }], [], measure, [artifactUrl(h("1")), artifactUrl(h("f"))]);
+    expect(fit.prior.files).toEqual([artifactUrl(h("f")), artifactUrl(h("9"))]);
+    expect(fit.prior.reconsider).toEqual([artifactUrl(h("1"))]);
+    expect(rebuildObjective(fit.prior, ref)).toContain(`[F3] ${artifactUrl(h("1"))} (reconsider dropped lines)`);
+    expect(fitPrior(null, [], [], measure, [artifactUrl(h("1"))]).prior.reconsider).toBeUndefined();
+    // With no room, files to reconsider are left out before any result.
+    const many = Array.from({ length: 60 }, (_, i) => ({ id: String(i), url: artifactUrl(i.toString(16).padStart(64, "0")) }));
+    const full = fitPrior(artifactUrl(h("f")), many, [], measure, [artifactUrl(h("1"))]);
+    const alone = fitPrior(artifactUrl(h("f")), many, [], measure);
+    expect(full.included).toEqual(alone.included);
+    expect(measure(full.prior)).toBeLessThan(7500);
+  });
+  it("planRebuild reads the dropped entries of the page shown against the objective that produced it", () => {
+    const old = act("add", { block: 100, hash: h("1"), page: PAGE("Example") });
+    const shownPage = JSON.stringify({ subject: { name: "Example" }, lines: [{ id: "L1", section: "money", text: "x", kind: "claim", by: "b", from: ["F1:L1"] }], dropped: [{ id: "F1:L2", why: "space" }] });
+    const shown = act("add", { block: 200, hash: h("2"), page: shownPage, objective: `Start from the earlier results: [F1] ${artifactUrl(h("1"))}. Fetch each file.` });
+    const plan = planRebuild([old, shown], refFromId("example.com"));
+    expect(plan.prior.files).toEqual([artifactUrl(h("2"))]);
+    expect(plan.prior.reconsider).toEqual([artifactUrl(h("1"))]);
+    expect(plan.reconsiderLeftOut).toBe(0);
+    const clean = act("add", { block: 300, hash: h("3"), page: PAGE("Example"), objective: `Start from the earlier results: [F1] ${artifactUrl(h("2"))}. Fetch each file.` });
+    expect(planRebuild([old, shown, clean], refFromId("example.com")).prior.reconsider).toBeUndefined();
   });
 });
 
@@ -228,14 +322,14 @@ describe("panel answers never push a result file out of <PRIOR> (aa9250dc)", () 
     const src = { id: "s", url: artifactUrl(h("a")) };
     const answers = Array.from({ length: 20 }, (_, i) => ({ title: "A".repeat(88), answer: "true", agreed: 5, size: 5, url: `https://explorer.imd.fun/jobs/${String(i).padStart(36, "0")}` }));
     const measure = (p: Parameters<typeof rebuildObjective>[0]) => rebuildObjective(p, ref).length;
-    expect(measure({ files: [f1, src.url], answers })).toBe(8493);
+    expect(measure({ files: [f1, src.url], answers })).toBe(9087);
     const fit = fitPrior(f1, [src], answers, measure);
     expect(fit.prior.files).toEqual([f1, src.url]);
     expect(fit.included.has("s")).toBe(true);
     expect(fit.leftOut).toBe(0);
-    expect(fit.prior.answers).toEqual(answers.slice(6));
-    expect(fit.answersLeftOut).toBe(6);
-    expect(measure(fit.prior)).toBe(7419);
+    expect(fit.prior.answers).toEqual(answers.slice(9));
+    expect(fit.answersLeftOut).toBe(9);
+    expect(measure(fit.prior)).toBe(7476);
   });
 });
 

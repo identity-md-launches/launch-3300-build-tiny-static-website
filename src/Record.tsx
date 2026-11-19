@@ -1,10 +1,23 @@
 /** The record's tabs: Overview (key facts, summary), Record (filter, sections, one facts table) and Sources. */
 import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
-import { jobLink, kindName, lineAnchor, payerName, shortHex, TIE_WORDS, tieWord } from "./format";
+import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { keyFacts, splitAddresses, type KeyRow } from "./keyfacts";
 import { to } from "./route";
-import { blockNumber, hostOf, paragraphsOf, safeHref, SECTION_TITLES, SECTIONS, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
+import {
+  blockNumber,
+  channelStatus,
+  hostOf,
+  paragraphsOf,
+  safeHref,
+  SECTION_TITLES,
+  SECTIONS,
+  STATUS_HELP,
+  STATUS_WORDS,
+  statusWord,
+  type Channel,
+  type ChannelStatus,
+  type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
 import type { RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 
@@ -105,6 +118,11 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                 <KeyValue row={r} />
               </td>
               <td className="kf-badge">
+                {r.status && (
+                  <span className={`badge badge-${r.status.tone}`} title={STATUS_HELP[r.status.tone as ChannelStatus]}>
+                    {r.status.text}
+                  </span>
+                )}
                 {r.badge &&
                   (r.lines.length ? (
                     <a
@@ -318,7 +336,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
     line.kind === "proof"
       ? "Proof: anyone can follow the re-run steps and get the same answer."
       : line.kind === "statement"
-        ? `Statement: published on ${line.channel?.label || line.channel?.url || "a channel of the subject"}, whose tie is “${tieWord(line.channel?.tie ?? "none")}”.`
+        ? `Statement: published on ${line.channel?.label || line.channel?.url || "a channel of the subject"}, labelled “${line.channel ? statusWord(line.channel, ctx.m.page?.domain ?? ctx.m.subject.domain) : STATUS_WORDS.unverified}”.`
         : `Claim: said by ${line.by || "someone other than the subject"}, not on a tied channel of the subject.`;
   const job = origin ? { what: "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
   return (
@@ -660,6 +678,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
 /** Channels of the subject that the key facts table does not show. */
 function OtherChannels({ m }: { m: RecordModel }) {
   const { otherChannels } = useKeyFacts(m);
+  const domain = m.page?.domain || m.subject.domain;
   if (!otherChannels.length) return null;
   return (
     <div className="card" id="other-channels">
@@ -668,7 +687,7 @@ function OtherChannels({ m }: { m: RecordModel }) {
         {otherChannels.map((c, i) => (
           <li key={i}>
             <ExtLink url={c.url}>{c.label || c.url}</ExtLink>
-            <span className={`tie tie-${TIE_WORDS[c.tie] ? c.tie : "none"}`}>{tieWord(c.tie)}</span>
+            <ChannelLabel c={c} domain={domain} />
           </li>
         ))}
       </ul>
@@ -678,8 +697,15 @@ function OtherChannels({ m }: { m: RecordModel }) {
 
 /* ---------- Sources ---------- */
 
+/** A channel's label: Own domain, Verified on chain or Not verified. */
+function ChannelLabel({ c, domain }: { c: Channel; domain: string }) {
+  const s = channelStatus(c, domain);
+  return <span className={`tie tie-${s}`}>{STATUS_WORDS[s]}</span>;
+}
+
 export function SourcesTab({ m }: { m: RecordModel }) {
   const { page, via, sourceList: list } = m;
+  const domain = page?.domain || m.subject.domain;
   return (
     <section className="tab" aria-labelledby="sources-title">
       <h1 id="sources-title" tabIndex={-1} className="tab-title">Sources</h1>
@@ -690,13 +716,12 @@ export function SourcesTab({ m }: { m: RecordModel }) {
             {page.channels.map((c, i) => (
               <li key={i}>
                 <ExtLink url={c.url}>{c.label || c.url}</ExtLink>
-                <span className={`tie tie-${TIE_WORDS[c.tie] ? c.tie : "none"}`}>{tieWord(c.tie)}</span>
+                <ChannelLabel c={c} domain={domain} />
               </li>
             ))}
           </ul>
           <p className="small tie-key">
-            Confirmed on chain: a contract, ENS record or deployer wallet points to it. Names the contract: it publishes the main contract's address. Not confirmed: neither. Only lines
-            published on the first two show as statements.
+            {STATUS_HELP.own} {STATUS_HELP.verified} {STATUS_HELP.unverified} Only lines published on Own domain or Verified on chain channels show as statements.
           </p>
         </div>
       )}

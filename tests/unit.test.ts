@@ -5,7 +5,7 @@ import { rebuildBody, editBody, EDIT_TEMPLATE } from "../src/bodies";
 import { questionPost, questionPage, questionContract } from "../src/bodies";
 import { researchBody, oracleBody, oracleShortForm, LEGACY_PRESETS, Q_P1, Q_P2, Q_P3, questionP4, validateP4, encodeBody, matchOracleQuestion, sourceBody, sourceObjective, planSources, numberLinks, SOURCE_TEMPLATE } from "../src/bodies";
 import { decodeRequested, decodeCompleted, stateOf } from "../src/chain";
-import { parsePage, orderAll, safeHref, parseLines, mergeRecord, allSources, outcomeOf, outcomeText, countKinds, channelFor, underChannel, chainAndBlock } from "../src/page";
+import { parsePage, orderAll, safeHref, parseLines, mergeRecord, allSources, outcomeOf, outcomeText, countKinds, channelFor, underChannel, chainAndBlock, onDomain, statusWord } from "../src/page";
 import { normalizeAnswer, oracleIdFrom, refusalOf } from "../src/api";
 import { TOPIC_COMPLETED, TOPIC_REQUESTED } from "../src/config";
 import { refFromId } from "../src/subject";
@@ -237,14 +237,14 @@ describe("add sources", () => {
     expect(list[2]!.readVia).toBe("nitter.example");
     expect(list[2]!.addedBy).toBe("bob.eth");
   });
-  it("label rule: a statement needs a channel with tie strong or weak, for research and source lines already on the page", () => {
+  it("label rule: a statement needs an Own domain or Verified on chain channel, for research and source lines already on the page", () => {
     const channels = [
       { label: "IMD docs", url: "https://imd.fun/docs/", tie: "weak" },
       { label: "IMD API", url: "https://api.imd.fun", tie: "strong" },
       { label: "Identity-md GitHub organization", url: "https://github.com/Identity-md", tie: "none" },
       { label: "POOL4", url: "https://pool4.imd.fun/", tie: "weak" },
     ];
-    const p = parsePage(JSON.stringify({
+    const json = JSON.stringify({
       subject: { name: "IMD", channels, contracts: [{ address: "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7", chain: "Ethereum", main: true }, { address: "0x0000ec93127baa929e58e97dd0095a2bfb38ec1d", main: false }] },
       summary: [{ text: "IMD is a paid swarm.", lines: ["a", "b"] }, { text: "", lines: [] }],
       lines: [
@@ -257,9 +257,21 @@ describe("add sources", () => {
         { id: "g", section: "on_chain", text: "No fact here.", kind: "proof" },
       ],
       sources: [{ id: "d", ref: "https://imd.fun/docs/#price" }, { id: "pd", ref: "https://pool4.imd.fun/docs" }, { id: "gh", ref: "https://github.com/Identity-md/awesome-imd" }, { id: "x", ref: "https://x.com/someone/status/1", read_via: "archive.org" }],
-    }));
+    });
+    const p = parsePage(json, "imd.fun");
+    // imd.fun/docs and pool4.imd.fun are on the subject's domain (Own domain), so tie weak no longer matters.
     expect(p.lines.map((l) => [l.id, l.kind])).toEqual([["a", "statement"], ["b", "statement"], ["c", "claim"], ["d", "claim"], ["e", "proof"], ["f", "proof"], ["g", "proof"]]);
-    expect(p.lines.find((l) => l.id === "c")!.labelNote).toContain("has tie none");
+    expect(p.lines.find((l) => l.id === "c")!.labelNote).toContain("is not verified");
+    expect(p.domain).toBe("imd.fun");
+    // Read for another subject, the weak channels are Not verified: their lines show as claims.
+    expect(parsePage(json, "example.com").lines.slice(0, 2).map((l) => l.kind)).toEqual(["claim", "claim"]);
+    expect(p.channels.map((c) => statusWord(c, "imd.fun"))).toEqual(["Own domain", "Own domain", "Not verified", "Own domain"]);
+    expect(p.channels.map((c) => statusWord(c, "example.com"))).toEqual(["Not verified", "Verified on chain", "Not verified", "Not verified"]);
+    expect(onDomain("https://imd.fun.evil.com/", "imd.fun")).toBe(false);
+    expect(onDomain("https://www.imd.fun/", "imd.fun")).toBe(true);
+    expect(onDomain("https://docs.api.imd.fun/x", "imd.fun")).toBe(true);
+    expect(onDomain("https://notimd.fun/", "imd.fun")).toBe(false);
+    expect(onDomain("https://imd.fun/", "")).toBe(false);
     expect(p.main).toBe("0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7");
     expect(p.summary).toEqual([{ paragraph: null, text: "IMD is a paid swarm.", lines: ["a", "b"] }]);
     expect(p.sources[3]!.readVia).toBe("archive.org");

@@ -92,6 +92,8 @@ export interface SummarySentence {
   paragraph: number | null;
 }
 export interface Page {
+  /** The subject's domain the page was read for ("" for a chain:address subject): channels on it are Own domain. */
+  domain: string;
   name: string;
   oneLine: string;
   channels: Channel[];
@@ -159,7 +161,7 @@ function parseLinks(v: unknown): LineLink[] {
 
 function parseDropped(v: unknown): Dropped[] {
   return arr(v)
-    .slice(0, 200)
+    .slice(0, 2000)
     .map((d) => {
       const o = obj(d);
       return { id: str(o.id, 64).trim(), why: str(o.why, 400) };
@@ -255,6 +257,30 @@ const norm = (url: string) => {
     return null;
   }
 };
+/**
+ * How a channel shows to visitors: Own domain when it is on the subject's domain or a subdomain of it, Verified
+ * on chain for tie strong, Not verified otherwise. Only lines on Own domain or Verified on chain channels show as statements.
+ */
+export type ChannelStatus = "own" | "verified" | "unverified";
+export const STATUS_WORDS: Record<ChannelStatus, string> = { own: "Own domain", verified: "Verified on chain", unverified: "Not verified" };
+/** True when url's host is the domain or a subdomain of it. */
+export function onDomain(url: string, domain: string): boolean {
+  const d = domain.trim().toLowerCase().replace(/^www\./, "");
+  const h = hostOf(url).toLowerCase();
+  return !!d && !!h && (h === d || h.endsWith(`.${d}`));
+}
+export function channelStatus(c: Pick<Channel, "url" | "tie">, domain: string): ChannelStatus {
+  if (onDomain(c.url, domain)) return "own";
+  return c.tie === "strong" ? "verified" : "unverified";
+}
+/** What each label means, for the key under the channels list and a badge's title. */
+export const STATUS_HELP: Record<ChannelStatus, string> = {
+  own: "Own domain: on the subject's domain or a subdomain of it.",
+  verified: "Verified on chain: a contract, ENS record or deployer wallet points to it.",
+  unverified: "Not verified: neither.",
+};
+export const statusWord = (c: Pick<Channel, "url" | "tie">, domain: string) => STATUS_WORDS[channelStatus(c, domain)];
+
 /** True when url is the channel's URL or a page under it. */
 export function underChannel(url: string, channel: Channel): boolean {
   const a = norm(url);
@@ -284,15 +310,16 @@ export function channelFor(channels: Channel[], publisher: string, urls: string[
 }
 
 /**
- * A line shows as a statement only when its publisher is one of the record's channels with tie strong or weak.
- * Otherwise a marked statement is shown as a claim. Proof and claim stay as marked.
+ * A line shows as a statement only when its publisher is one of the record's channels that is Own domain (on the
+ * subject's domain or a subdomain) or Verified on chain (tie strong). Otherwise a marked statement is shown as a
+ * claim. Proof and claim stay as marked.
  */
-export function applyLabel(line: Line, channels: Channel[], publisher: string, urls: string[]): Line {
+export function applyLabel(line: Line, channels: Channel[], publisher: string, urls: string[], domain = ""): Line {
   if (line.marked !== "statement") return { ...line, kind: line.marked, labelNote: "", channel: null };
   const ch = channelFor(channels, publisher, urls);
-  if (ch && ch.tie !== "none") return { ...line, kind: "statement", labelNote: "", channel: ch };
+  if (ch && channelStatus(ch, domain) !== "unverified") return { ...line, kind: "statement", labelNote: "", channel: ch };
   const labelNote = ch
-    ? `Marked a statement by the job. Shown as a claim because the channel ${ch.label || ch.url} has tie none.`
+    ? `Marked a statement by the job. Shown as a claim because the channel ${ch.label || ch.url} is not verified: it is not on the subject's domain and no contract, ENS record or deployer wallet points to it.`
     : `Marked a statement by the job. Shown as a claim because ${publisher || "its publisher"} is not one of the record's channels.`;
   return { ...line, kind: "claim", labelNote, channel: ch };
 }
@@ -312,7 +339,7 @@ export function rejectionOf(text: string): string | null {
   }
 }
 
-export function parsePage(text: string): Page {
+export function parsePage(text: string, domain = ""): Page {
   const j = obj(JSON.parse(text));
   const subject = obj(j.subject);
   const channels: Channel[] = arr(subject.channels).map((c) => {
@@ -335,8 +362,9 @@ export function parsePage(text: string): Page {
     };
   });
   const refOf = new Map(sources.map((s) => [s.id, s.ref]));
+  // The record has no line limit; this cap only bounds an absurd file.
   const lines: Line[] = arr(j.lines)
-    .slice(0, 60)
+    .slice(0, 2000)
     .map((l) => {
       const o = obj(l);
       const lineText = str(o.text, 600);
@@ -360,11 +388,12 @@ export function parsePage(text: string): Page {
         from: arr(o.from).map((x) => str(x, 64).trim()).filter(Boolean).slice(0, 40),
         links: parseLinks(o.links),
       };
-      return applyLabel(line, channels, line.by, ids.map((s) => refOf.get(s) ?? ""));
+      return applyLabel(line, channels, line.by, ids.map((s) => refOf.get(s) ?? ""), domain);
     })
     .filter((l) => l.text);
   const main = contracts.find((c) => c.main)?.address ?? "";
   return {
+    domain: domain.trim().toLowerCase(),
     name: str(subject.name, 200),
     oneLine: str(subject.one_line, 400),
     channels,
@@ -576,11 +605,11 @@ export function allSources(page: Page | null, jobs: SourceJob[]): ListedSource[]
  * differs pairs kept together (the second line directly under the first). Source lines get the label rule
  * here, against the record's channels.
  */
-export function mergeRecord(page: Page | null, jobs: SourceJob[]): { section: string; rows: RecordRow[] }[] {
+export function mergeRecord(page: Page | null, jobs: SourceJob[], domain = page?.domain ?? ""): { section: string; rows: RecordRow[] }[] {
   const channels = page?.channels ?? [];
   const asPage = (j: SourceJob) => ({
     lines: j.data.lines.map((l) => {
-      const labelled = applyLabel(l, channels, l.source?.publisher || l.by, l.source?.url ? [l.source.url] : []);
+      const labelled = applyLabel(l, channels, l.source?.publisher || l.by, l.source?.url ? [l.source.url] : [], domain);
       return { ...labelled, source: l.source, id: `${j.key}:${l.id}`, srcKeys: l.source ? [`${j.key}:${l.source.id}`] : [] } as SourceLine;
     }),
     differs: j.data.differs.map((d) => ({ ...d, lines: d.lines.map((x) => `${j.key}:${x}`) })),

@@ -26,7 +26,7 @@ const PRIOR: Prior = {
   answers: [{ title: "The docs price a job at 0.5 IMD", answer: "true", agreed: 5, size: 5, url: "https://explorer.imd.fun/jobs/j-1" }],
 };
 const INFOBOX =
-  "Write infobox with these rows, in this order, leaving out any row no line supports: Website, Token (symbol and contract), Main contract, Chains, Supply or seats, Price, Deployed by, Founder or creator, Contributors, Official accounts, Launched. Each row has label, value, optional url and the line ids it rests on. Use Deployed by only for a wallet a proof shows deployed the main contract; use Founder or creator only for what a source says.";
+  "Write infobox with these rows, in this order, leaving out any row no line supports: Website, Token (symbol and contract), Main contract, Chains, Supply, Seats, Price, Deployed by, Founder or creator, Contributors, Official accounts, Launched. Each row has label, value, optional url and the line ids it rests on. Use Deployed by only for a wallet a proof shows deployed the main contract; use Founder or creator only for what a source says.";
 const SUMMARY =
   "Write summary as 5 to 9 plain sentences in 2 or 3 paragraphs, the way you would explain the subject to a friend who has never heard of it: what it is, who runs it, how you use it, what it costs, what is uncertain. In summary use no block numbers, raw token values, contract names or addresses.";
 const AMOUNTS = "In line text write token amounts in whole units only, such as 0.5 IMD. Put raw values, blocks and addresses in fact and rerun, not in the sentence.";
@@ -40,6 +40,17 @@ describe("rebuild", () => {
     expect(t).not.toContain("imd.fun");
     expect(t).not.toContain("Write infobox: 6 to 12 rows");
     expect(t).not.toContain("with the raw value in brackets");
+    // No size limit: no line cap, no claim cap, and the only three reasons to drop a line.
+    expect(t).not.toContain("at most 40 lines");
+    expect(t).not.toContain("Include up to 8 claims from outside sources");
+    expect(t).not.toContain("Supply or seats");
+    expect(t).toContain(
+      "The record has no line limit and no claim limit; only infobox and summary are short. Never drop an earlier line to save space or because it matters less to a newcomer. The only reasons to drop are: exact duplicate of a line you kept (name it), not about the subject, or replaced by a newer statement from the same speaker.",
+    );
+    expect(t).toContain("A claim or statement that a proof or panel answer settles is KEPT, with links to what confirms or contradicts it. Do not drop it as covered; who said it is part of the record.");
+    expect(t).toContain("For files marked reconsider, carry forward every line the last page dropped unless one of the three reasons above applies.");
+    expect(t.indexOf("The only reasons to drop are")).toBeLessThan(t.indexOf("For files marked reconsider"));
+    expect(t).toContain("Include claims from outside sources such as posts and articles about the subject.");
     expect(t).toContain("Start from the earlier results: <PRIOR>. Fetch each file.");
     expect(t.indexOf(INFOBOX)).toBeLessThan(t.indexOf(SUMMARY));
     expect(RESEARCH_OBJECTIVE.length).toBeGreaterThan(0);
@@ -67,13 +78,28 @@ describe("rebuild", () => {
   it("reads its own <PRIOR> back, so F and A numbers resolve later", () => {
     const p = parsePrior(rebuildBody(PRIOR, IMD).objective);
     expect(p.files).toEqual([
-      { n: 1, url: artifactUrl(H1), hash: H1 },
-      { n: 2, url: artifactUrl(H2), hash: H2 },
+      { n: 1, url: artifactUrl(H1), hash: H1, reconsider: false },
+      { n: 2, url: artifactUrl(H2), hash: H2, reconsider: false },
     ]);
     expect(p.answers).toEqual([{ n: 1, text: "The docs price a job at 0.5 IMD = true, 5 of 5", url: "https://explorer.imd.fun/jobs/j-1" }]);
     expect(parsePrior(rebuildBody({ files: [], answers: [] }, IMD).objective).files).toEqual([]);
     expect(parsePrior(editObjective("Hi.", PRIOR, [], IMD)).files.length).toBe(2);
     expect(parsePrior(undefined).files).toEqual([]);
+  });
+  it("lists files to reconsider after the others, numbered on, marked \"reconsider dropped lines\", and reads the mark back", () => {
+    const H3 = "c".repeat(64);
+    const p: Prior = { ...PRIOR, reconsider: [artifactUrl(H3)] };
+    expect(priorText(p)).toBe(
+      `[F1] ${artifactUrl(H1)}; [F2] ${artifactUrl(H2)}; [F3] ${artifactUrl(H3)} (reconsider dropped lines); [A1] The docs price a job at 0.5 IMD = true, 5 of 5, https://explorer.imd.fun/jobs/j-1`,
+    );
+    expect(parsePrior(rebuildBody(p, IMD).objective).files).toEqual([
+      { n: 1, url: artifactUrl(H1), hash: H1, reconsider: false },
+      { n: 2, url: artifactUrl(H2), hash: H2, reconsider: false },
+      { n: 3, url: artifactUrl(H3), hash: H3, reconsider: true },
+    ]);
+    // An edit checks summary text: it is not given files to reconsider.
+    expect(editObjective("Hi.", p, [], IMD)).not.toContain("reconsider dropped lines");
+    expect(priorText({ files: [], answers: [], reconsider: [artifactUrl(H3)] })).toBe("none");
   });
   it("orders results by when they completed", () => {
     const c = (b: number, i: number) => ({ blockNumber: BigInt(b), logIndex: i }) as Completion;

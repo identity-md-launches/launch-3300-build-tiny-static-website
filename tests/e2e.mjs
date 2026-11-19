@@ -88,7 +88,8 @@ async function mock(page, opts = {}) {
   });
 }
 
-const browser = await chromium.launch({ headless: true });
+// IMD_CHROME: an installed Chromium or Chrome, when the Playwright build has no matching browser download.
+const browser = await chromium.launch({ headless: true, ...(process.env.IMD_CHROME ? { executablePath: process.env.IMD_CHROME } : {}) });
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 /** The elements that reach past the viewport, for a failed overflow check. */
 const wideOf = (page) =>
@@ -168,6 +169,11 @@ try {
         return lead?.nextElementSibling?.classList.contains("overview") && document.querySelector(".overview")?.firstElementChild?.classList.contains("keyfacts") && !!actions && !!summary && (summary.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING) > 0;
       }));
       check(`${W} every key fact row has a status badge`, (await page.locator(".keyfacts .badge").count()) >= 1);
+      const kfRows = await page.$$eval(".keyfacts tbody tr", (trs) => trs.map((tr) => ({ label: tr.querySelector("th")?.textContent?.trim() ?? "", badges: [...tr.querySelectorAll(".badge")].map((b) => b.textContent?.trim() ?? "") })));
+      const row = (l) => kfRows.find((r) => r.label === l)?.badges ?? [];
+      check(`${W} the Website row shows its channel's label, Own domain, and a badge from its line's kind`, row("Website").includes("Own domain") && row("Website").includes("Stated by imd.fun"), JSON.stringify(kfRows));
+      check(`${W} only Website and Official accounts rows show a channel label`, kfRows.filter((r) => !/^(Website|Official accounts?)$/.test(r.label)).every((r) => r.badges.every((b) => !/Own domain|Verified on chain|Not verified/.test(b))) && row("Seat supply").join() === "Proven on chain", JSON.stringify(kfRows));
+      check(`${W} no old tie words anywhere on Overview`, !/Confirmed on chain|Names the contract|Not confirmed/.test(await page.locator("main").innerText()));
       check(`${W} Checked by a panel is gone from Overview`, !/Checked by a panel/.test(await page.locator("main").innerText()));
       const linked = page.locator(".keyfacts a.badge").first();
       if (await linked.count()) {
@@ -199,6 +205,10 @@ try {
     await page.waitForSelector("#rebuild");
     await page.waitForFunction(() => /It is given/.test(document.querySelector("#rebuild")?.textContent ?? ""), null, { timeout: 30000 }).catch(() => {});
     check(`${W} the rebuild is given F1 and the results not folded in`, /It is given 3 earlier files and 1 panel answer/.test(await page.locator("#rebuild").innerText()), (await page.locator("#rebuild").innerText()).slice(0, 300));
+    const rb = await page.locator("#rebuild").innerText();
+    check(`${W} the rebuild says the files the page dropped lines from are listed again`, /dropped lines, so 2 files they came from are listed again/.test(rb), rb.slice(0, 600));
+    const objective = await page.locator("#rebuild .objective").textContent();
+    check(`${W} the rebuild objective marks both files reconsider, numbered after the results`, /\[F4\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[F5\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[A1\]/.test(objective ?? "") && /For files marked reconsider/.test(objective ?? "") && !/at most 40 lines/.test(objective ?? ""), (objective ?? "").slice(-1400, -900));
     check(`${W} the three IMD presets are gone`, !/Check: The docs price/.test(await page.locator("main").innerText()));
     await page.check('input[value="contract"]');
     await page.fill("#q-address", "0x0000eC93127BAA929E58E97dd0095A2BFb38ec1D");
@@ -213,6 +223,12 @@ try {
     await page.click("text=Review the question");
     check(`${W} the web page form asks for its fields`, (await page.locator("#q-url-err").count()) === 1 && (await page.locator("#q-text-err").count()) === 1);
     check(`${W} no horizontal scroll on Contribute`, (await overflow(page)) <= 0, await wideOf(page));
+
+    // Sources: every channel with its label, and the key under them.
+    await page.goto(base + "#/s/imd.fun/sources");
+    await page.waitForSelector(".channels-block", { timeout: 30000 });
+    const ch = await page.locator(".channels-block").innerText();
+    check(`${W} Sources labels the channel on the subject's domain Own domain and explains the three labels`, /Own domain/.test(ch) && /Verified on chain:/.test(ch) && /Not verified:/.test(ch) && !/Confirmed on chain|Names the contract/.test(ch), ch.slice(0, 300));
 
     // Add a project on a chain the oracle list does not name (8aeb5d8b).
     await page.goto(base);

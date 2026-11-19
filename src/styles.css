@@ -131,10 +131,12 @@ section { display: grid; gap: var(--space-4); min-width: 0; }
   font-size: var(--text-small); font-weight: 600; text-decoration: none; background: var(--color-bg-hover); color: var(--color-text);
 }
 a.badge { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
-.badge-proof, .badge-strong { background: var(--green-50); color: var(--green-800); }
-.badge-statement, .badge-weak { background: var(--blue-50); color: var(--blue-800); }
+.badge-proof, .badge-verified { background: var(--green-50); color: var(--green-800); }
+.badge-statement, .badge-own { background: var(--blue-50); color: var(--blue-800); }
 .badge-claim { background: var(--orange-50); color: var(--orange-800); }
-.badge-none { background: var(--color-bg-hover); color: var(--color-text-secondary); }
+.badge-unverified { background: var(--color-bg-hover); color: var(--color-text-secondary); }
+.kf-badge .badge { margin-block: 2px; }
+.kf-badge .badge + .badge { margin-inline-start: var(--space-1); }
 .copy {
   margin-inline-start: var(--space-2); min-height: 24px; min-width: 44px; padding: 0 var(--space-2); border-radius: 6px;
   border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text); font: inherit; font-size: var(--text-small); cursor: pointer;
@@ -308,7 +310,8 @@ a.chip:hover { background: var(--color-border); }
 .channels { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
 .channels li { display: flex; gap: var(--space-2); align-items: baseline; overflow-wrap: anywhere; }
 .tie { font-size: var(--text-small); color: var(--color-text-secondary); }
-.tie-strong { color: var(--green-800); }
+.tie-verified { color: var(--green-800); }
+.tie-own { color: var(--blue-800); }
 .tie-key { max-width: 70ch; }
 .plain { margin: 0; padding-inline-start: 1.25em; display: grid; gap: var(--space-2); }
 .sources { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }

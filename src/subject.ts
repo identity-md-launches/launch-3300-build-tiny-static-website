@@ -36,6 +36,9 @@ export function normDomain(raw: string): string {
   return HOST.test(host) ? host : "";
 }
 
+/** The domain of a subject id, or "" for a chain:address id. */
+export const domainOfId = (id: string) => (/^\d+:0x[0-9a-f]{40}$/i.test(id) ? "" : normDomain(id));
+
 export const isAddress = (a: string) => ADDRESS.test(a.trim());
 
 /** True for a subject id this site accepts: a domain as normDomain gives it, or "<chain id>:0x<40 hex>" in lowercase. */
