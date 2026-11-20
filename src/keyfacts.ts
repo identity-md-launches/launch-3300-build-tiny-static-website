@@ -1,5 +1,5 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
-import { channelFor, channelStatus, hostOf, onDomain, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page } from "./page";
+import { channelFor, channelStatus, hostOf, onDomain, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page } from "./page";
 import { chainIdOf, chainName } from "./subject";
 import { proofIdsOf, settleOf } from "./settle";
 
@@ -31,33 +31,72 @@ export interface KeyRow {
   tokens: TokenItem[];
 }
 
-/** One token of a Tokens value: its symbol, what it is for, and its contract address ("" when the value gives none). */
+/** One token of a Tokens value: its symbol, what it is for, its contract address and chain ("" when the value gives none). */
 export interface TokenItem {
   symbol: string;
   purpose: string;
   address: string;
+  /** The chain written with the address, such as "Ethereum" in "0x… on Ethereum". */
+  chain: string;
+  /** A safe explorer link for this token, when the row's url clearly points at it. */
+  url: string;
 }
 
-/** Rows that list tokens one per line. */
-export const TOKEN_ROWS = /^tokens?$/i;
+/**
+ * Rows that list tokens one per line: the Tokens row only. A legacy singular Token row keeps the plain linked value
+ * (its symbol linked to the row's explorer URL), as pages built before the Tokens format wrote it.
+ */
+export const TOKEN_ROWS = /^tokens$/i;
+
+const ADDR = /0x[0-9a-fA-F]{40}/;
+/** A ticker as an item's first word: $IMD, IMD, sIMD, veCRV, USDC.e; followed by ":" or "(" (or " -"). */
+const TICKER_START = /^\s*(?:\$[A-Za-z0-9][A-Za-z0-9.\-]{0,11}|[A-Za-z0-9]*[A-Z]{2,}[A-Za-z0-9.\-]*)\s*(?::|\(|[-–—]\s)/;
 
 /**
- * Each token a Tokens value lists, such as "IMD: pays for jobs, 0xd34a… on Ethereum; SEAT (seat pass) 0x12…". Items
- * are split at semicolons or new lines, else after each address. The symbol is the first word when it is written
- * like a ticker ($IMD, IMD, sIMD); the purpose is what is left once the symbol and address are taken out.
+ * Splits a Tokens value into its items. Rebuilds write one item per token separated by semicolons (or new lines).
+ * An older value that runs them together with commas, such as "GOV: governance, 0x11… on Ethereum, PAY: fees,
+ * 0x22… on Base", is split only where the next token starts (a ticker followed by ":" or "("), after an item that
+ * already holds an address, so the chain written after an address stays with it.
  */
-export function tokensOf(value: string): TokenItem[] {
+export function tokenParts(value: string): string[] {
   const v = value.trim();
   if (!v) return [];
-  let parts = v.split(/\s*(?:;|\n)\s*/).filter(Boolean);
-  if (parts.length === 1 && (v.match(/0x[0-9a-fA-F]{40}/g) ?? []).length > 1)
-    parts = v
-      .split(/(?<=0x[0-9a-fA-F]{40}\)?)\s*(?:,|\band\b)?\s*/)
-      .map((p) => p.trim())
-      .filter(Boolean);
-  return parts.map((p) => {
-    const address = /0x[0-9a-fA-F]{40}/.exec(p)?.[0] ?? "";
-    let rest = p.replace(/0x[0-9a-fA-F]{40}/, " ");
+  const parts = v.split(/\s*(?:;|\n)\s*/).filter(Boolean);
+  if (parts.length > 1 || (v.match(new RegExp(ADDR.source, "g")) ?? []).length < 2) return parts;
+  const out: string[] = [];
+  let cur = "";
+  const pieces = v.split(/(\s*,\s*|\s+and\s+)/);
+  for (let i = 0; i < pieces.length; i += 2) {
+    const piece = pieces[i]!;
+    if (cur && ADDR.test(cur) && TICKER_START.test(piece)) {
+      out.push(cur.trim());
+      cur = piece;
+    } else cur += (i > 0 ? pieces[i - 1] : "") + piece;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/**
+ * Each token a Tokens value lists, such as "IMD: pays for jobs, 0xd34a… on Ethereum; SEAT (seat pass) 0x12… on
+ * Base". The symbol is the first word when it is written like a ticker ($IMD, IMD, sIMD); the chain is what follows
+ * "on" after the address; the purpose is what is left once those are taken out. `rowUrl` is kept on the one token
+ * it points at: the token whose address it contains, or the only token.
+ */
+export function tokensOf(value: string, rowUrl = ""): TokenItem[] {
+  const items = tokenParts(value).map((p) => {
+    const address = ADDR.exec(p)?.[0] ?? "";
+    let rest = p;
+    let chain = "";
+    if (address) {
+      const at = rest.indexOf(address);
+      const after = rest.slice(at + address.length);
+      const c = /^\s*\)?\s*(?:,\s*)?\(?\s*on\s+([A-Z][A-Za-z0-9 .\-]{0,30}?)\s*\)?\s*[.,]?\s*$/.exec(after);
+      if (c) {
+        chain = c[1]!.trim();
+        rest = rest.slice(0, at) + " ";
+      } else rest = rest.slice(0, at) + " " + after;
+    }
     const sym = /^\s*\$?([A-Za-z0-9][A-Za-z0-9.\-]{0,11})(?=\s*(?:[:(\-–—,]|$|\s))/.exec(rest);
     // A ticker has two capitals in a row (IMD, sIMD, veCRV, USDC.e) or a $ before it; "Pays" or "Governance" is a word.
     const symbol = sym && (/[A-Z]{2,}/.test(sym[1]!) || /^\s*\$/.test(sym[0])) ? sym[1]! : "";
@@ -69,8 +108,15 @@ export function tokensOf(value: string): TokenItem[] {
       .replace(/^[\s:,(–—-]+|[\s:,(–—-]+$/g, "")
       .replace(/^\((.*)\)$/, "$1")
       .trim();
-    return { symbol, purpose, address };
+    return { symbol, purpose, address, chain, url: "" };
   });
+  if (rowUrl) {
+    const lower = rowUrl.toLowerCase();
+    const hit = items.filter((t) => t.address && lower.includes(t.address.toLowerCase()));
+    const target = hit.length === 1 ? hit[0] : items.length === 1 ? items[0] : undefined;
+    if (target) target.url = rowUrl;
+  }
+  return items;
 }
 
 /**
@@ -80,6 +126,8 @@ export function tokensOf(value: string): TokenItem[] {
 export function isGenericSpeaker(by: string): boolean {
   const s = by.trim().toLowerCase().replace(/[.:]+$/, "");
   if (!s) return true;
+  // A bare label that names no one: "Unknown", "Anonymous", "N/A", "Source", "-".
+  if (/^(?:unknown|anonymous|anon|unnamed|unattributed|unspecified|undisclosed|not stated|not named|not given|none|null|n\/?a|tbd|[-–—?]+)$/.test(s)) return true;
   return /^(?:(?:an?|the|some|one|several|various|other|multiple)\s+)?(?:(?:outside|external|third[- ]party|unnamed|anonymous|unknown|independent|online|crypto|news|media|industry)\s+)*(?:source|site|website|web site|news site|news outlet|outlet|post|article|blog|report|reports|publisher|publication|media|press|user|users|account|party|commentator|observer|someone|people|analyst|analysts|reporter|journalist|forum|community member)s?$/.test(s);
 }
 
@@ -213,7 +261,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // Stated by or Reported by.
       const status = tied ? rowStatus(r, channel, accounts, domain) : null;
       const badge = tied ? null : badgeOf(lines, all, sourceUrl);
-      const tokens = TOKEN_ROWS.test(r.label.trim()) ? tokensOf(r.value) : [];
+      const tokens = TOKEN_ROWS.test(r.label.trim()) ? tokensOf(r.value, safeHref(r.url) ? r.url : "") : [];
       return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge, status, accounts, tokens };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };

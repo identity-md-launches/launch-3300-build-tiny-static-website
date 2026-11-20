@@ -73,7 +73,7 @@ describe("the record has no line limit in the parsers (52acaff0)", () => {
 // dc28a9b3 asked to merge only exact duplicates; this job's brief (MERGING IS NOT DROPPING) replaces that rule.
 describe("the rebuild objective merges lines that say the same thing (replaces dc28a9b3)", () => {
   it("merges across files, speakers and dates; a merged line is carried, not dropped", () => {
-    expect(REBUILD_TEMPLATE).toContain("Merge lines that say the same thing into ONE line, even when they come from different files, speakers or dates.");
+    expect(REBUILD_TEMPLATE).toContain("Merge lines that say the same thing into ONE line, even across files, speakers or dates; it lists every origin in from and speaker in by, counts as carried, and its origins stay out of dropped.");
     expect(REBUILD_TEMPLATE).not.toContain("Merge only exact duplicates of the same attributed line.");
     expect(REBUILD_TEMPLATE).toContain("Carry every earlier line forward unless a reason to drop applies.");
     expect(REBUILD_TEMPLATE).toContain("The only reasons to drop are: not about the subject, or replaced by a newer statement from the same speaker.");
@@ -156,7 +156,7 @@ describe("the jobs' statement rule is the site's label rule (1154ad1b)", () => {
       expect(t).not.toMatch(/tie (is )?strong or weak/);
       expect(t).toContain("on the subject's domain or a subdomain of it");
     }
-    expect(REBUILD_TEMPLATE).toContain("A line is a statement only if it was published on one of the subject's listed channels that is on the subject's domain or a subdomain of it, or that has tie strong; a line from any other publisher, including an off-domain channel with tie weak or none, is a claim.");
+    expect(REBUILD_TEMPLATE).toContain("A line is a statement only if published on a listed channel on the subject's domain or a subdomain of it, or with tie strong; anything else is a claim.");
     const o = sourceObjective(["https://docs.imd.fun/about"], [{ url: "https://docs.imd.fun", tie: "none" }], "", refFromId("imd.fun"));
     expect(o).toContain("If the publisher is a listed channel on the subject's domain or a subdomain of it, or a listed channel with tie strong, its lines have kind statement;");
   });

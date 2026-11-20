@@ -184,7 +184,13 @@ describe("key facts", () => {
   it("badge: proof first, then statement by channel, then claim by who", () => {
     expect(badgeOf([line("a", "claim", { by: "a blog" }), line("b", "proof")])).toEqual({ text: "Proven on chain", tone: "proof" });
     expect(badgeOf([line("a", "claim", { by: "a blog" }), line("b", "statement", { channel: { label: "@ex", url: "https://x.com/ex", tie: "strong" } })])!.text).toBe("Stated by @ex");
-    expect(badgeOf([line("a", "claim", { by: "a blog" })])!.text).toBe("Reported by a blog");
+    // A generic or missing speaker names the host of the claim's first source, never "an outside source".
+    expect(badgeOf([line("a", "claim", { by: "a blog" })], undefined, () => "https://www.blog.example/post")!.text).toBe("Reported by blog.example");
+    expect(badgeOf([line("a", "claim", { by: "Unknown" })], undefined, () => "https://news.example/record")!.text).toBe("Reported by news.example");
+    expect(badgeOf([line("a", "claim", { by: "an outside source" })], undefined, () => "https://news.example/record")!.text).toBe("Reported by news.example");
+    expect(badgeOf([line("a", "claim", { by: "" })], undefined, () => "https://news.example/record")!.text).toBe("Reported by news.example");
+    expect(badgeOf([line("a", "claim", { by: "The Block" })], undefined, () => "https://news.example/record")!.text).toBe("Reported by The Block");
+    expect(badgeOf([line("a", "claim", { by: "a blog" })])!.text).toBe("Reported by a source not named in the record");
     expect(badgeOf([])).toBeNull();
   });
   it("without infobox, shows at most Website, Main contract, one symbol proof and one supply proof; never every channel and contract", () => {
@@ -253,13 +259,16 @@ describe("key facts", () => {
       }),
       "example.com",
     );
-    const k = keyFacts(p, (id) => p.lines.find((l) => l.id === id), p.lines);
+    const firstSource = (l: { sources: string[] }) => p.sources.find((x) => x.id === l.sources[0])?.ref ?? "";
+    const k = keyFacts(p, (id) => p.lines.find((l) => l.id === id), p.lines, firstSource);
     expect(k.rows.map((r) => [r.label, r.badge?.text ?? null, r.status?.text ?? null])).toEqual([
       ["Website", null, "Own domain"],
-      ["Token", "Reported by a blog", null],
+      // L1's speaker is generic and its source S1 is not listed: no host to name.
+      ["Token", "Reported by a source not named in the record", null],
       ["Official accounts", null, "Verified on chain"],
       // A Blog with tie weak is Not verified: its line shows as a claim, and the row shows no channel label.
-      ["Founder or creator", "Reported by Blog", null],
+      // "Blog" alone names no publisher: the badge names its first source's host.
+      ["Founder or creator", "Reported by blog.other.org", null],
     ]);
     expect(k.otherChannels).toEqual([]);
     expect(statusBadge(p.channels[2]!, "example.com")).toEqual({ text: "Not verified", tone: "unverified" });
@@ -300,7 +309,9 @@ describe("bringing back lines dropped for space", () => {
     const alone = fitPrior(artifactUrl(h("f")), many, [], measure);
     expect(full.prior.reconsider).toEqual([artifactUrl(h("1"))]);
     expect(full.reconsiderLeftOut).toBe(0);
-    expect(full.included.size).toBe(alone.included.size - 1);
+    // The marked file takes the room of one or two ordinary results (its mark adds 26 characters).
+    expect(full.included.size).toBeLessThan(alone.included.size);
+    expect(full.included.size).toBeGreaterThanOrEqual(alone.included.size - 2);
     expect(measure(full.prior)).toBeLessThan(7500);
   });
   it("planRebuild reads the dropped entries of the page shown against the objective that produced it", () => {
@@ -325,15 +336,16 @@ describe("panel answers never push a result file out of <PRIOR> (aa9250dc)", () 
     const src = { id: "s", url: artifactUrl(h("a")) };
     const answers = Array.from({ length: 20 }, (_, i) => ({ title: "A".repeat(88), answer: "true", agreed: 5, size: 5, url: `https://explorer.imd.fun/jobs/${String(i).padStart(36, "0")}` }));
     const measure = (p: Parameters<typeof rebuildObjective>[0]) => rebuildObjective(p, ref).length;
-    // The rebuild template is 7,058 characters since the changes-result rule (job 9).
-    expect(measure({ files: [f1, src.url], answers })).toBe(10839);
+    // Twenty long answers do not fit beside the template (7,086 characters since this job's Tokens and depth rules).
+    expect(measure({ files: [f1, src.url], answers })).toBeGreaterThan(10000);
     const fit = fitPrior(f1, [src], answers, measure);
     expect(fit.prior.files).toEqual([f1, src.url]);
     expect(fit.included.has("s")).toBe(true);
     expect(fit.leftOut).toBe(0);
     expect(fit.prior.answers).toEqual(answers.slice(19));
     expect(fit.answersLeftOut).toBe(19);
-    expect(measure(fit.prior)).toBe(7446);
+    expect(measure(fit.prior)).toBeLessThan(7500);
+    expect(measure({ ...fit.prior, answers: answers.slice(18) })).toBeGreaterThanOrEqual(7500);
   });
 });
 

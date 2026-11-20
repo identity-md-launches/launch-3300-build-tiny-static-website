@@ -125,7 +125,14 @@ are deferred first), then the newest panel answers that fit in the room left. If
 not fit, the site does not offer the rebuild. The record has no size limit, and the site reads every line and
 every dropped entry, origin (\`from\`), speaker (\`by\`) and earlier reading (\`history\`) of a page, however many.
 A rebuild drops an earlier line only as not about the subject, or as replaced by a newer statement from the same
-speaker. Lines that say the same thing are **merged into one line**, even across files, speakers and dates: the
+speaker. When a project has more than one token or product, the rebuild writes one line per flow between them (what
+each is for, what value moves, and whether a contract moves it automatically or an operator by hand), never
+presents a flow the project only describes as enforced by contracts, and gives the summary one short paragraph on
+how the parts fit ("the project says" for stated flows). No line, infobox value or \`by\` says "an outside source"
+or "a news site": the publisher is named. A first page (\`<PRIOR>\` is \`none\`) reads at least the home page,
+the documentation index and main pages, linked repositories and the main contract's explorer page, looks for at
+least 3 outside sources and aims for 5 lines per section and 8 proofs, without padding; a short section is
+explained in \`notes\`. Notes are written afresh each run. Lines that say the same thing are **merged into one line**, even across files, speakers and dates: the
 merged line lists every origin in \`from\` and every speaker in \`by\`, counts as carried forward, and its origins
 are not also listed in \`dropped\`; the record never holds two lines with the same meaning. A check run at
 different blocks stays one proof line with the newest reading, older readings in \`history\` as \`{block,value}\`.
@@ -311,7 +318,9 @@ line above"; \`"question"\` or no level as "Compare with the line above". Proof 
 of name, value, chain and block (read from the line's text and re-run steps), all in one table under On chain.
 The Overview's key facts table shows \`infobox\` rows, each with a badge the site works out only from the kinds
 of the lines the row rests on: "Proven on chain" if any is a proof, else "Stated by <channel name>" for a
-statement, else "Reported by <who>" for a claim. Every row shows exactly one badge. The Website and Official
+statement, else "Reported by <who>" for a claim. When a claim's \`by\` is missing or generic ("an outside source",
+"a news site", "Unknown", "Anonymous" and the like), the badge names the host of the line's first source instead,
+such as "Reported by news.example", and never says "an outside source". Every row shows exactly one badge. The Website and Official
 accounts rows show only a channel label (Own domain, Verified on chain or Not verified) instead: Website from its
 URL and the subject's domain (Own domain for the domain or a subdomain, even when that URL is not a listed channel);
 Official accounts from the channel each listed account resolves to, the row taking the most cautious label among
@@ -319,9 +328,15 @@ them (one Not verified account makes the row Not verified). Each account's own l
 the subject's domain), Main contract, and one token symbol proof and one token supply proof (a proof named for
 the token's symbol or supply, or re-run with \`symbol()\` or \`totalSupply()\`; never a seat count; and only a proof
 that names the subject's own token contract and whose re-run reads no other contract); it never
-lists every channel and contract. The infobox rows a rebuild writes are, in order: Website, Token,
-Main contract, Chains, Supply, Seats, Price, Deployed by, Founder or creator, Contributors, Official accounts,
-Launched. Every completed panel answer of the subject
+lists every channel and contract. The infobox rows a rebuild writes are, in order: Website, **Tokens**,
+Main contract, Chains, Supply, Seats, Price, Deployed by, Controlled by, Founder or creator, Contributors, Official
+accounts, Launched, and up to 3 rows of its own. **Tokens** lists every token the project issues, each as
+\`SYM: purpose, <address> on <chain>\`, tokens joined by \`; \` (up to 30 words; every other value at most 12).
+Key facts shows it one line per token: the symbol in bold, its purpose, the shortened address with a Copy button,
+then the chain. An older comma-joined value is split only where the next token's symbol starts, so a chain stays
+with its address; the row's url links the one token it names. A page built before this format with a singular
+**Token** row keeps its linked value. **Supply** gives each token its own value. The Main contract and Tokens
+values include the contract address and chain; Deployed by and Controlled by include the wallet address. Every completed panel answer of the subject
 is listed under "Panel answers", always the last section of the Record tab, also before the first page.
 **Settled lines.** A statement or claim with a \`confirms\` link to a proof line or a panel answer (\`A<n>\` from
 the rebuild's \`<PRIOR>\`) is shown as ONE row: the sentence, a green "Proven" marker ("Confirmed by a panel, N of
@@ -339,8 +354,20 @@ confirms or contradicts link. The speaker always stays on the row.
 IndexedDB (database \`imd-record\`, store \`scan\`), shows them at once on a return visit, then reads only
 blocks after it (less 12, for reorganisations) and updates. Result files (page, lines, edit, artifacts, logos)
 are kept in IndexedDB (store \`files\`), not localStorage. The home list keeps one small digest per subject
-(name, one_line, counts, logo hash, changed date, contracts; store \`digests\`) and reads a full page file only
-when that subject's page is opened. When an RPC fails or limits a range, the scan tries the next RPC with half
+(name, one_line, counts, logo hash, changed date, contracts, the out-of-date count; store \`digests\`), and each
+logo once under its SHA-256. On every visit Home reads, without the subject being opened, the page file, logo,
+other result files and panel answers of each listed subject that has no digest, or whose digest predates newer
+results or recorded a failed read: one queue, 3 subjects at a time, newest first (subjects with no digest first),
+filling each row in as it arrives. A row being read is a light placeholder. A page that read while another of its
+result files failed is still shown, with "Counts may be short" and Try again; a page file that failed shows its
+error and Try again. A logo that failed is read again on the next visit. A lookup by contract address waits for
+those reads ("Checking project contracts…") before it offers "Add this project".
+
+**Out of date.** A page is out of date when completed results or panel answers are not folded in (not listed in
+the \`<PRIOR>\` of the request that produced it), or when that request's objective differs from what
+\`templates/rebuild.txt\` sends now apart from \`<PRIOR>\`. Its Overview and its home row say "Out of date: N
+results not folded in" or "Out of date: built with an older format", with a Rebuild link to Contribute; Home has a
+"Needs a rebuild" filter, which says "Checking which pages need a rebuild…" while reads are outstanding. When an RPC fails or limits a range, the scan tries the next RPC with half
 the range, and the page says "Still reading the chain" rather than showing an empty list.
 
 ## Read routes

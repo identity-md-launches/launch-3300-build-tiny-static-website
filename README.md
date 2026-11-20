@@ -183,11 +183,21 @@ record has loaded, so the channels are real. The full body is shown before any w
   requests and the completions of requests still open, and updates the page when the scan ends.
 - **Files and digests (IndexedDB, not localStorage).** Page, lines and edit files, the artifacts a rebuild was
   given, and logos are stored in the `files` store; old copies in localStorage are removed on the first visit.
-  The home list never reads a page file: it shows each subject's small **digest** (name, one_line, counts, logo
-  hash, changed date and listed contracts; `digests` store), taken whenever that subject's page is opened. A
-  subject never opened in this browser is listed by its id with "Open the page to read its record."; a digest
-  older than the subject's newest result says "New results since you last opened it". Only small values (job ids,
-  block times, ENS names, panel reads) stay in localStorage.
+  The home list shows each subject's small **digest** (name, one_line, counts, logo hash, changed date, listed
+  contracts and the out-of-date count; `digests` store), and each logo once under its SHA-256 in the same store.
+- **Home fills itself in.** When Home loads it reads, without the subject being opened, the page file, logo, other
+  result files and panel answers of every listed subject that has no digest, a digest older than its newest results,
+  or a digest that recorded a failed read. One queue serves the whole visit: 3 subjects at a time, **newest first**
+  (subjects with no digest before the others), and a newer chain scan replaces what is still waiting instead of
+  starting more reads. Each row fills in as its digest arrives; while it loads it is a light placeholder row (its
+  id and two grey bars), never an instruction to open the page. A page that read while another of its result files
+  failed is still shown, with "Counts may be short: 1 result file could not be read" and **Try again**; a page file
+  that failed shows its error and Try again. An advertised logo that failed is kept apart from "no logo" and read
+  again on the next visit. Only small values (job ids, block times, ENS names, panel reads) stay in localStorage.
+- **Lookup while reading.** A contract address (or domain) with no match while those reads are under way says
+  "Checking project contracts…" and is answered when a read finds it (the site opens that project) or all reads
+  have finished (then "No page yet" and Add this project). "Add this project" checks again before the paid dialog
+  opens.
 - While anything is pending, the page re-reads every 30 seconds.
 
 ## Reading results: the paths used
@@ -281,15 +291,24 @@ the channels list saying what each label means.
 
 - **Badge**: worked out only from the kinds of the lines a row rests on: "Proven on chain" if any is a proof;
   else "Stated by <channel name>" for a statement; else "Reported by <who>" for a claim. The badge opens those lines.
+  When a claim's speaker is missing or generic ("an outside source", "a news site", "Unknown", "Anonymous", "Blog"),
+  the badge says "Reported by <host of its first source>", such as "Reported by news.example", and never "an outside
+  source"; with no source URL it says "Reported by a source not named in the record".
 - **One badge per row.** The Website and Official accounts rows show only a channel label, never an evidence
   badge. Website: worked out from its URL (else its value) and the subject's domain, so `https://status.imd.fun/`
   is Own domain even when only `https://imd.fun/` is listed; off the domain it takes its matching channel's label,
   else Not verified. Official accounts: each account (`@imd, @news`) is matched to its channel by label, X handle or
   URL; the row shows the most cautious label among them (one Not verified account makes the row Not verified, then
   Verified on chain, then Own domain). Each account's own label is on Sources.
-- **Rows a rebuild writes** (where they fit the project): Website, Token, Main contract, Chains, Supply, Seats,
+- **Rows a rebuild writes** (where they fit the project): Website, Tokens, Main contract, Chains, Supply, Seats,
   Price, Deployed by, Controlled by, Founder or creator, Contributors, Official accounts, Launched, plus up to 3
-  rows the job chooses. Supply and Seats are separate rows.
+  rows the job chooses. Supply gives each token its own value; Supply and Seats are separate rows. The Main contract
+  and Tokens values include the contract address and chain; Deployed by and Controlled by include the wallet address.
+- **Tokens**: every token the project issues, written `SYM: purpose, <address> on <chain>; …` (up to 30 words).
+  Key facts shows one line per token: the symbol in bold, its purpose, the shortened address with a Copy button,
+  then "on <chain>". An older comma-joined value is split only where the next token's symbol starts, so a chain
+  stays with its address. The row's url links the one token it names (by address, or the only token). A page built
+  before this format with a singular **Token** row keeps its plain linked value.
 - **Without `infobox`**: at most four rows: Website, Main contract, the token symbol proof and the token supply
   proof. A proof counts as the token's only when its fact is named for the token's symbol or supply ("Token
   symbol", "Symbol", "Ticker", "Token supply", "Total supply", "Supply") or re-run with `symbol()` /
@@ -306,6 +325,26 @@ cache access is wrapped in try/catch, and the page renders without it.
 Every value from a result file is rendered as plain React text, never as HTML. Links are made only for
 `http(s)` URLs. Explorer links go to `https://explorer.imd.fun/jobs/<jobId>`; before a job id is known,
 they go to the transaction on Etherscan.
+
+## Out of date
+
+A page is out of date when completed results or panel answers are not folded in (not listed in the `<PRIOR>` of the
+request that produced it), or when that request's objective differs from what `templates/rebuild.txt` sends now,
+apart from `<PRIOR>` (`matchesTemplate` in `src/bodies.ts`). Its Overview shows "Out of date: N results not folded
+in" or "Out of date: built with an older format" with a **Rebuild** link to Contribute; its home row shows the same
+note, and Home has a **Needs a rebuild** filter beside All. While reads are outstanding the filter shows no count and
+says "Checking which pages need a rebuild…".
+
+## What a rebuild is asked to research
+
+Besides the earlier jobs' rules, `templates/rebuild.txt` asks for: lines stating how a project's tokens or
+products connect (what each is for, what value flows, and whether a contract or an operator moves it), one line and
+kind per flow, never presenting a stated flow as enforced; a summary paragraph on how the parts fit ("the project
+says" for stated flows); publishers named, never "an outside source" or "a news site"; for a first page, at least
+the home page, docs index and main pages, linked repositories and the main contract's explorer page, at least 3
+outside sources, and aims of 5 lines per section and 8 proofs, without padding (a short section is explained in
+notes); and notes written afresh each run. The template is 7,086 characters, so `<PRIOR>` fits F1 and three more
+result URLs under 7,500; older results then wait for the next rebuild (the oldest are deferred first).
 
 ## Rebuild, edit and what the site shows
 
@@ -509,8 +548,8 @@ are in `artifacts/validation.md`.
 
 - Public RPCs can rate-limit `eth_getLogs`. The site falls back across three, halving the range, and Activity
   offers Refresh.
-- The home list shows names, one-lines, counts and logos only for subjects whose page was opened in this browser
-  (the digest); others are listed by id until opened, because the home list never downloads page files.
+- On a first visit Home downloads every listed subject's result files (3 at a time) to fill its rows; with many
+  subjects the last rows fill in later. Their digests make later visits instant.
 - Where IndexedDB is blocked (some private windows), the site keeps its cache in memory for that visit only.
 - The Rabby "Open in" row opens rabby.io, because Rabby documents no in-app browser link.
 - Payments go to IMD and are not refunded. A refused body is a spent payment.

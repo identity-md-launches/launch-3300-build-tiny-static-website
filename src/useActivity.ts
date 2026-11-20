@@ -178,7 +178,9 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, wi
     }
   }
   const [time, ens, doneTime] = await Promise.all([timeOf(req), ensOf(req.payer), completion ? timeOf(completion) : Promise.resolve(null)]);
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: !hasFiles || withFiles };
+  // A completed panel request's answer is read like a result file: the out-of-date count needs it.
+  const hasAnswer = req.action.startsWith("oracle.") && state === "completed" && !!oracleId;
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: !(hasFiles || hasAnswer) || withFiles };
 }
 
 const SCAN_KEY = "intake";
@@ -285,7 +287,7 @@ export function useActivity(subject: string | null = null): ActivityState {
     async (id: string) => {
       const s = scan.current;
       if (!s) return [];
-      const research = (r: TaggedRequest) => isPageJob(r) || isSourceJob(r) || isEditJob(r) || isChangesJob(r);
+      const research = (r: TaggedRequest) => isPageJob(r) || isSourceJob(r) || isEditJob(r) || isChangesJob(r) || r.action.startsWith("oracle.");
       return Promise.all(s.requests.filter((r) => r.subject === id).map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), research(r))));
     },
     [followed],

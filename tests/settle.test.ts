@@ -77,7 +77,7 @@ describe("settled lines", () => {
   it("the rebuild template defines the link types word for word", () => {
     const t = readFileSync("templates/rebuild.txt", "utf8").trim();
     expect(t).toContain(
-      "Link type is confirms only when the proof or panel answer establishes the whole sentence as written, including its tense: a value read at deployment confirms 'was X at launch', not 'is X'. Use partly when it establishes only part. Use contradicts when it shows the sentence is wrong.",
+      "When a proof or panel answer (A1...) settles a statement or claim, give that line links with type and target id. Type confirms only when it establishes the whole sentence as written, tense included: a value read at deployment confirms 'was X at launch', not 'is X'; partly when it establishes part; contradicts when it shows the sentence wrong.",
     );
     expect(t).toBe(REBUILD_TEMPLATE);
     expect(t.length).toBeLessThan(7100); // job 9 added the changes-result rule

@@ -146,7 +146,7 @@ describe("a first rebuild with no icon can satisfy both declared outputs (d28f6f
     expect(body.outputs).toEqual(REBUILD_OUTPUTS);
     expect(body.outputs.map((o) => o.path)).toEqual(["artifacts/page.json", "artifacts/logo.png"]);
     expect(body.objective).toContain("Output artifacts/page.json and artifacts/logo.png.");
-    expect(body.objective).toContain("leave logo out if you found none. If none, still write logo.png as a 1 by 1 transparent PNG.");
+    expect(body.objective).toContain("set logo to its URL and the time; else write logo.png as a 1 by 1 transparent PNG and leave logo out.");
     expect(body.objective).not.toContain("artifacts/logo.png if found");
   });
   it("the site shows the logo file only when page.logo is present", () => {

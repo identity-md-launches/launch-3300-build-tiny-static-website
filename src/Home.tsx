@@ -27,8 +27,18 @@ export function OutdatedNote({ o, href }: { o: NonNullable<SubjectSummary["outda
   );
 }
 
+/** "Try again": reads a subject's failed files again now. */
+function RetryButton({ id, retry }: { id: string; retry?: (id: string) => void }) {
+  if (!retry) return null;
+  return (
+    <button type="button" className="linklike" onClick={() => retry(id)}>
+      Try again
+    </button>
+  );
+}
+
 /** While a subject's page file and logo are read for its digest: a light row with its id, never "Open the page". */
-function PlaceholderItem({ s, failed }: { s: SubjectSummary; failed: string }) {
+function PlaceholderItem({ s, failed, retry }: { s: SubjectSummary; failed: string; retry?: (id: string) => void }) {
   return (
     <li className={`subject${failed ? "" : " subject-loading"}`} aria-busy={!failed}>
       <SubjectLogo name={s.name} logo={null} size={28} />
@@ -37,7 +47,9 @@ function PlaceholderItem({ s, failed }: { s: SubjectSummary; failed: string }) {
           <span className="subject-name">{s.id}</span>
         </a>
         {failed ? (
-          <p className="subject-line">Its record could not be read here ({failed}). It is read again on the next visit.</p>
+          <p className="subject-line">
+            Its record could not be read here ({failed}). <RetryButton id={s.id} retry={retry} />
+          </p>
         ) : (
           <>
             <p className="subject-line"><span className="sr-only">Reading its record…</span><span className="bar" aria-hidden="true" /></p>
@@ -49,8 +61,8 @@ function PlaceholderItem({ s, failed }: { s: SubjectSummary; failed: string }) {
   );
 }
 
-function SubjectItem({ s, reading, failed }: { s: SubjectSummary; reading: boolean; failed: string }) {
-  if (s.unread) return <PlaceholderItem s={s} failed={reading ? "" : failed} />;
+function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading: boolean; failed: string; retry?: (id: string) => void }) {
+  if (s.unread) return <PlaceholderItem s={s} failed={reading ? "" : failed} retry={retry} />;
   const status = s.status ? statusText(s.status) : "";
   return (
     <li className="subject">
@@ -77,6 +89,11 @@ function SubjectItem({ s, reading, failed }: { s: SubjectSummary; reading: boole
           {s.pending > 0 && <span>{plural(s.pending, "request")} pending</span>}
           {s.stale && reading && <span>Reading newer results…</span>}
         </p>
+        {!!s.incomplete && (
+          <p className="small subject-incomplete">
+            {reading ? "Reading its files again…" : <>Counts may be short: {plural(s.incomplete, "result file")} could not be read. <RetryButton id={s.id} retry={retry} /></>}
+          </p>
+        )}
         {s.outdated && <OutdatedNote o={s.outdated} href={subjectHref(s.id, "rebuild")} />}
       </div>
     </li>
@@ -84,14 +101,14 @@ function SubjectItem({ s, reading, failed }: { s: SubjectSummary; reading: boole
 }
 
 /** All, or only the pages that need a rebuild. */
-function ListFilter({ all, needs, only, set }: { all: number; needs: number; only: boolean; set: (v: boolean) => void }) {
+function ListFilter({ all, needs, only, set, checking }: { all: number; needs: number; only: boolean; set: (v: boolean) => void; checking: boolean }) {
   return (
     <div className="filter" role="group" aria-label="Show projects">
       <button type="button" className="btn btn-filter" aria-pressed={!only} onClick={() => set(false)}>
         All <span className="num">{all.toLocaleString("en-US")}</span>
       </button>
       <button type="button" className="btn btn-filter" aria-pressed={only} onClick={() => set(true)}>
-        Needs a rebuild <span className="num">{needs.toLocaleString("en-US")}</span>
+        Needs a rebuild {checking ? <span className="sr-only">(still checking)</span> : <span className="num">{needs.toLocaleString("en-US")}</span>}
       </button>
     </div>
   );
@@ -177,7 +194,7 @@ export function StillReading({ error, retrying }: { error: string | null; retryi
   );
 }
 
-export function Home({ items, error, loading, retrying, cached, digests, logos, reading, failed, reload, onAdd, price, bad, prefill }: {
+export function Home({ items, error, loading, retrying, cached, digests, logos, reading, failed, busy, retry, reload, onAdd, price, bad, prefill }: {
   items: Activity[] | null;
   error: string | null;
   loading: boolean;
@@ -191,6 +208,10 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   /** Subjects whose files are being read for their digest, and those that failed: placeholder rows. */
   reading?: Set<string>;
   failed?: Map<string, string>;
+  /** True while a digest read that could still change the list is outstanding. */
+  busy?: boolean;
+  /** Reads a subject's failed files again. */
+  retry?: (id: string) => void;
   reload: () => Promise<void>;
   onAdd: (i: AddInput) => string | null;
   price: string;
@@ -206,6 +227,10 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const [onlyStale, setOnlyStale] = useState(false);
   const needs = all.filter((s) => s.outdated).length;
   const shown = all.filter((s) => matchesQuery(s, q) && (!onlyStale || !!s.outdated));
+  // Reads still under way can add a contract to the list or mark a page out of date.
+  const pendingReads = !!busy || all.some((s) => s.unread && !failed?.has(s.id));
+  /** An address or domain looked up while reads were pending: answered once they finish. */
+  const [checking, setChecking] = useState<string | null>(null);
 
   const look = (raw: string) => {
     const parsed = parseLookup(raw);
@@ -230,7 +255,52 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
       setErr("Still reading the projects from Ethereum. Try again in a moment.");
       return;
     }
+    // A page that lists this contract (or domain) may still be on its way: never offer a paid duplicate before
+    // every pending read has answered.
+    if (pendingReads) {
+      setChecking(raw);
+      return;
+    }
+    setChecking(null);
     setSubmitted({ raw: raw.trim(), q: parsed });
+  };
+
+  // Answer a lookup made while reads were pending, as soon as one finds it or all have finished.
+  useEffect(() => {
+    if (checking === null) return;
+    const parsed = parseLookup(checking);
+    if (parsed.kind === "empty" || parsed.kind === "invalid") return setChecking(null);
+    const found = findSubject(parsed, all);
+    if (found) {
+      setChecking(null);
+      location.hash = subjectHref(found);
+    } else if (!pendingReads) {
+      setChecking(null);
+      setSubmitted({ raw: checking.trim(), q: parsed });
+    }
+  }, [checking, all, pendingReads]);
+
+  // An offer already shown gives way when a read finds the project it was about.
+  useEffect(() => {
+    if (!submitted) return;
+    const found = findSubject(submitted.q, all);
+    if (found) {
+      setSubmitted(null);
+      location.hash = subjectHref(found);
+    }
+  }, [submitted, all]);
+
+  /** Checks again before the paid dialog opens: routes to a project a read has since found. */
+  const add = (input: AddInput): string | null => {
+    if (submitted) {
+      const found = findSubject(submitted.q, all);
+      if (found) {
+        location.hash = subjectHref(found);
+        return null;
+      }
+    }
+    if (pendingReads) return "Still checking project contracts. Try again in a moment.";
+    return onAdd(input);
   };
 
   // "Add this project" under Related lands here with the bar filled in: look it up once the list is read.
@@ -277,6 +347,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             onChange={(e) => {
               setQ(e.target.value);
               setErr("");
+              setChecking(null);
               if (submitted && e.target.value.trim() !== submitted.raw) setSubmitted(null);
             }}
             aria-invalid={!!err}
@@ -285,7 +356,12 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
           <button type="submit" className="btn btn-primary btn-lookup">Look it up</button>
         </form>
         {err && <p id="lookup-err" className="error lookup-msg" role="alert">{err}</p>}
-        {offer && <AddOffer key={`${offer.kind}:${offerName}`} q={offer} shown={submitted!.raw} price={price} onAdd={onAdd} />}
+        {checking !== null && (
+          <p className="small lookup-msg" role="status">
+            Checking project contracts…
+          </p>
+        )}
+        {offer && <AddOffer key={`${offer.kind}:${offerName}`} q={offer} shown={submitted!.raw} price={price} onAdd={add} />}
         <p id="lookup-note" className="small lookup-note">People and agents can both add. Nothing is edited by hand.</p>
       </div>
 
@@ -312,18 +388,20 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
         ) : shown.length ? (
           <>
             {cached && loading && <p className="small" role="status">Shown from this browser. Reading newer blocks…</p>}
-            <ListFilter all={all.length} needs={needs} only={onlyStale} set={setOnlyStale} />
-            <p className="small" aria-live="polite">{listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
+            <ListFilter all={all.length} needs={needs} only={onlyStale} set={setOnlyStale} checking={pendingReads} />
+            <p className="small" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
             <ul className="subjects">
               {shown.map((s) => (
-                <SubjectItem key={s.id} s={s} reading={!!reading?.has(s.id)} failed={failed?.get(s.id) ?? ""} />
+                <SubjectItem key={s.id} s={s} reading={!!reading?.has(s.id)} failed={failed?.get(s.id) ?? ""} retry={retry} />
               ))}
             </ul>
           </>
         ) : onlyStale && all.length ? (
           <>
-            <ListFilter all={all.length} needs={needs} only={onlyStale} set={setOnlyStale} />
-            <p className="small" aria-live="polite">{q.trim() ? `No project that needs a rebuild matches “${q.trim()}”.` : "No page needs a rebuild."}</p>
+            <ListFilter all={all.length} needs={needs} only={onlyStale} set={setOnlyStale} checking={pendingReads} />
+            <p className="small" aria-live="polite">
+              {pendingReads ? "Checking which pages need a rebuild…" : q.trim() ? `No project that needs a rebuild matches “${q.trim()}”.` : "No page needs a rebuild."}
+            </p>
           </>
         ) : (
           <p className="small" aria-live="polite">{q.trim() ? `No project matches “${q.trim()}”. Press Look it up to add it.` : "No projects yet. Add the first one with the bar above."}</p>

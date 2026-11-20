@@ -539,7 +539,7 @@ export default function App() {
   const [ask, setAsk] = useState<Ask | null>(null);
   const researchQuote = usePrice(ACTIONS.research);
   const researchPrice = researchQuote.text;
-  const { digests, logos, reading, failed } = useDigests(activity.items, subject ?? null, activity.readSubject);
+  const { digests, logos, reading, failed, busy, retry } = useDigests(activity.items, subject ?? null, activity.readSubject);
   if (subject) setLinkSubject(subject);
   // A subject's page waits until its result files are read: until then its requests are the home list's light ones.
   const items = useMemo(() => {
@@ -584,7 +584,7 @@ export default function App() {
         {subject ? (
           <SubjectView key={subject} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={setAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
         ) : (
-          <Home key={route.add ?? ""} items={activity.items} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
+          <Home key={route.add ?? ""} items={activity.items} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
         )}
         <footer className="about">
           <p>About: a test. Payments go to IMD and are not refunded. Every line comes from a paid job or panel answer on Ethereum.</p>

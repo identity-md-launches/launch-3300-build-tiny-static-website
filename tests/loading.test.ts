@@ -115,8 +115,8 @@ describe("storage", () => {
     expect(api).not.toMatch(/cacheSet\(key, (out|text)\)/);
   });
 
-  it("the home list uses a digest per subject and never needs the page file", () => {
-    const digest: Digest = { type: "digest", v: 2, unfolded: 0, pageReq: null, id: "example.com", sig: "0x01", name: "Example", oneLine: "Does things", counts: { all: 3, proven: 1, contradicted: 0, proof: 1, statement: 1, claim: 0, said: 1 }, logoHash: "ab", changed: 5, hasPage: true, main: "", contracts: [], status: null };
+  it("the home list shows a stored digest per subject without reading the page file again", () => {
+    const digest: Digest = { type: "digest", v: 3, unfolded: 0, pageReq: null, failedReads: 0, logo: "ok", id: "example.com", sig: "0x01", name: "Example", oneLine: "Does things", counts: { all: 3, proven: 1, contradicted: 0, proof: 1, statement: 1, claim: 0, said: 1 }, logoHash: "ab", changed: 5, hasPage: true, main: "", contracts: [], status: null };
     const { digests, logos } = splitDigests([digest, { type: "logo", hash: "ab", url: "data:image/png;base64,AAAA" }, { type: "logo", hash: "cd", url: "javascript:x" }]);
     expect(logos.size).toBe(1);
     const light = {

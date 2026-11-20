@@ -5,7 +5,7 @@
  * newest first, every listed subject that has no digest (or one taken before newer results).
  */
 import { useEffect, useRef, useState } from "react";
-import { digestOf, resultSig, type Digest } from "./model";
+import { digestOf, needsRetry, resultSig, type Digest } from "./model";
 import { kvAll, kvSet } from "./store";
 import type { Activity } from "./useActivity";
 
@@ -24,7 +24,7 @@ export function splitDigests(values: unknown[]): { digests: Map<string, Digest>;
   const logos = new Map<string, string>();
   for (const v of values) {
     const o = v as Partial<Digest> & Partial<LogoEntry>;
-    if (o?.type === "digest" && typeof o.id === "string" && o.v === 2) digests.set(o.id, o as Digest);
+    if (o?.type === "digest" && typeof o.id === "string" && o.v === 3) digests.set(o.id, o as Digest);
     else if (o?.type === "logo" && typeof o.hash === "string" && typeof o.url === "string" && o.url.startsWith("data:image/png;base64,")) logos.set(o.hash, o.url);
   }
   return { digests, logos };
@@ -34,25 +34,54 @@ const newest = (list: Activity[]) => Math.max(0, ...list.map((a) => a.doneTime ?
 
 /**
  * The subjects whose files the home page should read, newest first: each has a completed result whose file was not
- * read here, and no digest, or a digest taken from other results. Subjects with no digest come before stale ones.
+ * read here, and no digest, a digest taken from other results, or a digest with a failed read (a result file or the
+ * advertised logo) to try again. Subjects with no digest come before the others.
  */
 export function digestQueue(items: Activity[], digests: Map<string, Digest>): string[] {
   const by = new Map<string, Activity[]>();
   for (const a of items) by.set(a.req.subject, [...(by.get(a.req.subject) ?? []), a]);
   const want = [...by]
     .filter(([, list]) => list.some((a) => a.filesRead === false))
-    .map(([id, list]) => ({ id, missing: !digests.has(id), stale: digests.get(id)?.sig !== resultSig(list), t: newest(list) }))
-    .filter((x) => x.missing || x.stale);
+    .map(([id, list]) => {
+      const d = digests.get(id);
+      return { id, missing: !d, again: !!d && (d.sig !== resultSig(list) || needsRetry(d)), t: newest(list) };
+    })
+    .filter((x) => x.missing || x.again);
   return want.sort((a, b) => Number(b.missing) - Number(a.missing) || b.t - a.t || a.id.localeCompare(b.id)).map((x) => x.id);
 }
 
-/** Runs `work` over `ids` with at most `limit` at once, in order. */
-export async function inPool(ids: string[], limit: number, work: (id: string) => Promise<void>): Promise<void> {
-  let next = 0;
-  const lane = async () => {
-    while (next < ids.length) await work(ids[next++]!);
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, ids.length) }, lane));
+/**
+ * The home page's one read queue: at most `limit` reads at once for the life of the page, however many times the
+ * list of subjects changes. plan() replaces the waiting list (newest first) and starts reads into free slots; a
+ * subject being read is not started twice, and a finished read frees its slot for the next waiting subject.
+ */
+export class DigestQueue {
+  waiting: string[] = [];
+  readonly active = new Set<string>();
+  constructor(
+    private readonly limit: number,
+    private readonly work: (id: string) => Promise<void>,
+    private readonly changed: (active: Set<string>, waiting: string[]) => void = () => {},
+    private readonly replan: () => void = () => {},
+  ) {}
+  plan(ids: string[]) {
+    this.waiting = ids.filter((id, i) => !this.active.has(id) && ids.indexOf(id) === i);
+    this.pump();
+  }
+  private pump() {
+    while (this.active.size < this.limit && this.waiting.length) {
+      const id = this.waiting.shift()!;
+      this.active.add(id);
+      void this.work(id)
+        .catch(() => {})
+        .finally(() => {
+          this.active.delete(id);
+          this.pump();
+          this.replan();
+        });
+    }
+    this.changed(new Set(this.active), [...this.waiting]);
+  }
 }
 
 export interface DigestState {
@@ -62,11 +91,16 @@ export interface DigestState {
   reading: Set<string>;
   /** Subjects whose files could not be read, with why. */
   failed: Map<string, string>;
+  /** True while a read that could still change the list is outstanding, or the stored digests are not loaded yet. */
+  busy: boolean;
+  /** Reads a subject's files again (its failed page, result files or logo), now. */
+  retry: (id: string) => void;
 }
 
 /**
  * Writes a subject's digest whenever its files are read, and on the home page reads the files of every subject that
- * needs one (digestQueue), DIGEST_CONCURRENCY at a time, filling each row in as its digest arrives.
+ * needs one (digestQueue) through one DigestQueue, DIGEST_CONCURRENCY at a time, filling each row in as its digest
+ * arrives.
  */
 export function useDigests(items: Activity[] | null, subject: string | null, readSubject?: (id: string) => Promise<Activity[]>): DigestState {
   const [state, setState] = useState<{ digests: Map<string, Digest>; logos: Map<string, string> }>({ digests: new Map(), logos: new Map() });
@@ -77,12 +111,16 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
   const tried = useRef(new Map<string, string>());
   const latest = useRef(state);
   latest.current = state;
+  const ctx = useRef({ items, subject, readSubject, loaded });
+  ctx.current = { items, subject, readSubject, loaded };
 
   useEffect(() => {
     let live = true;
     void kvAll<unknown>("digests").then((values) => {
       if (!live) return;
-      setState(splitDigests(values));
+      const read = splitDigests(values);
+      latest.current = read;
+      setState(read);
       setLoaded(true);
     });
     return () => {
@@ -94,17 +132,18 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
     const d = digestOf(id, mine);
     if (!d) return false;
     const logo = mine.find((a) => a.logoHash && a.logo && a.logoHash === d.logoHash)?.logo ?? null;
-    setState((s) => {
-      const old = s.digests.get(id);
-      if (old && JSON.stringify(old) === JSON.stringify(d) && (!logo || s.logos.has(d.logoHash!))) return s;
-      void kvSet("digests", id, d);
-      const logos = new Map(s.logos);
-      if (logo && d.logoHash) {
-        logos.set(d.logoHash, logo);
-        void kvSet("digests", `logo:${d.logoHash}`, { type: "logo", hash: d.logoHash, url: logo } satisfies LogoEntry);
-      }
-      return { digests: new Map(s.digests).set(id, d), logos };
-    });
+    const s = latest.current;
+    const old = s.digests.get(id);
+    if (old && JSON.stringify(old) === JSON.stringify(d) && (!logo || s.logos.has(d.logoHash!))) return true;
+    void kvSet("digests", id, d);
+    const logos = new Map(s.logos);
+    if (logo && d.logoHash) {
+      logos.set(d.logoHash, logo);
+      void kvSet("digests", `logo:${d.logoHash}`, { type: "logo", hash: d.logoHash, url: logo } satisfies LogoEntry);
+    }
+    const next = { digests: new Map(s.digests).set(id, d), logos };
+    latest.current = next;
+    setState(next);
     return true;
   };
 
@@ -116,21 +155,23 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, subject]);
 
-  // The home page: read every subject that has no digest, newest first, a few at a time.
-  useEffect(() => {
-    if (!items || subject || !readSubject || !loaded) return;
-    const queue = digestQueue(items, latest.current.digests).filter((id) => {
-      const sig = resultSig(items.filter((a) => a.req.subject === id));
-      if (tried.current.get(id) === sig) return false;
-      tried.current.set(id, sig);
-      return true;
-    });
-    if (!queue.length) return;
-    setReading((r) => new Set([...r, ...queue]));
-    void inPool(queue, DIGEST_CONCURRENCY, async (id) => {
+  const sigOf = (list: Activity[], id: string) => resultSig(list.filter((a) => a.req.subject === id));
+
+  const queue = useRef<DigestQueue | null>(null);
+  const plan = () => {
+    const { items: its, subject: open, readSubject: read, loaded: ready } = ctx.current;
+    if (!its || open || !read || !ready || !queue.current) return;
+    queue.current.plan(digestQueue(its, latest.current.digests).filter((id) => tried.current.get(id) !== sigOf(its, id)));
+  };
+  queue.current ??= new DigestQueue(
+    DIGEST_CONCURRENCY,
+    async (id) => {
+      const read = ctx.current.readSubject;
+      if (!read) return;
+      tried.current.set(id, sigOf(ctx.current.items ?? [], id));
       let why = "";
       try {
-        const mine = await readSubject(id);
+        const mine = await read(id);
         if (!remember(id, mine)) why = mine.find((a) => a.sourcesError)?.sourcesError ?? "its files could not be read";
       } catch (e) {
         why = e instanceof Error ? e.message : "its files could not be read";
@@ -141,14 +182,26 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
         else n.delete(id);
         return n;
       });
-      setReading((r) => {
-        const n = new Set(r);
-        n.delete(id);
-        return n;
-      });
-    });
+    },
+    (active, waiting) => setReading(new Set([...active, ...waiting])),
+    () => plan(),
+  );
+
+  // The home page: read every subject that needs it, newest first, through the one queue.
+  useEffect(() => {
+    plan();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, subject, readSubject, loaded]);
 
-  return { ...state, reading, failed };
+  const retry = (id: string) => {
+    tried.current.delete(id);
+    setFailed((f) => {
+      const n = new Map(f);
+      n.delete(id);
+      return n;
+    });
+    plan();
+  };
+
+  return { ...state, reading, failed, busy: !loaded || reading.size > 0, retry };
 }

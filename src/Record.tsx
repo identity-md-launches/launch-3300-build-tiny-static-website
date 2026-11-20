@@ -113,10 +113,21 @@ function KeyValue({ row }: { row: KeyRow }) {
             {t.address && (
               <>
                 {" "}
-                <span className="mono" title={t.address}>{shortHex(t.address)}</span>
+                {t.url ? (
+                  <ExtLink url={t.url} className="mono">{shortHex(t.address)}</ExtLink>
+                ) : (
+                  <span className="mono" title={t.address}>{shortHex(t.address)}</span>
+                )}
                 <Copy value={t.address} />
               </>
             )}
+            {!t.address && t.url && (
+              <>
+                {" "}
+                <ExtLink url={t.url}>Explorer</ExtLink>
+              </>
+            )}
+            {t.chain && <span className="small"> on {t.chain}</span>}
           </li>
         ))}
       </ul>

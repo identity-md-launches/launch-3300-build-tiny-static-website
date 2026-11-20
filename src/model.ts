@@ -110,6 +110,8 @@ export interface Core {
   folded: Set<string>;
   /** Results not folded in (pages, sources, edits), oldest first. */
   unfolded: Activity[];
+  /** Completed panel answers the request that produced the page shown did not list in its <PRIOR>. */
+  unfoldedAnswers: Activity[];
   /** Sources and edit results not folded in, oldest first: their lines join the record. */
   after: Activity[];
   jobs: SourceJob[];
@@ -134,7 +136,23 @@ export function coreOf(items: Activity[]): Core {
   // also when a rebuild has since carried that line forward under another id.
   const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective) };
   const sections = applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), scope);
-  return { latest, page, results, folded, unfolded, after, jobs, scope, sections, counts: countKinds(sections) };
+  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest), after, jobs, scope, sections, counts: countKinds(sections) };
+}
+
+/** A completed panel request with an answer: one of the A1… a rebuild is given. */
+export const isAnswer = (a: Activity) => a.req.action === ACTIONS.oracle && a.state === "completed" && !!a.completion && !!a.oracle?.answer;
+
+/**
+ * The usable panel answers the request that produced the page shown did not list in its <PRIOR>, matched by
+ * request identity (the answer's job link, transaction or job id in the listed URL). They are results still to fold
+ * in: the next rebuild lists them.
+ */
+export function unfoldedAnswersOf(items: Activity[], latest: Activity | undefined): Activity[] {
+  if (!latest) return [];
+  const given = parsePrior(latest.req.bodyJson?.objective).answers;
+  const listed = (a: Activity) =>
+    given.some((g) => !!g.url && (g.url === jobLink(a.jobId, a.req.transactionHash) || g.url.includes(a.req.transactionHash) || (!!a.jobId && g.url.includes(a.jobId))));
+  return items.filter((a) => isAnswer(a) && !listed(a));
 }
 
 /**
@@ -266,6 +284,8 @@ export interface SubjectSummary {
   logoHash: string | null;
   /** For a subject with no page: why, in the words Home shows. Null when it has a page. */
   status: FirstPageStatus | null;
+  /** Result files (other than the page shown) that could not be read: its counts may be short. */
+  incomplete?: number;
 }
 
 /** A subject with no page: its first page job is pending, was refused (or failed), or found no project. */
@@ -310,8 +330,8 @@ export function statusText(s: FirstPageStatus): string {
  */
 export interface Digest {
   type: "digest";
-  /** 2 since the digest keeps what the out-of-date note needs; older digests are read again. */
-  v: 2;
+  /** 3 since the digest counts panel answers and keeps failed reads apart; older digests are read again. */
+  v: 3;
   id: string;
   /** The completed results it was taken from; a different list means newer results exist. */
   sig: string;
@@ -325,29 +345,44 @@ export interface Digest {
   contracts: KnownContract[];
   /** Why there is no page, when the files said so (found: false). */
   status: FirstPageStatus | null;
-  /** Completed results not folded into the page shown, when it was taken. */
+  /** Completed results and panel answers not folded into the page shown, when it was taken. */
   unfolded: number;
+  /** Result files other than the page shown that could not be read: counts may be short; read again next visit. */
+  failedReads: number;
+  /** The page's logo: none advertised, read and kept, or advertised but its read failed (read again next visit). */
+  logo: "none" | "ok" | "failed";
   /** The request that produced the page shown: Home compares its objective with the current template. */
   pageReq: string | null;
 }
 
-/** The completed page, sources and edit results of a subject, as one string: what a digest was taken from. */
+/** The completed page, sources, edit and changes results and panel answers of a subject, as one string: what a digest was taken from. */
 export const resultSig = (list: Activity[]) =>
   list
-    .filter((a) => (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req) || isChangesJob(a.req)) && a.state === "completed")
+    .filter((a) => (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req) || isChangesJob(a.req) || a.req.action === ACTIONS.oracle) && a.state === "completed")
     .map((a) => a.req.requestId.toLowerCase())
     .sort()
     .join(",");
 
-/** The digest of a subject whose files were read; null while any of them is unread. */
+/**
+ * The digest of a subject whose files were read; null while any of them is unread, or when the newest page file
+ * itself could not be read (that is not a subject without a page). A failed read of another result file does not
+ * hold the page back: the digest is written with failedReads, and Home reads those files again.
+ */
 export function digestOf(id: string, list: Activity[]): Digest | null {
   if (list.some((a) => a.filesRead === false)) return null;
-  // A file that failed to download is not a page that does not exist: no digest until it reads.
-  if (list.some((a) => a.sourcesError)) return null;
   const core = coreOf(list);
+  if (core.latest && !core.page) return null;
   const s = summaryOf(id, list, core);
-  return { type: "digest", v: 2, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status, unfolded: core.page ? core.unfolded.length : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null };
+  const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
+  const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
+  return { type: "digest", v: 3, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
 }
+
+/** Results and panel answers still to fold into the page shown: the number the out-of-date note gives. */
+export const unfoldedCount = (core: Pick<Core, "unfolded" | "unfoldedAnswers">) => core.unfolded.length + core.unfoldedAnswers.length;
+
+/** Why a subject's digest should be read again on this visit although nothing new completed: a read that failed. */
+export const needsRetry = (d: Digest | undefined) => !!d && (d.failedReads > 0 || d.logo === "failed");
 
 function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSummary {
   const doneTimes = list.filter((a) => a.state === "completed").map((a) => a.doneTime ?? a.time ?? 0);
@@ -370,6 +405,7 @@ function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSu
     logoHash: core.latest?.logoHash ?? null,
     status: core.page ? null : firstPageStatus(list),
     outdated: outdatedOf(core),
+    incomplete: list.filter((a) => a !== core.latest && a.sourcesError).length,
   };
 }
 
@@ -409,6 +445,7 @@ export function subjectSummaries(items: Activity[], digests: Map<string, Digest>
       logoHash: d.logoHash,
       status: d.hasPage ? null : d.status && d.sig === resultSig(list) ? d.status : own.status,
       outdated: digestOutdated(d, list),
+      incomplete: d.failedReads,
     };
   });
   return out.sort((a, b) => (b.changed ?? 0) - (a.changed ?? 0) || a.id.localeCompare(b.id));
@@ -653,9 +690,10 @@ export function answersOf(items: Activity[]): PriorAnswer[] {
  */
 export type Outdated = { kind: "results"; n: number } | { kind: "format" } | null;
 
-export function outdatedOf(core: Pick<Core, "latest" | "page" | "unfolded">): Outdated {
+export function outdatedOf(core: Pick<Core, "latest" | "page" | "unfolded" | "unfoldedAnswers">): Outdated {
   if (!core.latest || !core.page) return null;
-  if (core.unfolded.length) return { kind: "results", n: core.unfolded.length };
+  const n = unfoldedCount(core);
+  if (n) return { kind: "results", n };
   return matchesTemplate(core.latest.req.bodyJson?.objective) ? null : { kind: "format" };
 }
 
