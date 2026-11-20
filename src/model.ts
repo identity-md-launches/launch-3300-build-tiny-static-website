@@ -215,7 +215,10 @@ export interface SubjectSummary {
   id: string;
   name: string;
   oneLine: string;
-  counts: ReturnType<typeof countKinds>;
+  /** Null when the subject's page has not been opened in this browser yet, so no digest exists. */
+  counts: ReturnType<typeof countKinds> | null;
+  /** True when results arrived after the digest was taken: open the page to update it. */
+  stale?: boolean;
   /** When the record last changed: the newest completed result's time, else the newest request's. */
   changed: number | null;
   requests: number;
@@ -227,12 +230,14 @@ export interface SubjectSummary {
   contracts: KnownContract[];
   /** The page job's checked PNG logo as a data: URL, or null: a letter tile is shown instead. */
   logo: string | null;
+  /** The logo file's SHA-256: the digest keeps it, and the logo itself is kept once under that hash. */
+  logoHash: string | null;
   /** For a subject with no page: why, in the words Home shows. Null when it has a page. */
   status: FirstPageStatus | null;
 }
 
 /** A subject with no page: its first page job is pending, was refused (or failed), or found no project. */
-export type FirstPageStatus = { kind: "pending" } | { kind: "refused"; reason: string } | { kind: "failed"; reason: string } | { kind: "not-found"; notes: string } | { kind: "none" };
+export type FirstPageStatus = { kind: "pending" } | { kind: "unread" } | { kind: "refused"; reason: string } | { kind: "failed"; reason: string } | { kind: "not-found"; notes: string } | { kind: "none" };
 
 export function firstPageStatus(list: Activity[]): FirstPageStatus {
   const pages = list.filter((a) => isPageJob(a.req));
@@ -242,6 +247,8 @@ export function firstPageStatus(list: Activity[]): FirstPageStatus {
   const why = (a: Activity) => [a.refusal?.reason, a.refusal?.detail].filter(Boolean).join(": ") || "no reason given";
   if (last.state === "refused") return { kind: "refused", reason: why(last) };
   if (last.state === "failed") return { kind: "failed", reason: why(last) };
+  // Completed, but its file is read only when the subject's page is opened.
+  if (last.state === "completed" && last.filesRead === false) return { kind: "unread" };
   if (last.rejected) return { kind: "not-found", notes: last.rejected };
   // Completed, but its file has not been read (yet): still on its way to a first page.
   return last.state === "completed" && !last.page ? { kind: "pending" } : { kind: "none" };
@@ -252,6 +259,8 @@ export function statusText(s: FirstPageStatus): string {
   switch (s.kind) {
     case "pending":
       return "First page in progress";
+    case "unread":
+      return "Open the page to read its record.";
     case "refused":
       return `First page refused: ${s.reason}`;
     case "failed":
@@ -264,32 +273,91 @@ export function statusText(s: FirstPageStatus): string {
 }
 
 /**
- * One entry per subject found on chain, newest change first. A subject with no page is listed with its first
- * page's state: in progress, refused (with the reason) or no project found (with the job's notes).
+ * The small digest the home list keeps per subject (digest.ts stores it in IndexedDB): taken when the subject's page
+ * is opened and its files are read, so Home never reads a full page file.
  */
-export function subjectSummaries(items: Activity[]): SubjectSummary[] {
+export interface Digest {
+  type: "digest";
+  id: string;
+  /** The completed results it was taken from; a different list means newer results exist. */
+  sig: string;
+  name: string;
+  oneLine: string;
+  counts: ReturnType<typeof countKinds>;
+  logoHash: string | null;
+  changed: number | null;
+  hasPage: boolean;
+  main: string;
+  contracts: KnownContract[];
+  /** Why there is no page, when the files said so (found: false). */
+  status: FirstPageStatus | null;
+}
+
+/** The completed page, sources and edit results of a subject, as one string: what a digest was taken from. */
+export const resultSig = (list: Activity[]) =>
+  list
+    .filter((a) => (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req)) && a.state === "completed")
+    .map((a) => a.req.requestId.toLowerCase())
+    .sort()
+    .join(",");
+
+/** The digest of a subject whose files were read; null while any of them is unread. */
+export function digestOf(id: string, list: Activity[]): Digest | null {
+  if (list.some((a) => a.filesRead === false)) return null;
+  const s = summaryOf(id, list);
+  return { type: "digest", id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status };
+}
+
+function summaryOf(id: string, list: Activity[]): SubjectSummary {
+  const core = coreOf(list);
+  const doneTimes = list.filter((a) => a.state === "completed").map((a) => a.doneTime ?? a.time ?? 0);
+  const anyTimes = list.map((a) => a.time ?? 0);
+  const changed = Math.max(0, ...(doneTimes.length ? doneTimes : anyTimes)) || null;
+  return {
+    id,
+    name: core.page?.name || id,
+    oneLine: core.page?.oneLine ?? "",
+    counts: core.counts,
+    changed,
+    requests: list.length,
+    pending: list.filter((a) => a.state === "pending").length,
+    hasPage: !!core.page,
+    main: core.page?.main ?? "",
+    contracts: (core.page?.contracts ?? [])
+      .filter((c) => /^0x[0-9a-fA-F]{40}$/.test(c.address))
+      .map((c) => ({ address: c.address.toLowerCase(), chainId: chainIdOf(c.chain) })),
+    logo: core.latest?.logo ?? null,
+    logoHash: core.latest?.logoHash ?? null,
+    status: core.page ? null : firstPageStatus(list),
+  };
+}
+
+/**
+ * One entry per subject found on chain, newest change first. A subject whose files were read here is summarised
+ * from them. Otherwise its stored digest gives name, one_line, counts and logo (marked stale when newer results
+ * exist); with no digest it is listed by its id until its page is opened. A subject with no page is listed with its
+ * first page's state: in progress, refused (with the reason) or no project found (with the job's notes).
+ */
+export function subjectSummaries(items: Activity[], digests: Map<string, Digest> = new Map(), logos: Map<string, string> = new Map()): SubjectSummary[] {
   const by = new Map<string, Activity[]>();
   for (const a of items) by.set(a.req.subject, [...(by.get(a.req.subject) ?? []), a]);
   const out = [...by].map(([id, list]): SubjectSummary => {
-    const core = coreOf(list);
-    const doneTimes = list.filter((a) => a.state === "completed").map((a) => a.doneTime ?? a.time ?? 0);
-    const anyTimes = list.map((a) => a.time ?? 0);
-    const changed = Math.max(0, ...(doneTimes.length ? doneTimes : anyTimes)) || null;
+    const own = summaryOf(id, list);
+    if (!list.some((a) => a.filesRead === false)) return own;
+    const d = digests.get(id);
+    if (!d) return { ...own, counts: own.hasPage ? own.counts : null };
     return {
-      id,
-      name: core.page?.name || id,
-      oneLine: core.page?.oneLine ?? "",
-      counts: core.counts,
-      changed,
-      requests: list.length,
-      pending: list.filter((a) => a.state === "pending").length,
-      hasPage: !!core.page,
-      main: core.page?.main ?? "",
-      contracts: (core.page?.contracts ?? [])
-        .filter((c) => /^0x[0-9a-fA-F]{40}$/.test(c.address))
-        .map((c) => ({ address: c.address.toLowerCase(), chainId: chainIdOf(c.chain) })),
-      logo: core.latest?.logo ?? null,
-      status: core.page ? null : firstPageStatus(list),
+      ...own,
+      name: d.name || id,
+      oneLine: d.oneLine,
+      counts: d.counts,
+      stale: d.sig !== resultSig(list),
+      hasPage: d.hasPage,
+      main: d.main,
+      contracts: d.contracts,
+      logo: d.logoHash ? logos.get(d.logoHash) ?? null : null,
+      logoHash: d.logoHash,
+      status: d.hasPage ? null : d.status && d.sig === resultSig(list) ? d.status : own.status,
     };
   });
   return out.sort((a, b) => (b.changed ?? 0) - (a.changed ?? 0) || a.id.localeCompare(b.id));

@@ -1,8 +1,15 @@
-/** Every tagged request, followed to completion from the Intake's events and IMD's public read routes. */
+/**
+ * Every tagged request, followed to completion from the Intake's events and IMD's public read routes.
+ *
+ * Loading: the last block scanned and the requests found are kept in IndexedDB. A return visit shows them at once
+ * and then scans only newer blocks. Result files (page, lines, edit, logo) are read only for the subject whose page
+ * is open; the home list uses each subject's small digest instead (digest.ts).
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getEnsName } from "wagmi/actions";
 import type { Hex } from "viem";
-import { loadTaggedRequests, stateOf, getBlockTime, type Completion, type TaggedRequest } from "./chain";
+import { fromStored, loadTaggedRequests, stateOf, getBlockTime, toStored, type Completion, type ScanState, type TaggedRequest } from "./chain";
+import { dropOldFileCache, kvGet, kvSet } from "./store";
 import { cacheGet, cacheSet, fetchLogo, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
 import { parseEdit, parseLines, parsePage, rejectionOf, type EditResult, type Page, type SourceLines } from "./page";
@@ -43,6 +50,13 @@ export interface Activity {
    */
   logo?: string | null;
   logoError?: string | null;
+  /** The logo file's SHA-256, for the home digest. */
+  logoHash?: string | null;
+  /**
+   * True when this request's result files were read (or it has none to read). The home list follows every request
+   * without its files; only the open subject's requests are read in full. Undefined counts as read.
+   */
+  filesRead?: boolean;
 }
 
 export const isSourceJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "source";
@@ -85,7 +99,7 @@ async function timeOf(r: { blockNumber: bigint }): Promise<number | null> {
   return t;
 }
 
-async function follow(req: TaggedRequest, completion: Completion | undefined): Promise<Activity> {
+async function follow(req: TaggedRequest, completion: Completion | undefined, withFiles: boolean): Promise<Activity> {
   const state = stateOf(completion);
   const final = state !== "pending";
   const jobKey = `job:${req.requestId}`;
@@ -109,7 +123,7 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
     }
   }
   let oracle: OracleRead | null = null;
-  if (req.action.startsWith("oracle.") && oracleId) {
+  if (withFiles && req.action.startsWith("oracle.") && oracleId) {
     try {
       oracle = await fetchOracle(oracleId, final);
       jobId ??= oracle.jobId;
@@ -126,7 +140,9 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
   let rejected: string | null = null;
   let logo: string | null = null;
   let logoError: string | null = null;
-  if ((isSourceJob(req) || isEditJob(req) || isPageJob(req)) && state === "completed" && completion) {
+  let logoHash: string | null = null;
+  const hasFiles = (isSourceJob(req) || isEditJob(req) || isPageJob(req)) && state === "completed" && !!completion;
+  if (hasFiles && withFiles && completion) {
     const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : "lines";
     try {
       const f = await fetchResearchPage(req, completion, jobId, name);
@@ -142,7 +158,9 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
         // The logo file is shown only when the page says where it came from (page.logo). A job that found no
         // icon still writes a placeholder PNG to satisfy the declared output, and leaves page.logo out.
         if (page.logo) try {
-          logo = await fetchLogo(req, completion, f.jobId ?? jobId);
+          const l = await fetchLogo(req, completion, f.jobId ?? jobId);
+          logo = l.url;
+          logoHash = l.hash;
         } catch (e) {
           logoError = e instanceof Error ? e.message : "The logo could not be read";
         }
@@ -153,33 +171,95 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
     }
   }
   const [time, ens, doneTime] = await Promise.all([timeOf(req), ensOf(req.payer), completion ? timeOf(completion) : Promise.resolve(null)]);
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash, page, via, rejected, doneTime, logo, logoError };
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: !hasFiles || withFiles };
 }
 
-export function useActivity() {
+const SCAN_KEY = "intake";
+
+export interface ActivityState {
+  items: Activity[] | null;
+  error: string | null;
+  loading: boolean;
+  /** A public RPC failed or limited a range and the scan moved on to the next one: "Still reading the chain". */
+  retrying: boolean;
+  /** True while the items shown come from the browser's cache and the scan for newer blocks has not ended. */
+  cached: boolean;
+  reload: () => Promise<void>;
+}
+
+/** `subject`: the subject whose page is open; its requests are read with their result files. */
+export function useActivity(subject: string | null = null): ActivityState {
   const [items, setItems] = useState<Activity[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [cached, setCached] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  const retry = useRef<number | undefined>(undefined);
+  const scan = useRef<ScanState | null>(null);
+  const open = useRef<string | null>(subject);
+  open.current = subject;
+  // Finished requests are followed once per mode; a request still open is followed again on each read.
+  const memo = useRef(new Map<string, Promise<Activity>>());
+  const followed = useCallback((r: TaggedRequest, c: Completion | undefined, withFiles: boolean) => {
+    const state = stateOf(c);
+    const key = `${r.requestId}|${state}|${withFiles}`;
+    if (state === "pending") return follow(r, c, withFiles);
+    let p = memo.current.get(key);
+    if (!p) {
+      p = follow(r, c, withFiles);
+      p.catch(() => memo.current.delete(key));
+      memo.current.set(key, p);
+    }
+    return p;
+  }, []);
+
+  const build = useCallback(async () => {
+    const s = scan.current;
+    if (!s) return;
+    const sub = open.current;
+    const out = await Promise.all(s.requests.map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), r.subject === sub)));
+    if (scan.current === s && open.current === sub) setItems(out);
+  }, [followed]);
 
   const load = useCallback(async () => {
     setLoading(true);
+    window.clearTimeout(retry.current);
     try {
-      const { requests, completions } = await loadTaggedRequests();
-      const out = await Promise.all(requests.map((r) => follow(r, completions.get(r.requestId.toLowerCase()))));
-      setItems(out);
+      if (!scan.current) {
+        dropOldFileCache();
+        const stored = fromStored(await kvGet("scan", SCAN_KEY));
+        if (stored) {
+          scan.current = stored;
+          setCached(true);
+          await build();
+        }
+      }
+      const next = await loadTaggedRequests(scan.current, { onRetry: () => setRetrying(true) });
+      scan.current = next;
+      await kvSet("scan", SCAN_KEY, toStored(next));
+      await build();
       setError(null);
+      setCached(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "The chain could not be read");
-      setItems((prev) => prev ?? []);
+      // Never an empty page: with nothing read yet, "Still reading the chain" stays up and the scan tries again.
+      if (!scan.current) retry.current = window.setTimeout(() => void load(), 20_000);
     } finally {
       setLoading(false);
+      setRetrying(false);
     }
-  }, []);
+  }, [build]);
 
   useEffect(() => {
     void load();
+    return () => window.clearTimeout(retry.current);
   }, [load]);
+
+  // Opening a subject reads its result files; going back home keeps what was read.
+  useEffect(() => {
+    void build();
+  }, [subject, build]);
 
   // Follow open requests: poll every 30 seconds while anything is pending.
   useEffect(() => {
@@ -189,5 +269,5 @@ export function useActivity() {
     return () => window.clearTimeout(timer.current);
   }, [items, load]);
 
-  return { items, error, loading, reload: load };
+  return { items, error, loading, retrying, cached, reload: load };
 }

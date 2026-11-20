@@ -38,7 +38,8 @@ import type { Findable } from "./lookup";
 import { lineAnchor } from "./format";
 import { TABS, routeOf, setLinkSubject, subjectHref, to } from "./route";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
-import { Home } from "./Home";
+import { Home, StillReading } from "./Home";
+import { useDigests } from "./digest";
 import type { Activity } from "./useActivity";
 
 type RecordState = RecordModel;
@@ -567,7 +568,8 @@ function useRoute() {
   return route;
 }
 
-function SubjectView({ subject, items, activity, route, onAsk, researchPrice, subjects }: {
+function SubjectView({ subject, items, activity, route, onAsk, researchPrice, subjects, readingFiles }: {
+  readingFiles: boolean;
   subject: string;
   /** Every subject on the site, so Related can link to the ones that have a page here. */
   subjects: Findable[];
@@ -632,7 +634,7 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, su
           </a>
         ))}
       </nav>
-      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} subjects={subjects} />}
+      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} subjects={subjects} chainError={activity.error} retrying={activity.retrying} readingFiles={readingFiles} />}
       {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
       {route.tab === "sources" && <SourcesTab m={rec} />}
       {route.tab === "activity" && <ActivityList {...activity} items={items} shown={rec} />}
@@ -644,14 +646,21 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, su
 export const CHAIN_READ_BLOCK = "The project list could not be read. Try again before reviewing a rebuild.";
 
 export default function App() {
-  const activity = useActivity();
-  const [ask, setAsk] = useState<Ask | null>(null);
-  const researchPrice = usePrice(ACTIONS.research);
   const route = useRoute();
   const subject = route.subject;
+  const activity = useActivity(subject ?? null);
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const researchPrice = usePrice(ACTIONS.research);
+  const { digests, logos } = useDigests(activity.items, subject ?? null);
   if (subject) setLinkSubject(subject);
-  const items = useMemo(() => (activity.items === null || !subject ? activity.items : activity.items.filter((a) => a.req.subject === subject)), [activity.items, subject]);
-  const subjects = useMemo<Findable[]>(() => subjectSummaries(activity.items ?? []).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts })), [activity.items]);
+  // A subject's page waits until its result files are read: until then its requests are the home list's light ones.
+  const items = useMemo(() => {
+    if (activity.items === null || !subject) return activity.items;
+    const mine = activity.items.filter((a) => a.req.subject === subject);
+    return mine.every((a) => a.filesRead !== false) ? mine : null;
+  }, [activity.items, subject]);
+  const readingFiles = !!subject && activity.items !== null && items === null;
+  const subjects = useMemo<Findable[]>(() => subjectSummaries(activity.items ?? [], digests, logos).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts })), [activity.items, digests, logos]);
   useEffect(() => {
     if (!subject) document.title = "On the record (test)";
   }, [subject]);
@@ -685,9 +694,9 @@ export default function App() {
       </header>
       <main id="root-main" tabIndex={-1}>
         {subject ? (
-          <SubjectView key={subject} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={setAsk} researchPrice={researchPrice} />
+          <SubjectView key={subject} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={setAsk} researchPrice={researchPrice} />
         ) : (
-          <Home key={route.add ?? ""} items={activity.items} error={activity.error} loading={activity.loading} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
+          <Home key={route.add ?? ""} items={activity.items} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
         )}
         <footer className="about">
           <p>About: a test. Payments go to IMD and are not refunded. Every line comes from a paid job or panel answer on Ethereum.</p>

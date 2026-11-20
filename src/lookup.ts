@@ -141,8 +141,8 @@ export function lineMatches(l: Pick<Line, "text" | "by">, raw: string): boolean 
   return words.every((w) => hay.includes(w));
 }
 
-/** "Only lines that are confirmed or contradicted": a line with at least one confirms or contradicts link. */
-export const isSettled = (l: Pick<Line, "links">) => l.links.length > 0;
+/** A line with at least one confirms or contradicts link (a partly link does not settle it). */
+export const isSettled = (l: Pick<Line, "links">) => l.links.some((k) => k.type === "confirms" || k.type === "contradicts");
 
 /** Counts of proofs, statements and claims among a section's lines. */
 export function kindCounts(lines: Pick<Line, "kind">[]): Record<Kind, number> {

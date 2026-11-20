@@ -13,7 +13,8 @@ export interface RawLog {
 }
 
 let rpcId = 0;
-async function rpc<T>(url: string, method: string, params: unknown[]): Promise<T> {
+/** One JSON-RPC call. Throws on an HTTP error, a JSON-RPC error or a body that is not JSON. */
+export async function rpc<T>(url: string, method: string, params: unknown[]): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -27,26 +28,66 @@ async function rpc<T>(url: string, method: string, params: unknown[]): Promise<T
 
 const hex = (n: bigint) => `0x${n.toString(16)}`;
 
-/** Logs on the Intake from the launch block to the head, chunked to each RPC's range, trying the next RPC on error. */
-export async function getIntakeLogs(topics: (Hex | Hex[] | null)[], from: bigint = LAUNCH_BLOCK): Promise<RawLog[]> {
+export type RpcCall = <T>(url: string, method: string, params: unknown[]) => Promise<T>;
+export interface ScanOptions {
+  from?: bigint;
+  /** The last block to read; the head of the first RPC that answers when not given. */
+  to?: bigint;
+  rpcs?: ReadonlyArray<{ url: string; span: bigint }>;
+  call?: RpcCall;
+  /** Told each time a range fails and the scan moves to the next RPC with half the range. */
+  onRetry?: (r: { url: string; from: bigint; span: bigint; error: string }) => void;
+  /** Consecutive failures before giving up: by default eight rounds of every RPC. */
+  maxFailures?: number;
+}
+
+/** The chain head from the first RPC that answers, trying each in turn. */
+export async function headOf(rpcs: ScanOptions["rpcs"] = RPCS, call: RpcCall = rpc): Promise<bigint> {
   let lastError: unknown;
-  for (const { url, span } of RPCS) {
+  for (const { url } of rpcs) {
     try {
-      const head = BigInt(await rpc<Hex>(url, "eth_blockNumber", []));
-      const out: RawLog[] = [];
-      for (let start = from; start <= head; start += span) {
-        const end = start + span - 1n < head ? start + span - 1n : head;
-        const logs = await rpc<RawLog[]>(url, "eth_getLogs", [
-          { address: INTAKE, topics, fromBlock: hex(start), toBlock: hex(end) },
-        ]);
-        out.push(...logs);
-      }
-      return out;
+      return BigInt(await call<Hex>(url, "eth_blockNumber", []));
     } catch (e) {
       lastError = e;
     }
   }
   throw lastError instanceof Error ? lastError : new Error("No public RPC answered");
+}
+
+/**
+ * Logs on the Intake between two blocks, in ranges no larger than each RPC allows. When an RPC fails or refuses a
+ * range (too many results, range too large, rate limit), the same range is tried on the next RPC with half the
+ * span; a range that succeeds moves on with that RPC and span. Gives up only after maxFailures failures in a row.
+ */
+export async function getIntakeLogs(topics: (Hex | Hex[] | null)[], opts: ScanOptions = {}): Promise<{ logs: RawLog[]; head: bigint }> {
+  const rpcs = opts.rpcs ?? RPCS;
+  const call = opts.call ?? rpc;
+  const head = opts.to ?? (await headOf(rpcs, call));
+  const max = opts.maxFailures ?? rpcs.length * 8;
+  const out: RawLog[] = [];
+  let i = 0;
+  let span = rpcs[0]!.span;
+  let fails = 0;
+  let start = opts.from ?? LAUNCH_BLOCK;
+  while (start <= head) {
+    const r = rpcs[i % rpcs.length]!;
+    const s = span < r.span ? span : r.span;
+    const end = start + s - 1n < head ? start + s - 1n : head;
+    try {
+      const logs = await call<RawLog[]>(r.url, "eth_getLogs", [{ address: INTAKE, topics, fromBlock: hex(start), toBlock: hex(end) }]);
+      if (!Array.isArray(logs)) throw new Error("eth_getLogs gave no list");
+      out.push(...logs);
+      start = end + 1n;
+      fails = 0;
+    } catch (e) {
+      fails++;
+      if (fails >= max) throw e instanceof Error ? e : new Error("No public RPC answered");
+      i++;
+      span = s > 1n ? s / 2n : 1n;
+      opts.onRetry?.({ url: r.url, from: start, span, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { logs: out, head };
 }
 
 export async function getBlockTime(blockNumber: Hex): Promise<number | null> {
@@ -173,23 +214,76 @@ export function decodeCompleted(log: RawLog): Completion | null {
   return { requestId: log.topics[1]!, status, resultHash, reason, uri, transactionHash: log.transactionHash, blockNumber: BigInt(log.blockNumber ?? "0x0"), logIndex: Number(log.logIndex ?? "0x0") };
 }
 
-/** Every tagged request since launch, with its completion if one was written. Newest first. */
-export async function loadTaggedRequests(): Promise<{ requests: TaggedRequest[]; completions: Map<string, Completion> }> {
-  const logs = await getIntakeLogs([TOPIC_REQUESTED]);
-  const requests = logs.map(decodeRequested).filter((r): r is TaggedRequest => r !== null);
-  const completions = new Map<string, Completion>();
-  if (requests.length) {
-    const ids = requests.map((r) => r.requestId);
-    for (let i = 0; i < ids.length; i += 50) {
-      const done = await getIntakeLogs([TOPIC_COMPLETED, ids.slice(i, i + 50)]);
-      for (const l of done) {
-        const c = decodeCompleted(l);
-        if (c) completions.set(c.requestId.toLowerCase(), c);
-      }
+/** Blocks scanned again on a return visit, in case the newest ones were reorganised. */
+export const RESCAN = 12n;
+
+/** What the browser keeps between visits: the last block scanned and every request and completion found. */
+export interface ScanState {
+  lastBlock: bigint;
+  requests: TaggedRequest[];
+  completions: Map<string, Completion>;
+}
+
+/**
+ * Every tagged request since launch, with its completion if one was written. Newest first. With an earlier
+ * state, only blocks after its lastBlock (less RESCAN) are read: new requests, and completions of requests still
+ * open, are added to what was already known.
+ */
+export async function loadTaggedRequests(prev: ScanState | null = null, opts: Omit<ScanOptions, "from" | "to"> = {}): Promise<ScanState> {
+  const from = prev ? (prev.lastBlock - RESCAN + 1n > LAUNCH_BLOCK ? prev.lastBlock - RESCAN + 1n : LAUNCH_BLOCK) : LAUNCH_BLOCK;
+  const { logs, head } = await getIntakeLogs([TOPIC_REQUESTED], { ...opts, from });
+  const found = logs.map(decodeRequested).filter((r): r is TaggedRequest => r !== null);
+  const byId = new Map<string, TaggedRequest>();
+  for (const r of prev?.requests ?? []) if (r.blockNumber < from) byId.set(r.requestId.toLowerCase(), r);
+  for (const r of found) byId.set(r.requestId.toLowerCase(), r);
+  const requests = [...byId.values()];
+  const completions = new Map(prev?.completions ?? []);
+  const open = requests.filter((r) => !completions.has(r.requestId.toLowerCase())).map((r) => r.requestId);
+  for (let i = 0; i < open.length; i += 50) {
+    const done = await getIntakeLogs([TOPIC_COMPLETED, open.slice(i, i + 50)], { ...opts, from, to: head });
+    for (const l of done.logs) {
+      const c = decodeCompleted(l);
+      if (c) completions.set(c.requestId.toLowerCase(), c);
     }
   }
   requests.sort((a, b) => (a.blockNumber === b.blockNumber ? 0 : a.blockNumber > b.blockNumber ? -1 : 1));
-  return { requests, completions };
+  return { lastBlock: head, requests, completions };
+}
+
+/* ---------- The scan state as stored (bigints as strings) ---------- */
+
+type Stored<T> = { [K in keyof T]: T[K] extends bigint ? string : T[K] };
+export interface StoredScan {
+  v: 1;
+  intake: string;
+  lastBlock: string;
+  requests: Stored<TaggedRequest>[];
+  completions: Stored<Completion>[];
+}
+
+export function toStored(s: ScanState): StoredScan {
+  return {
+    v: 1,
+    intake: INTAKE.toLowerCase(),
+    lastBlock: s.lastBlock.toString(),
+    requests: s.requests.map((r) => ({ ...r, amount: r.amount.toString(), blockNumber: r.blockNumber.toString() })),
+    completions: [...s.completions.values()].map((c) => ({ ...c, blockNumber: c.blockNumber.toString() })),
+  };
+}
+
+/** The stored state, or null when it is missing, for another Intake, or not readable. */
+export function fromStored(v: unknown): ScanState | null {
+  try {
+    const s = v as StoredScan;
+    if (!s || s.v !== 1 || s.intake !== INTAKE.toLowerCase() || !Array.isArray(s.requests) || !Array.isArray(s.completions)) return null;
+    return {
+      lastBlock: BigInt(s.lastBlock),
+      requests: s.requests.map((r) => ({ ...r, amount: BigInt(r.amount), blockNumber: BigInt(r.blockNumber) })),
+      completions: new Map(s.completions.map((c) => [c.requestId.toLowerCase(), { ...c, blockNumber: BigInt(c.blockNumber) }] as const)),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function stateOf(c: Completion | undefined): "pending" | "completed" | "refused" | "failed" {

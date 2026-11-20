@@ -1,4 +1,5 @@
 /** Turns untrusted page.json and lines.json into plain strings. Nothing here is ever rendered as HTML. */
+import { countLines, type Counts } from "./settle";
 
 export const SECTIONS = ["what_it_does", "how_it_works", "money", "people", "on_chain", "history"] as const;
 export const SECTION_TITLES: Record<string, string> = {
@@ -65,7 +66,8 @@ export interface LogoSource {
   fetchedAt: string;
 }
 export interface LineLink {
-  type: "confirms" | "contradicts";
+  /** confirms: establishes the whole sentence as written; partly: only part of it; contradicts: shows it wrong. */
+  type: "confirms" | "contradicts" | "partly";
   target: string;
 }
 /** A row of the key facts box: label, value, an optional link and the line ids it rests on. */
@@ -176,7 +178,7 @@ function parseLinks(v: unknown): LineLink[] {
       const o = obj(x);
       const t = str(o.type, 32).toLowerCase();
       const target = str(o.target, 64).trim();
-      return (t === "confirms" || t === "contradicts") && target ? [{ type: t as LineLink["type"], target }] : [];
+      return (t === "confirms" || t === "contradicts" || t === "partly") && target ? [{ type: t as LineLink["type"], target }] : [];
     });
 }
 
@@ -718,15 +720,12 @@ export function mergeRecord(page: Page | null, jobs: SourceJob[], domain = page?
     .filter((s) => s.rows.length > 0);
 }
 
-/** How many rows of each kind, for the filter. */
-export function countKinds(sections: { rows: { line: Line }[] }[]): Record<Kind | "all", number> {
-  const c = { all: 0, proof: 0, statement: 0, claim: 0 };
-  for (const s of sections)
-    for (const r of s.rows) {
-      c.all++;
-      c[r.line.kind]++;
-    }
-  return c;
+/**
+ * How many rows of each class, for the filter, section counts and Home: a settled row counts once, as Proven or
+ * Contradicted, and the proof it shows is not counted again (see settle.ts).
+ */
+export function countKinds(sections: { rows: { line: Line }[] }[]): Counts {
+  return countLines(sections.flatMap((s) => s.rows.map((r) => r.line)));
 }
 
 /* ---------- Edits (artifacts/edit.json) ---------- */

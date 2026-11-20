@@ -151,7 +151,7 @@ describe("a first rebuild with no icon can satisfy both declared outputs (d28f6f
   });
   it("the site shows the logo file only when page.logo is present", () => {
     const src = readFileSync("src/useActivity.ts", "utf8");
-    expect(src).toMatch(/if \(page\.logo\) try \{\s*logo = await fetchLogo/);
+    expect(src).toMatch(/if \(page\.logo\) try \{\s*const l = await fetchLogo/);
   });
 });
 

@@ -1,7 +1,11 @@
-/** Reads results from IMD's public, browser-open routes, with an IPFS fallback and a localStorage cache. */
+/**
+ * Reads results from IMD's public, browser-open routes, with an IPFS fallback. Result files (pages, lines, edits,
+ * artifacts, logos) are kept in IndexedDB (store.ts); only small values (job ids, times, names) use localStorage.
+ */
 import { keccak256, type Hex } from "viem";
 import { API, IPFS_GATEWAYS } from "./config";
 import type { Completion, TaggedRequest } from "./chain";
+import { kvGet, kvSet } from "./store";
 
 const CACHE_PREFIX = "imd-record:v1:";
 
@@ -217,10 +221,16 @@ function jobResult(r: TaggedRequest, c: Completion, jobIdHint: string | null): P
  * api.imd.fun/artifacts/<hash>, its bytes checked against the listed SHA-256, and accepted only as a PNG.
  * Null when the job wrote no logo; throws when one is listed but fails a check.
  */
-export async function fetchLogo(r: TaggedRequest, c: Completion, jobIdHint: string | null): Promise<string | null> {
+export interface LogoRead {
+  /** A data: URL of the checked PNG, or null when the job wrote none. */
+  url: string | null;
+  /** The logo file's SHA-256, which the home list's digest keeps. */
+  hash: string | null;
+}
+export async function fetchLogo(r: TaggedRequest, c: Completion, jobIdHint: string | null): Promise<LogoRead> {
   const key = `logo:${r.requestId}`;
-  const cached = cacheGet<{ url: string | null }>(key);
-  if (cached) return cached.url;
+  const cached = await kvGet<LogoRead>("files", key);
+  if (cached) return cached;
   const { files } = await jobResult(r, c, jobIdHint);
   const file = files.find((f) => f.name === "logo");
   let url: string | null = null;
@@ -235,17 +245,18 @@ export async function fetchLogo(r: TaggedRequest, c: Completion, jobIdHint: stri
     if (!(await pngDecodes(bytes))) throw new Error("The logo's PNG data does not decode");
     url = pngDataUrl(bytes);
   }
-  cacheSet(key, { url });
-  return url;
+  const out: LogoRead = { url, hash: file && url ? file.hash : null };
+  await kvSet("files", key, out);
+  return out;
 }
 
 /** One artifact by its SHA-256, checked and cached: the files a rebuild was given. */
 export async function fetchArtifact(hash: string): Promise<string> {
   const key = `artifact:${hash}`;
-  const cached = cacheGet<string>(key);
-  if (cached) return cached;
+  const cached = await kvGet<string>("files", key);
+  if (typeof cached === "string") return cached;
   const text = await fetchVerified({ name: "", hash });
-  cacheSet(key, text);
+  await kvSet("files", key, text);
   return text;
 }
 
@@ -277,8 +288,8 @@ export interface PageFetch {
  */
 export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHint: string | null, fileName = "page"): Promise<PageFetch> {
   const key = `${fileName}:${r.requestId}`;
-  const cached = cacheGet<PageFetch>(key);
-  if (cached) {
+  const cached = await kvGet<PageFetch>("files", key);
+  if (cached && typeof cached.text === "string") {
     if (!cached.hash) cached.hash = await sha256Hex(new TextEncoder().encode(cached.text).buffer as ArrayBuffer);
     return cached;
   }
@@ -289,7 +300,7 @@ export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHi
       const file = result.files?.find((f) => f.name === fileName);
       if (!file) throw new Error(`The job result has no file named "${fileName}"`);
       const out: PageFetch = { text: await fetchVerified(file), hash: file.hash, jobId: jobIdHint, path: "api" };
-      cacheSet(key, out);
+      await kvSet("files", key, out);
       return out;
     } catch (e) {
       firstError = e;
@@ -307,7 +318,7 @@ export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHi
         const file = result.files?.find((f) => f.name === fileName);
         if (!file) continue;
         const out: PageFetch = { text: await fetchVerified(file), hash: file.hash, jobId: result.jobId ?? jobIdHint, path: "ipfs" };
-        cacheSet(key, out);
+        await kvSet("files", key, out);
         return out;
       } catch (e) {
         firstError ??= e;

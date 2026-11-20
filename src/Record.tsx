@@ -5,7 +5,8 @@ import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { keyFacts, splitAddresses, type KeyRow } from "./keyfacts";
 import { addHref, subjectHref, to } from "./route";
 import { SubjectLogo } from "./Logo";
-import { countsText, findSubject, isSettled, kindCounts, lineMatches, parseLookup, repeatCount, repeatsOf, type Findable } from "./lookup";
+import { findSubject, lineMatches, parseLookup, repeatCount, repeatsOf, type Findable } from "./lookup";
+import { countLines, countsWords, FILTER_WORDS, FILTERS, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
 import {
   blockNumber,
   channelStatus,
@@ -23,9 +24,9 @@ import {
   type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
 import { firstPageStatus, statusText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
+import { StillReading } from "./Home";
 
-export type Filter = Kind | "all";
-const FILTERS: Filter[] = ["all", "proof", "statement", "claim"];
+export type { Filter };
 const KINDS: Kind[] = ["proof", "statement", "claim"];
 
 /** Shared view state: the filter and which rows are open live in App, so they survive tab changes. */
@@ -301,7 +302,7 @@ function Related({ m, ui, subjects }: { m: RecordModel; ui: Ui; subjects: Findab
   );
 }
 
-export function OverviewTab({ m, ui, items, price, subjects }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[] }) {
+export function OverviewTab({ m, ui, items, price, subjects, chainError = null, retrying = false, readingFiles = false }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean }) {
   const { page, latest, error } = m;
   const name = page?.name || m.subject.id;
   // The same first-page status Home shows for this subject: in progress, refused, failed or no project found.
@@ -327,7 +328,7 @@ export function OverviewTab({ m, ui, items, price, subjects }: { m: RecordModel;
       {!page && !rejectedCard && (
         <div className="card empty" id="first-page">
           {items === null ? (
-            <h2>Reading the record…</h2>
+            readingFiles ? <h2>Reading the page…</h2> : <StillReading error={chainError} retrying={retrying} />
           ) : latest && !error ? (
             <>
               <h2>Downloading the record…</h2>
@@ -396,6 +397,8 @@ export function OverviewTab({ m, ui, items, price, subjects }: { m: RecordModel;
 
 interface Ctx {
   numbers: Map<string, ListedSource>;
+  /** Every line's settle state and the proofs a settled row already shows. */
+  settled: { by: Map<string, Settle>; absorbed: Set<string> };
   research: { payer: string; href: string } | null;
   m: RecordModel;
   ui: Ui;
@@ -424,6 +427,8 @@ function SourceNumbers({ keys, numbers }: { keys: string[]; numbers: Map<string,
 /** The opened part of a row: the quote, re-run steps, how it was checked, who added it, and the links. */
 function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: string; withText?: boolean }) {
   const { line, origin } = row;
+  const st = ctx.settled.by.get(line.id);
+  const settledBy = st && (st.state === "proven" || st.state === "contradicted") ? (st.state === "proven" ? st.confirms : st.contradicts) : [];
   const listed = line.srcKeys.map((k) => ctx.numbers.get(k)).filter((s): s is ListedSource => !!s);
   const checked =
     line.kind === "proof"
@@ -443,10 +448,38 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
         )}
         {line.quote && (
           <>
-            <dt>Quote</dt>
+            <dt>{settledBy.length ? "Original quote" : "Quote"}</dt>
             <dd>“{line.quote}”</dd>
           </>
         )}
+        {settledBy.map((t) => {
+          const proof = ctx.m.resolve(t);
+          if (proof)
+            return (
+              <Fragment key={t}>
+                <dt>{st!.state === "proven" ? "Proof" : "The proof shows"}</dt>
+                <dd>
+                  {proof.text}
+                  {proof.rerun ? <span className="block">Re-run: {proof.rerun}</span> : <span className="block small">The proof gives no re-run steps.</span>}
+                </dd>
+              </Fragment>
+            );
+          const a = ctx.m.answerRef(t);
+          return (
+            <Fragment key={t}>
+              <dt>Panel answer</dt>
+              <dd>
+                {a ? a.text : <span className="mono">{t}</span>}
+                {a?.activity && (
+                  <span className="block small">
+                    {a.activity.oracle?.agreed ?? "?"} of {a.activity.oracle?.panelSize ?? "?"} agreed.{" "}
+                    <a href={to(panelAnchor(a.activity))}>See it under Panel answers</a>
+                  </span>
+                )}
+              </dd>
+            </Fragment>
+          );
+        })}
         {line.rerun && (
           <>
             <dt>Re-run</dt>
@@ -519,11 +552,15 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
 
 /** "Confirmed by" in green or "Contradicted by" in red, each opening the linked proof line or panel answer. */
 function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
-  if (!line.links.length) return null;
+  // What a settled row already leads with is not repeated under it.
+  const st = ctx.settled.by.get(line.id);
+  const lead = new Set(st?.state === "proven" ? st.confirms.map((t) => `confirms:${t}`) : st?.state === "contradicted" ? st.contradicts.map((t) => `contradicts:${t}`) : []);
+  const links = line.links.filter((k) => !lead.has(`${k.type}:${k.target.trim()}`));
+  if (!links.length) return null;
   return (
     <ul className="settled">
-      {line.links.map((k, i) => {
-        const word = k.type === "confirms" ? "Confirmed by" : "Contradicted by";
+      {links.map((k, i) => {
+        const word = k.type === "confirms" ? "Confirmed by" : k.type === "partly" ? "Partly confirmed by" : "Contradicted by";
         const target = ctx.m.resolve(k.target);
         const answer = target ? null : ctx.m.answerRef(k.target);
         let body: React.ReactNode = <span className="mono">{k.target}</span>;
@@ -569,22 +606,78 @@ const onRowClick = (toggle: () => void) => (e: React.MouseEvent) => {
   toggle();
 };
 
+/** The green "Proven" (or "Confirmed by a panel, N of M") or red "Contradicted" marker a settled row leads with. */
+export function SettleMark({ s, ctx }: { s: Settle; ctx: Ctx }) {
+  if (s.state === "contradicted")
+    return (
+      <span className="kind kind-contradicted">
+        <span className="dot" aria-hidden="true" />
+        Contradicted
+      </span>
+    );
+  const panelOnly = s.confirms.every((t) => !ctx.m.resolve(t));
+  const a = panelOnly ? ctx.m.answerRef(s.confirms[0]!)?.activity?.oracle : null;
+  const word = !panelOnly ? "Proven" : a ? `Confirmed by a panel, ${a.agreed ?? "?"} of ${a.panelSize ?? "?"}` : "Confirmed by a panel";
+  return (
+    <span className="kind kind-proven">
+      <span className="dot" aria-hidden="true" />
+      {word}
+    </span>
+  );
+}
+
+/** What the proof or panel answer shows, for a contradicted row: the proof line's text, else the answer's. */
+function shownBy(t: string, ctx: Ctx): { who: string; text: string } {
+  const proof = ctx.m.resolve(t);
+  if (proof) return { who: "The proof shows", text: proof.text };
+  const a = ctx.m.answerRef(t);
+  return { who: "The panel answered", text: a?.text || `answer ${t}` };
+}
+
 function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<string> }) {
   const { line } = row;
   const anchor = lineAnchor(line.id || line.text.slice(0, 40));
   const showBy = line.kind !== "proof" && line.by;
   const open = ctx.ui.openSet.has(line.id);
   const toggle = () => ctx.ui.toggle(line.id);
+  const s = ctx.settled.by.get(line.id);
+  const settled = s && (s.state === "proven" || s.state === "contradicted") ? s : null;
   return (
-    <li className={`row${row.differsWith ? ` row-differs row-${row.level}` : ""}${open ? " is-open" : ""}`} id={anchor}>
+    <li className={`row${row.differsWith ? ` row-differs row-${row.level}` : ""}${settled ? ` row-${settled.state}` : ""}${open ? " is-open" : ""}`} id={anchor}>
       <DiffersNote row={row} facts={facts} />
       <div className="row-main" onClick={onRowClick(toggle)}>
         <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={toggle}>
           <span className="chev" aria-hidden="true" />
-          <span className="row-text">{line.text}</span>
+          {settled?.state === "contradicted" ? (
+            <span className="row-text">
+              <SettleMark s={settled} ctx={ctx} />
+              <span className="block">
+                <span className="said-word">Said:</span> {line.text}
+              </span>
+              {settled.contradicts.map((t) => {
+                const b = shownBy(t, ctx);
+                return (
+                  <span key={t} className="block shows">
+                    <span className="said-word">{b.who}:</span> {b.text}
+                  </span>
+                );
+              })}
+            </span>
+          ) : (
+            <span className="row-text">{line.text}</span>
+          )}
           <span className="row-meta">
-            <KindMark kind={line.kind} />
-            {showBy && <span className="by">{line.by}</span>}
+            {settled ? (
+              <>
+                {settled.state === "proven" && <SettleMark s={settled} ctx={ctx} />}
+                <span className="by small">{speakerText(line)}</span>
+              </>
+            ) : (
+              <>
+                <KindMark kind={line.kind} />
+                {showBy && <span className="by">{line.by}</span>}
+              </>
+            )}
           </span>
         </button>
         <SourceNumbers keys={line.srcKeys} numbers={ctx.numbers} />
@@ -704,7 +797,10 @@ function Accounting({ m }: { m: RecordModel }) {
 
 export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const { latest, via, sections, counts, page } = m;
+  const all = sections.flatMap((s) => s.rows);
+  const settled = settleAll(all.map((r) => r.line));
   const ctx: Ctx = {
+    settled,
     numbers: new Map(m.sourceList.map((s) => [s.key, s])),
     research: latest ? { payer: payerName(latest), href: jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash) } : null,
     m,
@@ -713,20 +809,20 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const { filter } = ui;
 
   const [query, setQuery] = useState("");
-  const [settledOnly, setSettledOnly] = useState(false);
   // Sections start closed. A section the visitor opened or closed keeps that; one holding an opened line, or
   // any section while a search or the settled filter is on, shows open so its matches are visible.
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({});
   // While a search or the settled filter is on, every section with matches opens; what the visitor toggles then
   // is kept apart and forgotten when the controls change, so clearing them restores the manual state above.
   const [narrowOpen, setNarrowOpen] = useState<{ key: string; open: Record<string, boolean> }>({ key: "", open: {} });
-  const all = sections.flatMap((s) => s.rows);
   const factRows = all.filter((r) => r.line.kind === "proof" && r.line.fact && !r.origin);
   const facts = new Set(factRows.map((r) => r.line.id));
-  const narrowing = query.trim() !== "" || settledOnly;
-  const narrowKey = narrowing ? `${query.trim().toLowerCase()}|${settledOnly}|${filter}` : "";
+  // A search or any filter but All opens every section with matches, as the settled checkbox did before.
+  const narrowing = query.trim() !== "" || filter !== "all";
+  const narrowKey = narrowing ? `${query.trim().toLowerCase()}|${filter}` : "";
   const narrowState = narrowOpen.key === narrowKey ? narrowOpen.open : {};
-  const keep = (r: RecordRow) => (filter === "all" || r.line.kind === filter) && (!settledOnly || isSettled(r.line)) && lineMatches(r.line, query);
+  // A filter is a settled class as well as a kind: a settled row passes Proven or Contradicted, never Statement or Claim.
+  const keep = (r: RecordRow) => passes(filter, rowClass(r.line, settled.by.get(r.line.id))) && lineMatches(r.line, query);
   const shownFacts = factRows.filter(keep);
   const named = new Set(sections.map((s) => s.section));
   if (factRows.length) named.add("on_chain");
@@ -734,12 +830,14 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const shown = order
     .map((section) => {
       const every = sections.find((s) => s.section === section)?.rows ?? [];
-      const rows = every.filter((r) => !facts.has(r.line.id) && keep(r));
+      // A proof a settled row already shows is not shown again as its own row; the facts table still lists it.
+      const rows = every.filter((r) => !facts.has(r.line.id) && !settled.absorbed.has(r.line.id) && keep(r));
       const table = section === "on_chain" ? shownFacts : [];
       const inSection = [...rows, ...table].map((r) => r.line);
       const hasOpen = inSection.some((l) => ui.openSet.has(l.id));
       const open = narrowing ? narrowState[section] ?? true : sectionOpen[section] ?? hasOpen;
-      return { section, rows, table, counts: kindCounts(inSection), open };
+      // The rows shown, counted by the shared rule: a settled row once, a proof it already shows not again.
+      return { section, rows, table, counts: countLines(inSection, settled), open };
     })
     .filter((s) => s.rows.length > 0 || s.table.length > 0);
   // A link to one line opens it, and its section, when the tab is reached by that link; a search or the
@@ -748,9 +846,17 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
     if (!ui.target?.startsWith("line-")) return;
     const row = sections.flatMap((s) => s.rows).find((r) => lineAnchor(r.line.id) === ui.target);
     if (!row) return;
+    // A proof that a settled row shows (and that is not in the facts table) has no row of its own: open that row.
+    if (settled.absorbed.has(row.line.id) && !facts.has(row.line.id)) {
+      const host = all.find((r) => {
+        const st = settled.by.get(r.line.id);
+        return !!st && (st.state === "proven" ? st.confirms : st.state === "contradicted" ? st.contradicts : []).includes(row.line.id);
+      });
+      if (host) ui.openLines([host.line.id]);
+      return;
+    }
     if (!ui.openSet.has(row.line.id)) ui.toggle(row.line.id);
     setQuery("");
-    setSettledOnly(false);
     setSectionOpen((s) => Object.fromEntries(Object.entries(s).filter(([, v]) => v)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui.target, sections]);
@@ -770,10 +876,15 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
         <>
           <Accounting m={m} />
           {counts.all > 0 && (
-            <div className="filter" role="group" aria-label="Show lines of kind">
+            <div className="filter" role="group" aria-label="Show lines">
               {FILTERS.map((f) => (
                 <button key={f} type="button" className="btn btn-filter" aria-pressed={filter === f} onClick={() => ui.setFilter(f)}>
-                  {f === "all" ? "All" : <KindMark kind={f} />}
+                  {f === "all" || f === "said" ? FILTER_WORDS[f] : (
+                    <span className={`kind kind-${f}`}>
+                      <span className="dot" aria-hidden="true" />
+                      {FILTER_WORDS[f]}
+                    </span>
+                  )}
                   <span className="count num">{counts[f]}</span>
                 </button>
               ))}
@@ -813,10 +924,6 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
             <div className="record-tools">
               <label htmlFor="record-search" className="sr-only">Search lines by text or speaker</label>
               <input id="record-search" type="search" placeholder="Search lines by text or speaker" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
-              <label className="check">
-                <input type="checkbox" checked={settledOnly} onChange={(e) => setSettledOnly(e.target.checked)} />
-                Only lines that are confirmed or contradicted
-              </label>
               {narrowing && <p className="small" aria-live="polite">{matched.toLocaleString("en-US")} line{matched === 1 ? "" : "s"} match.</p>}
             </div>
           )}
@@ -836,7 +943,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
                 >
                   <span className="chev" aria-hidden="true" />
                   <span className="section-name">{SECTION_TITLES[section] ?? section}</span>
-                  <span className="section-counts small">{countsText(c)}</span>
+                  <span className="section-counts small">{countsWords(c)}</span>
                 </button>
               </h2>
               {open && (
@@ -853,7 +960,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
               )}
             </div>
           ))}
-          {counts.all > 0 && shown.length === 0 && <p className="small">{narrowing ? "No lines match." : "No lines of this kind."}</p>}
+          {counts.all > 0 && shown.length === 0 && <p className="small">{narrowing ? "No lines match." : `No ${FILTER_WORDS[filter].toLowerCase()} lines.`}</p>}
           <OtherChannels m={m} />
           {page && page.openQuestions.length > 0 && (
             <div className="card">

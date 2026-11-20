@@ -172,7 +172,22 @@ record has loaded, so the channels are real. The full body is shown before any w
   so the chain alone does not say why.)
   Both signatures were read from real Intake logs on mainnet and are pinned by a unit test.
 - **RPCs.** `gateway.tenderly.co/public/mainnet` (49,000-block ranges) first, then
-  `ethereum-rpc.publicnode.com` and `rpc.mevblocker.io` (9,000-block ranges).
+  `ethereum-rpc.publicnode.com` and `rpc.mevblocker.io` (9,000-block ranges). When one fails or limits a range
+  (rate limit, "range too large", too many results), the same range is tried on the next RPC with **half the
+  span**; a range that succeeds carries on with that RPC and span (`getIntakeLogs` in `src/chain.ts`). The scan
+  gives up only after eight failures per RPC in a row; until something has been read the page says **"Still
+  reading the chain"** (never an empty list) and tries again every 20 seconds.
+- **Cache between visits (IndexedDB).** The last block scanned and every request and completion found are kept in
+  IndexedDB (`imd-record` database, `scan` store). A return visit shows them at once ("Shown from this browser.
+  Reading newer blocks…"), then scans only from that block less 12 (reorganisations) to the head, adds new
+  requests and the completions of requests still open, and updates the page when the scan ends.
+- **Files and digests (IndexedDB, not localStorage).** Page, lines and edit files, the artifacts a rebuild was
+  given, and logos are stored in the `files` store; old copies in localStorage are removed on the first visit.
+  The home list never reads a page file: it shows each subject's small **digest** (name, one_line, counts, logo
+  hash, changed date and listed contracts; `digests` store), taken whenever that subject's page is opened. A
+  subject never opened in this browser is listed by its id with "Open the page to read its record."; a digest
+  older than the subject's newest result says "New results since you last opened it". Only small values (job ids,
+  block times, ENS names, panel reads) stay in localStorage.
 - While anything is pending, the page re-reads every 30 seconds.
 
 ## Reading results: the paths used
@@ -193,6 +208,21 @@ record has loaded, so the channels are real. The full body is shown before any w
 sections after the research lines. Lines of sources with `could_open: false` or `about_subject: false` are not
 shown. The Activity row lists every source of the job with its outcome: `N lines`, `could not open`, or
 `read, not about this subject: <about_why>`.
+
+### Settled lines (job 8)
+
+A statement or claim whose `links` include `confirms` to a proof line or a panel answer is **one row**: the
+sentence, a green **Proven** marker (or **Confirmed by a panel, N of M** when only panel answers confirm it), then,
+smaller, who said it: "Stated by <channel>" or "Claimed by <who>". Opening it shows the original quote and the
+proof's re-run steps (or the panel answer and its agreement). The proof is not shown again as its own row; a proof
+with `fact` stays in the On-chain facts table. With `contradicts`, the row leads with a red **Contradicted** marker
+and shows both sentences: "Said: …" and "The proof shows: …" (or "The panel answered: …"). Contradicts wins over
+confirms. With `partly`, the line keeps its own kind marker and shows "Partly confirmed by: …" under it. Section
+counts and the filter (All, Proven, Contradicted, Proof, Statement, Claim, Only said) count a settled row once;
+"Only said" is every statement and claim with no confirms or contradicts link (a partly-confirmed line is still
+only said). The home list and the Key facts badges ("Proven", "Contradicted") use the same rule (`src/settle.ts`).
+A settled line never changes who said it: its kind and `by` stay in the file and on the row. The search box stays;
+the old "Only lines that are confirmed or contradicted" checkbox is replaced by the Proven and Contradicted buttons.
 
 ### How the record reads
 
@@ -406,7 +436,10 @@ Details, the Better Interface review and its limits are in `artifacts/validation
 
 ## Limits
 
-- Public RPCs can rate-limit `eth_getLogs`. The site falls back across three, and Activity offers
-  Refresh.
+- Public RPCs can rate-limit `eth_getLogs`. The site falls back across three, halving the range, and Activity
+  offers Refresh.
+- The home list shows names, one-lines, counts and logos only for subjects whose page was opened in this browser
+  (the digest); others are listed by id until opened, because the home list never downloads page files.
+- Where IndexedDB is blocked (some private windows), the site keeps its cache in memory for that visit only.
 - The Rabby "Open in" row opens rabby.io, because Rabby documents no in-app browser link.
 - Payments go to IMD and are not refunded. A refused body is a spent payment.

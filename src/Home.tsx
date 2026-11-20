@@ -4,7 +4,7 @@
  * first-rebuild dialog.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { statusText, subjectSummaries, type SubjectSummary } from "./model";
+import { statusText, subjectSummaries, type Digest, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
@@ -32,11 +32,18 @@ function SubjectItem({ s }: { s: SubjectSummary }) {
           {s.hasPage ? s.oneLine || "No one-line description yet." : status}
         </p>
         <p className="subject-meta small">
-          <span className="count-kind kind-proof"><span className="dot" aria-hidden="true" />{plural(s.counts.proof, "proof")}</span>
-          <span className="count-kind kind-statement"><span className="dot" aria-hidden="true" />{plural(s.counts.statement, "statement")}</span>
-          <span className="count-kind kind-claim"><span className="dot" aria-hidden="true" />{plural(s.counts.claim, "claim")}</span>
+          {s.counts && (
+            <>
+              {s.counts.proven > 0 && <span className="count-kind kind-proven"><span className="dot" aria-hidden="true" />{s.counts.proven.toLocaleString("en-US")} proven</span>}
+              {s.counts.contradicted > 0 && <span className="count-kind kind-contradicted"><span className="dot" aria-hidden="true" />{s.counts.contradicted.toLocaleString("en-US")} contradicted</span>}
+              <span className="count-kind kind-proof"><span className="dot" aria-hidden="true" />{plural(s.counts.proof, "proof")}</span>
+              <span className="count-kind kind-statement"><span className="dot" aria-hidden="true" />{plural(s.counts.statement, "statement")}</span>
+              <span className="count-kind kind-claim"><span className="dot" aria-hidden="true" />{plural(s.counts.claim, "claim")}</span>
+            </>
+          )}
           <span>Changed {when(s.changed)}</span>
           {s.pending > 0 && <span>{plural(s.pending, "request")} pending</span>}
+          {s.stale && <span>New results since you last opened it</span>}
         </p>
       </div>
     </li>
@@ -104,10 +111,33 @@ const STEPS = [
   { word: "Everyone reads", text: "a short summary on top, every line and its source underneath." },
 ];
 
-export function Home({ items, error, loading, reload, onAdd, price, bad, prefill }: {
+/** Shown instead of an empty list while nothing has been read: never "No projects" before the chain answered. */
+export function StillReading({ error, retrying }: { error: string | null; retrying: boolean }) {
+  return (
+    <div className="still" role="status">
+      <p className="still-title">Still reading the chain…</p>
+      <p className="small">
+        {error
+          ? `No public RPC answered yet (${error}). Trying again in a moment.`
+          : retrying
+            ? "A public RPC failed or limited the range. Trying the next one with smaller ranges."
+            : "Reading the requests from Ethereum. Later visits start from what this browser already read."}
+      </p>
+    </div>
+  );
+}
+
+export function Home({ items, error, loading, retrying, cached, digests, logos, reload, onAdd, price, bad, prefill }: {
   items: Activity[] | null;
   error: string | null;
   loading: boolean;
+  /** A public RPC failed or limited a range and the scan moved on. */
+  retrying?: boolean;
+  /** The list shown comes from this browser's cache while newer blocks are read. */
+  cached?: boolean;
+  /** Each subject's digest and the logos they name, from IndexedDB: Home reads no full page file. */
+  digests?: Map<string, Digest>;
+  logos?: Map<string, string>;
   reload: () => Promise<void>;
   onAdd: (i: AddInput) => string | null;
   price: string;
@@ -119,7 +149,7 @@ export function Home({ items, error, loading, reload, onAdd, price, bad, prefill
   const [submitted, setSubmitted] = useState<{ raw: string; q: Lookup } | null>(null);
   const [err, setErr] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  const all = useMemo(() => subjectSummaries(items ?? []), [items]);
+  const all = useMemo(() => subjectSummaries(items ?? [], digests, logos), [items, digests, logos]);
   const shown = all.filter((s) => matchesQuery(s, q));
 
   const look = (raw: string) => {
@@ -216,16 +246,17 @@ export function Home({ items, error, loading, reload, onAdd, price, bad, prefill
 
       <div className="home-list">
         <h2 className="list-title">Projects</h2>
-        {error && (
+        {error && items !== null && (
           <p className="error">
             Unable to read the chain: {error}.{" "}
             <button type="button" className="linklike" onClick={() => void reload()} disabled={loading}>{loading ? "Reading chain…" : "Try again"}</button>
           </p>
         )}
-        {items === null || (error && !all.length) ? (
-          items === null && <p className="small" role="status">Reading the projects from Ethereum…</p>
+        {items === null ? (
+          <StillReading error={error} retrying={!!retrying} />
         ) : shown.length ? (
           <>
+            {cached && loading && <p className="small" role="status">Shown from this browser. Reading newer blocks…</p>}
             <p className="small" aria-live="polite">{q.trim() ? `${plural(shown.length, "project")} match “${q.trim()}”.` : `${plural(all.length, "project")} on the record, newest change first.`}</p>
             <ul className="subjects">
               {shown.map((s) => (

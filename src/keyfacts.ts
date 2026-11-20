@@ -1,8 +1,9 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
 import { channelFor, channelStatus, hostOf, onDomain, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page } from "./page";
 import { chainIdOf, chainName } from "./subject";
+import { proofIdsOf, settleOf } from "./settle";
 
-export type Badge = { text: string; tone: "proof" | "statement" | "claim" | ChannelStatus };
+export type Badge = { text: string; tone: "proof" | "statement" | "claim" | "proven" | "contradicted" | ChannelStatus };
 
 export interface KeyRow {
   label: string;
@@ -50,8 +51,17 @@ export function accountsOf(channels: Channel[], value: string, domain: string): 
 /** The only rows that show a channel's tie. */
 export const TIE_ROWS = /^(website|official accounts?)$/i;
 
-/** "Proven on chain" if any line is a proof; else "Stated by <channel>" for a statement; else "Reported by <who>". */
-export function badgeOf(lines: Line[]): Badge | null {
+/**
+ * The same rule as Record's rows (settle.ts): "Contradicted" when a line the row rests on is contradicted by a proof
+ * or panel answer of the record; "Proven" when one is confirmed by one; "Proven on chain" if any line is a proof;
+ * else "Stated by <channel>" for a statement; else "Reported by <who>". Pass every record line as `all` so a link
+ * to a proof outside the row's own lines is still seen.
+ */
+export function badgeOf(lines: Line[], all: Line[] = lines): Badge | null {
+  const proofs = proofIdsOf(all);
+  const states = lines.map((l) => settleOf(l, proofs).state);
+  if (states.includes("contradicted")) return { text: "Contradicted", tone: "contradicted" };
+  if (states.includes("proven")) return { text: "Proven", tone: "proven" };
   if (lines.some((l) => l.kind === "proof")) return { text: "Proven on chain", tone: "proof" };
   const st = lines.find((l) => l.kind === "statement");
   if (st) return { text: `Stated by ${st.channel?.label || hostOf(st.channel?.url ?? "") || st.by || "the project"}`, tone: "statement" };
@@ -142,7 +152,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // the URL and the subject's domain when no channel matches); every other row shows only Proven on chain,
       // Stated by or Reported by.
       const status = tied ? rowStatus(r, channel, accounts, domain) : null;
-      const badge = tied ? null : badgeOf(lines);
+      const badge = tied ? null : badgeOf(lines, all);
       return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge, status, accounts };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
@@ -159,7 +169,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
     const addr = main.address.toLowerCase();
     const lines = all.filter((l) => [l.text, l.rerun, l.quote, l.fact?.value ?? ""].some((s) => s.toLowerCase().includes(addr)));
     const id = chainIdOf(main.chain);
-    rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines), status: null, accounts: [] });
+    rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines, all), status: null, accounts: [] });
   }
   const token = tokenAddresses(page);
   for (const which of ["symbol", "supply"] as const) {

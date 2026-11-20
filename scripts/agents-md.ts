@@ -121,7 +121,10 @@ speaker. Lines that say the same thing are **merged into one line**, even across
 merged line lists every origin in \`from\` and every speaker in \`by\`, counts as carried forward, and its origins
 are not also listed in \`dropped\`; the record never holds two lines with the same meaning. A check run at
 different blocks stays one proof line with the newest reading, older readings in \`history\` as \`{block,value}\`.
-A line a proof or panel answer settles is kept with links to what confirms or contradicts it.
+A line a proof or panel answer settles is kept with links to what confirms or contradicts it. A link's \`type\` is
+\`confirms\` only when the proof or panel answer establishes the whole sentence as written, including its tense (a value
+read at deployment confirms "was X at launch", not "is X"); \`partly\` when it establishes only part; \`contradicts\`
+when it shows the sentence is wrong. Settling a line never changes its \`kind\` or \`by\`.
 
 **Two outputs, both always written.** The body declares \`artifacts/page.json\` and \`artifacts/logo.png\`
 (\`image/png\`). The job takes the logo only from the subject's own domain (apple-touch-icon, favicon or
@@ -278,8 +281,25 @@ lists every channel and contract. The infobox rows a rebuild writes are, in orde
 Main contract, Chains, Supply, Seats, Price, Deployed by, Founder or creator, Contributors, Official accounts,
 Launched. Every completed panel answer of the subject
 is listed under "Panel answers", always the last section of the Record tab, also before the first page.
-A line's \`links\` show as "Confirmed by" or "Contradicted by" with the linked proof line or panel answer (\`A<n>\`
-from the rebuild's \`<PRIOR>\`).
+**Settled lines.** A statement or claim with a \`confirms\` link to a proof line or a panel answer (\`A<n>\` from
+the rebuild's \`<PRIOR>\`) is shown as ONE row: the sentence, a green "Proven" marker ("Confirmed by a panel, N of
+M" when only panel answers confirm it), then, smaller, who said it: "Stated by <channel>" or "Claimed by <who>".
+Its details show the proof's re-run steps and the original quote. The proof is not shown again as its own row
+(proofs with \`fact\` stay in the On-chain facts table). With a \`contradicts\` link the row leads with a red
+"Contradicted" marker and shows both sentences: what was said, and what the proof or panel answer shows.
+Contradicts wins over confirms. A \`partly\` link keeps the line's own kind marker, with "Partly confirmed by: ..."
+under it. Section counts, the filter buttons (All, Proven, Contradicted, Proof, Statement, Claim, Only said), the
+home list and the Key facts badges ("Proven", "Contradicted", else "Proven on chain" / "Stated by" / "Reported by")
+all count a settled row once, as Proven or Contradicted; "Only said" is every statement and claim with no
+confirms or contradicts link. The speaker always stays on the row.
+
+**Loading.** The site keeps the last block it scanned and the requests and completions it found in the browser's
+IndexedDB (database \`imd-record\`, store \`scan\`), shows them at once on a return visit, then reads only
+blocks after it (less 12, for reorganisations) and updates. Result files (page, lines, edit, artifacts, logos)
+are kept in IndexedDB (store \`files\`), not localStorage. The home list keeps one small digest per subject
+(name, one_line, counts, logo hash, changed date, contracts; store \`digests\`) and reads a full page file only
+when that subject's page is opened. When an RPC fails or limits a range, the scan tries the next RPC with half
+the range, and the page says "Still reading the chain" rather than showing an empty list.
 
 ## Read routes
 

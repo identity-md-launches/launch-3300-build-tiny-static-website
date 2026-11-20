@@ -173,7 +173,7 @@ describe("folded in", () => {
     const list = subjectSummaries([a, b]);
     expect(list.map((s) => s.id)).toEqual(["other.org", "example.com"]);
     expect(list[1]).toMatchObject({ name: "Example", oneLine: "Example does things", hasPage: true });
-    expect(list[1]!.counts.claim).toBe(1);
+    expect(list[1]!.counts!.claim).toBe(1);
     expect(list[0]!.name).toBe("other.org");
     expect(subjectRefFor("example.com", [a], a.page)).toEqual({ id: "example.com", domain: "example.com", address: A, chainId: 8453 });
   });
@@ -325,14 +325,15 @@ describe("panel answers never push a result file out of <PRIOR> (aa9250dc)", () 
     const src = { id: "s", url: artifactUrl(h("a")) };
     const answers = Array.from({ length: 20 }, (_, i) => ({ title: "A".repeat(88), answer: "true", agreed: 5, size: 5, url: `https://explorer.imd.fun/jobs/${String(i).padStart(36, "0")}` }));
     const measure = (p: Parameters<typeof rebuildObjective>[0]) => rebuildObjective(p, ref).length;
-    expect(measure({ files: [f1, src.url], answers })).toBe(10779);
+    // The rebuild template is 6,988 characters since the link-type rule (job 8).
+    expect(measure({ files: [f1, src.url], answers })).toBe(10769);
     const fit = fitPrior(f1, [src], answers, measure);
     expect(fit.prior.files).toEqual([f1, src.url]);
     expect(fit.included.has("s")).toBe(true);
     expect(fit.leftOut).toBe(0);
     expect(fit.prior.answers).toEqual(answers.slice(19));
     expect(fit.answersLeftOut).toBe(19);
-    expect(measure(fit.prior)).toBe(7386);
+    expect(measure(fit.prior)).toBe(7376);
   });
 });
 

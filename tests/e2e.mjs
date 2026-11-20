@@ -122,9 +122,10 @@ try {
       continue;
     }
     const item = await page.locator(".subjects .subject").first().innerText();
-    check(`${W} a subject shows its name, one_line, counts and when it changed`, /IMD/.test(item) && /imd\.fun/.test(item) && /\d+ proofs?/.test(item) && /\d+ statements?/.test(item) && /\d+ claims?/.test(item) && /Changed /.test(item), item.replace(/\n/g, " | "));
+    // First visit: the home list reads no page file, so a subject never opened here is listed by id (job 8).
+    check(`${W} first visit: a subject never opened is listed by id, with no page file read`, /imd\.fun/.test(item) && /Open the page to read its record\./.test(item) && /Changed /.test(item) && !/\d+ proofs?/.test(item), item.replace(/\n/g, " | "));
     check(`${W} the title is On the record (test)`, (await page.title()) === "On the record (test)");
-    check(`${W} a subject shows its logo, checked and shown as a data: URL at 28 pixels`, await page.evaluate(() => { const i = document.querySelector(".subjects .subject img.logo"); return !!i && i.getAttribute("src")?.startsWith("data:image/png;base64,") && i.getBoundingClientRect().width === 28; }));
+
     const hero = await page.evaluate(() => {
       const h1 = document.querySelector("h1");
       const lead = document.querySelector(".hero .lead");
@@ -141,7 +142,7 @@ try {
     check(`${W} the small line under the bar`, /People and agents can both add\. Nothing is edited by hand\./.test(await page.locator(".hero").innerText()));
     const cards = await page.$$eval(".label-cards li", (ls) => ls.map((l) => [l.textContent?.trim(), getComputedStyle(l.querySelector(".kind")).color]));
     check(`${W} three label cards in the Record tab's colours`, cards.length === 3 && /^Proof: anyone can re-run the check and get the same answer\.$/.test(cards[0][0]) && /^Statement: the project said it, on its own channels\.$/.test(cards[1][0]) && /^Claim: someone else said it; their name is on it\.$/.test(cards[2][0]) && cards[0][1] === "rgb(20, 108, 54)" && cards[1][1] === "rgb(30, 79, 168)" && cards[2][1] === "rgb(154, 61, 0)", JSON.stringify(cards));
-    const steps = await page.$$eval(".steps li", (ls) => ls.map((l) => l.textContent?.replace(/\s+/g, " ").trim()));
+    const steps = await page.$$eval(".steps li", (ls) => ls.map((l) => l.textContent?.replace(/\s+/g, " ").replace(/^(\d\.)\s*/, "$1 ").trim()));
     check(`${W} How it works: three numbered cards below the list`, steps.length === 3 && steps[0] === "1. Add: a project, a batch of links, or an edit to a summary." && steps[1] === "2. The swarm checks: a research job reads the sources; a panel of agents answers single yes or no questions." && steps[2] === "3. Everyone reads: a short summary on top, every line and its source underneath." && await page.evaluate(() => (document.querySelector(".home-list").compareDocumentPosition(document.querySelector(".how")) & Node.DOCUMENT_POSITION_FOLLOWING) > 0), JSON.stringify(steps));
     await page.fill("#lookup", "zzz-nothing");
     check(`${W} typing filters the list`, (await page.locator(".subjects .subject").count()) === 0 && /No project matches/.test(await page.locator(".home-list").innerText()));
@@ -153,7 +154,9 @@ try {
     // A pasted link to a project with no page: the offer, then the first-rebuild dialog.
     await page.fill("#lookup", "https://www.Example.com/about");
     await page.press("#lookup", "Enter");
-    const offer = await page.waitForSelector(".offer", { timeout: 5000 }).then(() => page.locator(".offer").innerText(), () => "");
+    await page.waitForSelector(".offer", { timeout: 5000 }).catch(() => null);
+    await page.waitForFunction(() => /0\.5 IMD/.test(document.querySelector(".offer")?.textContent ?? ""), null, { timeout: 15000 }).catch(() => null);
+    const offer = await page.locator(".offer").innerText().catch(() => "");
     check(`${W} no page yet: the price and one research job, directly under the bar`, /No page yet for https:\/\/www\.Example\.com\/about\. Adding one costs 0\.5 IMD and starts one research job\./.test(offer) && (await page.locator("#offer-chain").count()) === 0, offer);
     await page.click("text=Add this project");
     const dlg = await page.waitForSelector('[role="dialog"]', { timeout: 5000 }).then(() => true, () => false);
@@ -231,24 +234,41 @@ try {
     check(`${W} panel answers list at the bottom of Record`, (await page.locator("#panel-answers").count()) === 1);
     check(`${W} Record shows its sections`, /What it does|Money|On chain/.test(rec));
     const toggles = await page.$$eval(".section-toggle", (bs) => bs.map((b) => [b.getAttribute("aria-expanded"), b.textContent]));
-    check(`${W} sections start closed, each with its name and counts of proofs, statements and claims`, toggles.length > 0 && toggles.every(([x, s]) => x === "false" && /\d+ proofs?, \d+ statements?, \d+ claims?/.test(s)) && (await page.locator(".lines .row").count()) === 0, JSON.stringify(toggles));
+    check(`${W} sections start closed, each with its name and counts of proofs, statements and claims`, toggles.length > 0 && toggles.every(([x, s]) => x === "false" && /^\D+(\d+ proven, )?(\d+ contradicted, )?\d+ proofs?, \d+ statements?, \d+ claims?$/.test(s ?? "")) && (await page.locator(".lines .row").count()) === 0, JSON.stringify(toggles));
     const rp = await page.locator("#repeats").innerText().catch(() => "");
     check(`${W} the repeat check warns and lists the lines`, /^1 line repeats another line/.test(rp) && /L1/.test(rp) && /L4/.test(rp), rp);
     await page.locator(".section-toggle", { hasText: "What it does" }).click();
     check(`${W} a section opens`, (await page.locator(".lines .row").count()) >= 1);
     await page.fill("#record-search", "a forum");
-    check(`${W} the search finds a line by its speaker`, (await page.locator(".lines .row").count()) === 1 && /imd is a swarm of agents/.test(await page.locator(".lines").innerText()));
+    check(`${W} the search finds a line by its speaker`, (await page.locator(".lines .row").count()) === 1 && /imd is a swarm of agents/.test(await page.locator(".section .lines").innerText()));
     await page.fill("#record-search", "");
     await page.locator(".section-toggle", { hasText: "What it does" }).click();
-    await page.check("text=Only lines that are confirmed or contradicted");
-    const settled = await page.$$eval(".lines .row .row-text, .fact-table .row-text", (rs) => rs.map((r) => r.textContent));
-    check(`${W} the filter keeps only confirmed or contradicted lines`, settled.length === 2 && settled.includes("A post says a job costs 5 IMD.") && settled.includes("Seat supply"), JSON.stringify(settled));
+    // Job 8: a contradicted line is ONE row led by a red Contradicted marker, with both sentences and its speaker.
+    const filters = await page.$$eval(".filter .btn-filter", (bs) => bs.map((b) => b.textContent?.replace(/\s+/g, " ").trim()));
+    check(`${W} filter buttons All, Proven, Contradicted, Proof, Statement, Claim, Only said with counts`, filters.length === 7 && /^All\d+$/.test(filters[0]) && /^Proven0$/.test(filters[1]) && /^Contradicted1$/.test(filters[2]) && /^Only said\d+$/.test(filters[6]), JSON.stringify(filters));
+    await page.click(".filter .btn-filter >> text=Contradicted");
+    const contra = await page.$$eval(".section .lines .row", (rs) => rs.map((r) => ({ text: r.querySelector(".row-toggle")?.textContent?.replace(/\s+/g, " ").trim(), lead: r.querySelector(".row-text > .kind")?.textContent?.trim(), color: r.querySelector(".row-text > .kind") ? getComputedStyle(r.querySelector(".row-text > .kind")).color : "" })));
+    check(`${W} Contradicted: one row, red marker first, what was said and what the panel answer shows, then who said it`, contra.length === 1 && contra[0].lead === "Contradicted" && contra[0].color === "rgb(161, 35, 27)" && /Said: A post says a job costs 5 IMD\./.test(contra[0].text) && /The panel answered: /.test(contra[0].text) && /Claimed by someone$/.test(contra[0].text), JSON.stringify(contra));
+    await page.locator(".section .lines .row .row-toggle").first().click();
+    const det = await page.locator(".section .lines .details").innerText().catch(() => "");
+    check(`${W} its details show the original quote and the panel answer`, /Original quote\s*“5 IMD”/.test(det) && /Panel answer/.test(det), det.replace(/\n/g, " | "));
+    await page.locator(".section .lines .row .row-toggle").first().click();
+    await page.click(".filter .btn-filter >> text=Proof");
     await page.locator(".fact-table .row-toggle").first().click();
     check(`${W} a line with history shows its earlier readings`, /Earlier readings\s*Block 26,400,000: 1,500/.test(await page.locator(".fact-details").innerText().catch(() => "")));
     check(`${W} no horizontal scroll on Record`, (await overflow(page)) <= 0, await wideOf(page));
     if (width === 390) await page.screenshot({ path: join(out, `390-record.png`), fullPage: true });
 
     // Activity labels
+    // Back home: the subject's page was opened, so its digest (name, one_line, counts, logo) is listed (job 8).
+    await page.goto(base + "#/");
+    await page.waitForSelector(".subjects .subject", { timeout: 30000 });
+    const item2 = await page.locator(".subjects .subject").first().innerText();
+    check(`${W} after opening it, Home shows the digest: name, one_line, counts and when it changed`, /IMD/.test(item2) && /imd\.fun/.test(item2) && /\d+ contradicted/.test(item2) && /\d+ proofs?/.test(item2) && /\d+ statements?/.test(item2) && /\d+ claims?/.test(item2) && /Changed /.test(item2), item2.replace(/\n/g, " | "));
+    check(`${W} the digest's logo, kept by hash and shown as a data: URL at 28 pixels`, await page.evaluate(() => { const i = document.querySelector(".subjects .subject img.logo"); return !!i && i.getAttribute("src")?.startsWith("data:image/png;base64,") && i.getBoundingClientRect().width === 28; }));
+    const idb = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open("imd-record"); r.onsuccess = () => { const db = r.result; const t = db.transaction(["scan", "files", "digests"]); const n = {}; let left = 3; for (const s of ["scan", "files", "digests"]) { const q = t.objectStore(s).count(); q.onsuccess = () => { n[s] = q.result; if (!--left) res(n); }; } }; r.onerror = () => res(null); }));
+    const ls = await page.evaluate(() => Object.keys(localStorage).filter((k) => /:(page|lines|edit|artifact|logo):/.test(k)).length);
+    check(`${W} IndexedDB holds the scan, the files and the digest; no page file in localStorage`, !!idb && idb.scan === 1 && idb.files >= 1 && idb.digests >= 1 && ls === 0, JSON.stringify({ idb, ls }));
     await page.goto(base + "#/s/imd.fun/activity");
     await page.waitForSelector(".activity .act", { timeout: 30000 });
     const act = await page.locator(".activity").innerText();
