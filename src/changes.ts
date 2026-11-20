@@ -208,25 +208,25 @@ export function itemText(c: Change, n: number, refOf: RefOf): string {
 }
 export const itemsText = (changes: Change[], refOf: RefOf) => changes.map((c, i) => itemText(c, i + 1, refOf)).join(" ");
 
-export function changesObjective(changes: Change[], prior: Prior, channels: ChannelTie[], subject: SubjectRef, refOf: RefOf): string {
+export function changesObjective(changes: Change[], prior: Prior, channels: ChannelTie[], subject: SubjectRef, refOf: RefOf, moreChannels = 0): string {
   return fillTemplate(CHANGES_TEMPLATE, {
     SUBJECT: describeSubject(subject),
     URL: INSTRUCTIONS.changes.url,
     HASH: INSTRUCTIONS.changes.sha256,
     PRIOR: priorText({ files: prior.files, answers: prior.answers }),
-    CHANNELS: channelList(channels),
+    CHANNELS: channelList(channels, moreChannels),
     ITEMS: itemsText(changes, refOf),
   });
 }
 
 export const CHANGES_OUTPUTS = [{ name: "changes", path: "artifacts/changes.json", mediaType: "application/json" }];
 
-export function changesBody(changes: Change[], prior: Prior, channels: ChannelTie[], subject: SubjectRef, refOf: RefOf) {
+export function changesBody(changes: Change[], prior: Prior, channels: ChannelTie[], subject: SubjectRef, refOf: RefOf, moreChannels = 0) {
   return {
     tag: jobTag("changes", subject.id),
     skill: "research-report",
     outputs: CHANGES_OUTPUTS,
-    objective: changesObjective(changes, prior, channels, subject, refOf),
+    objective: changesObjective(changes, prior, channels, subject, refOf, moreChannels),
   };
 }
 

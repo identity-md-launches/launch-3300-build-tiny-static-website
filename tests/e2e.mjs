@@ -281,10 +281,18 @@ try {
     await page.waitForSelector("#rebuild");
     await page.waitForFunction(() => /It is given/.test(document.querySelector("#rebuild")?.textContent ?? ""), null, { timeout: 30000 }).catch(() => {});
     check(`${W} the rebuild is given F1 and the results not folded in`, /It is given 3 earlier files and 1 panel answer/.test(await page.locator("#rebuild").innerText()), (await page.locator("#rebuild").innerText()).slice(0, 300));
+    // "Read the objective": the objective and the instruction file it names are two separate blocks.
+    await page.locator("#rebuild summary", { hasText: "Read the objective" }).click();
     const rb = await page.locator("#rebuild").innerText();
     check(`${W} the rebuild says the files the page dropped lines from are listed again`, /dropped lines, so 2 files they came from are listed again/.test(rb), rb.slice(0, 600));
-    const objective = await page.locator("#rebuild .objective").textContent();
-    check(`${W} the rebuild objective marks both files reconsider, numbered after the results`, /\[F4\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[F5\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[A1\]/.test(objective ?? "") && /For files marked reconsider/.test(objective ?? "") && !/at most 40 lines/.test(objective ?? ""), (objective ?? "").slice(-1400, -900));
+    const objective = await page.locator("#rebuild > details > .objective").textContent();
+    check(`${W} the rebuild objective marks both files reconsider, numbered after the results`, /\[F4\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[F5\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[A1\]/.test(objective ?? "") && !/at most 40 lines/.test(objective ?? ""), (objective ?? "").slice(-900));
+    const named = /Your full instructions are the file at (https:\/\/\S+\/instructions\/rebuild-([0-9a-f]{12})\.txt), sha256 ([0-9a-f]{64})\./.exec(objective ?? "");
+    check(`${W} the rebuild objective has the short fixed shape and names the instruction file and its hash`, !!named && /^Write the record page for one subject: /.test(objective ?? "") && named[3].startsWith(named[2]) && (objective ?? "").length <= 7900, (objective ?? "").slice(0, 400));
+    const ins = await page.locator("#rebuild .instructions").innerText();
+    const link = await page.locator("#rebuild .instructions a").getAttribute("href");
+    check(`${W} the instruction preview links the same file and shows its hash and text`, !!named && link === named[1] && ins.includes(named[3]) && /Instructions this job follows/.test(ins) && /For files marked reconsider/.test(ins), ins.slice(0, 300));
+    check(`${W} the instruction preview is split into paragraphs`, (await page.locator("#rebuild .instructions .ins-text > p").count()) > 5);
     check(`${W} the three IMD presets are gone`, !/Check: The docs price/.test(await page.locator("main").innerText()));
     await page.check('input[value="contract"]');
     await page.fill("#q-address", "0x0000eC93127BAA929E58E97dd0095A2BFb38ec1D");

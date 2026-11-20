@@ -46,7 +46,7 @@ export const BRIEF_RULES = [
 describe("rebuild", () => {
   it("is the research text with the earlier jobs' rules, the brief's Tokens and Supply rows, and the JSON keys", () => {
     // The standing rules now live in the instruction file; the objective names it.
-    const t = readFileSync("templates/instructions/rebuild.txt", "utf8").trim();
+    const t = readFileSync("templates/instructions/rebuild.txt", "utf8").trim().replace(/\s*\n\s*/g, " ");
     expect(t).toContain(`${VISITOR} Output artifacts/page.json and artifacts/logo.png.`);
     for (const s of [INFOBOX, SUMMARY, AMOUNTS]) expect(t).toContain(s);
     expect(t).not.toContain("imd.fun");
@@ -77,7 +77,7 @@ describe("rebuild", () => {
     );
   });
   it("adds this job's rules word for word and keeps the earlier jobs' rules: merging, proofs read more than once, plain words, claim wording, related, logo", () => {
-    const t = readFileSync("templates/instructions/rebuild.txt", "utf8").trim();
+    const t = readFileSync("templates/instructions/rebuild.txt", "utf8").trim().replace(/\s*\n\s*/g, " ");
     for (const s of BRIEF_RULES) expect(t).toContain(s);
     // The flows rule sits with the statement rule; the depth rule follows "Then look for what is new".
     expect(t.indexOf("Then look for what is new.")).toBeLessThan(t.indexOf("When no earlier results are supplied"));

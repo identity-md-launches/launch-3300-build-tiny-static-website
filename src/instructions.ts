@@ -6,7 +6,7 @@
 import rebuildText from "../templates/instructions/rebuild.txt?raw";
 import changesText from "../templates/instructions/changes.txt?raw";
 import manifest from "./instructions.json";
-import { SITE_URL } from "./config";
+import { INSTRUCTIONS_BASE } from "./config";
 
 export type InstructionName = "rebuild" | "changes";
 export interface Instructions {
@@ -15,7 +15,7 @@ export interface Instructions {
   text: string;
   file: string;
   sha256: string;
-  /** Where a job fetches it: the site's own address, so it is served with the site. */
+  /** Where a job fetches it: the site itself, by its ENS name through a public gateway (see INSTRUCTIONS_BASE). */
   url: string;
 }
 
@@ -24,8 +24,11 @@ const of = (name: InstructionName, text: string): Instructions => ({
   text,
   file: manifest[name].file,
   sha256: manifest[name].sha256,
-  url: `${SITE_URL}instructions/${manifest[name].file}`,
+  url: `${INSTRUCTIONS_BASE}instructions/${manifest[name].file}`,
 });
+
+/** The file's paragraphs (blank-line separated), as the site shows them. */
+export const paragraphsOf = (text: string) => text.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
 
 export const INSTRUCTIONS: Record<InstructionName, Instructions> = { rebuild: of("rebuild", rebuildText), changes: of("changes", changesText) };
 

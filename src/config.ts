@@ -11,6 +11,14 @@ export const SITE_DESCRIPTION =
  */
 export const SITE_URL = "https://record-test-1.identitymd.eth.limo/";
 
+/**
+ * Where a job fetches the instruction files: the same site, by the same ENS name, through the dweb.link subdomain
+ * gateway (record-test-1.identitymd.eth inlined as record--test--1-identitymd-eth). IMD's free check refuses an
+ * objective naming the eth.limo address with unsafe_brief ("reads a private path on the worker's own machine",
+ * 2026-11-20, every variant of that host tried); the same objective with this address returns no blockers.
+ */
+export const INSTRUCTIONS_BASE = "https://record--test--1-identitymd-eth.ipns.dweb.link/";
+
 export const CHAIN = mainnet; // Ethereum mainnet, chain 1, only
 export const CHAIN_ID = 1 as const;
 

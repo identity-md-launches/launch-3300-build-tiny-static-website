@@ -107,7 +107,7 @@ describe("e66a0e4f: a saved draft stays on the row the visitor chose", () => {
     const live = liveTarget({ scope, resolve }, draft);
     expect(live).toMatchObject({ key: "line:L99", lineId: "L99" });
     const c: Change = { id: newChangeId(), type: "context", target: draft, note: "It runs on Ethereum.", links: [] };
-    const plan = planChanges({ pageHash: NEW, after: [], scope, results: [], answers: [], channels: [], subject: IMD }, [c], new Map([[c.id, live]]));
+    const plan = planChanges({ pageHash: NEW, after: [], scope, results: [], answers: [], channels: [], promptChannels: { list: [], more: 0 }, subject: IMD }, [c], new Map([[c.id, live]]));
     expect(parseItems(plan.body.objective)[0]).toMatchObject({ ref: "F1:L99", text: "IMD is a swarm of agents." });
     expect(plan.gone.size + plan.unplaced.size).toBe(0);
   });
@@ -116,7 +116,7 @@ describe("e66a0e4f: a saved draft stays on the row the visitor chose", () => {
     expect(liveTarget({ scope, resolve }, draft)).toBeNull();
     expect(liveTarget({ scope, resolve }, lineTarget("L1", "IMD is a swarm of agents."))).toBeNull();
     const c: Change = { id: "c1", type: "context", target: draft, note: "x y z", links: [] };
-    expect(planChanges({ pageHash: NEW, after: [], scope, results: [], answers: [], channels: [], subject: IMD }, [c], new Map([["c1", null]])).gone.has("c1")).toBe(true);
+    expect(planChanges({ pageHash: NEW, after: [], scope, results: [], answers: [], channels: [], promptChannels: { list: [], more: 0 }, subject: IMD }, [c], new Map([["c1", null]])).gone.has("c1")).toBe(true);
   });
 });
 
@@ -129,7 +129,7 @@ describe("e1648bd6: every row target carries its file number and line id", () =>
     expect(t).toMatchObject({ file: SRC, fileLine: "N1" });
     const fillers = Array.from({ length: 60 }, (_, i) => ({ id: `0xf${i}`, url: artifactUrl(i.toString(16).padStart(64, "f")) }));
     const c: Change = { id: "c1", type: "context", target: t, note: "The launch was in 2025.", links: [] };
-    const rec = { pageHash: OLD, after: [src], scope, results: [{ id: "0xsrc", url: artifactUrl(SRC) }, ...fillers], answers: [], channels: [], subject: IMD };
+    const rec = { pageHash: OLD, after: [src], scope, results: [{ id: "0xsrc", url: artifactUrl(SRC) }, ...fillers], answers: [], channels: [], promptChannels: { list: [], more: 0 }, subject: IMD };
     const plan = planChanges(rec, [c], new Map([["c1", liveTarget({ scope, resolve }, t)]]));
     expect(plan.body.objective.length).toBeLessThan(MAX_OBJECTIVE);
     const f = plan.body.objective.indexOf(artifactUrl(SRC));
@@ -161,8 +161,8 @@ describe("CSS and copy findings", () => {
     expect(css).toContain("@media (hover: none) { .pencil { opacity: 0.74; width: 40px; height: 40px; } }");
   });
   it("2b09b99e: lookup padding 8px through 25rem; 2px gap, 6px button padding and 14px label below 23rem", () => {
-    expect(css).toMatch(/@media \(max-width: 25rem\) \{\s*\.lookup input \{ padding: 0 var\(--space-2\); \}\s*\.btn-lookup \{ padding: 0 var\(--space-2\); \}/);
-    expect(css).toMatch(/@media \(max-width: 22\.99rem\) \{\s*\.lookup \{ gap: 2px; \}[\s\S]*?\.btn-lookup \{ padding: 0 6px; font-size: var\(--text-nav\); \}/);
+    expect(css).toMatch(/@media \(max-width: 25rem\) \{\s*\.lookup input \{ padding: 0 var\(--space-2\); \}\s*\.lookup \.btn-lookup \{ padding: 0 var\(--space-2\); \}/);
+    expect(css).toMatch(/@media \(max-width: 22\.99rem\) \{\s*\.lookup \{ gap: 2px; \}[\s\S]*?\.lookup \.btn-lookup \{ padding: 0 6px; font-size: var\(--text-nav\); \}/);
   });
   it("fe85fe21: Home's first step leads to suggesting changes", () => {
     const home = readFileSync("src/Home.tsx", "utf8");

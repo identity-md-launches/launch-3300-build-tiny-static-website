@@ -185,7 +185,12 @@ export interface ChannelTie {
   tie: "strong" | "weak" | "none";
 }
 /** The channels, as they replace <CHANNELS>: "https://imd.fun/ (tie: weak), https://api.imd.fun (tie: strong)". */
-export const channelList = (channels: ChannelTie[]) => (channels.length ? channels.map((c) => `${c.url} (tie: ${c.tie})`).join(", ") : "none known");
+export const channelList = (channels: ChannelTie[], more = 0) => {
+  const listed = channels.map((c) => `${c.url} (tie: ${c.tie})`).join(", ");
+  // Channels left out for room stay in the page shown: the job reads the complete list there.
+  if (more > 0) return `${listed ? `${listed}, and ` : ""}${more} more listed in the page shown (F1)`;
+  return listed || "none known";
+};
 
 /** <MAIN> is the record's main contract address; "not known" when the record names none. */
 export function sourceObjective(urls: string[], channels: ChannelTie[], main: string, subject: SubjectRef) {
@@ -355,17 +360,31 @@ export const MAX_OBJECTIVE = 7900;
 /** Whether a finished rebuild or changes objective fits. */
 export const fitsObjective = (length: number) => length <= MAX_OBJECTIVE;
 
+const TIE_RANK = { strong: 0, weak: 1, none: 2 } as const;
+/**
+ * The known channels an objective lists. Room is reserved first for the fixed text and F1 (`base`, the objective
+ * with F1 and no channels); the channels may then take at most half of what is left, strong ties first, so results
+ * still fit. The rest are counted ("and N more listed in the page shown (F1)"), never dropped from the record.
+ */
+export function fitChannels(ties: ChannelTie[], measure: (list: ChannelTie[], more: number) => number): { list: ChannelTie[]; more: number } {
+  const order = [...ties].sort((a, b) => TIE_RANK[a.tie] - TIE_RANK[b.tie]);
+  const base = measure([], 0);
+  const cap = Math.min(MAX_OBJECTIVE, base + Math.floor(Math.max(0, MAX_OBJECTIVE - base) / 2));
+  for (let k = order.length; k > 0; k--) if (measure(order.slice(0, k), order.length - k) <= cap) return { list: order.slice(0, k), more: order.length - k };
+  return { list: [], more: order.length };
+}
+
 /**
  * The rebuild objective: short and fixed, with only what varies. Its standing instructions are the file it names
  * (INSTRUCTIONS.rebuild), fetched by the job and checked against the sha256 given here.
  */
-export const rebuildObjective = (p: Prior, subject: SubjectRef, channels: ChannelTie[] = []) =>
+export const rebuildObjective = (p: Prior, subject: SubjectRef, channels: ChannelTie[] = [], moreChannels = 0) =>
   fillTemplate(REBUILD_TEMPLATE, {
     SUBJECT: describeSubject(subject),
     URL: INSTRUCTIONS.rebuild.url,
     HASH: INSTRUCTIONS.rebuild.sha256,
     PRIOR: priorText(p),
-    CHANNELS: channelList(channels),
+    CHANNELS: channelList(channels, moreChannels),
   });
 
 /**
@@ -389,12 +408,12 @@ export const REBUILD_OUTPUTS = [
 ];
 
 /** "Rebuild the page": the research action and tag, with the earlier results filled in. */
-export function rebuildBody(p: Prior, subject: SubjectRef, channels: ChannelTie[] = []) {
+export function rebuildBody(p: Prior, subject: SubjectRef, channels: ChannelTie[] = [], moreChannels = 0) {
   return {
     tag: jobTag("add", subject.id),
     skill: "research-report",
     outputs: REBUILD_OUTPUTS,
-    objective: rebuildObjective(p, subject, channels),
+    objective: rebuildObjective(p, subject, channels, moreChannels),
   };
 }
 

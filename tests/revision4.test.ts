@@ -72,7 +72,7 @@ describe("42e9982d: Add a link and try again keeps every line of a Key facts row
     expect(t.lost).toBeUndefined();
     const again: Change = { id: "r", type: "backing", target: t, note: "", links: ["https://example.com/receipt"], retry: "no source" };
     const live = new Map([["r", liveTarget({ scope: shown.scope, resolve: shown.resolve }, t)]]);
-    const plan = planChanges({ pageHash: OLD, after: [], scope: shown.scope, results: [], answers: [], channels: [], subject: IMD }, [again], live);
+    const plan = planChanges({ pageHash: OLD, after: [], scope: shown.scope, results: [], answers: [], channels: [], promptChannels: { list: [], more: 0 }, subject: IMD }, [again], live);
     expect(plan.body.objective).toContain('target: F1:L2,F1:L3 key fact "Token: IMD"');
   });
   it("after a rebuild, finds the carried line under its new id", () => {
@@ -85,7 +85,7 @@ describe("42e9982d: Add a link and try again keeps every line of a Key facts row
     expect(t.lost).toBe(true);
     expect(liveTarget({ scope: shown.scope, resolve: shown.resolve }, t)).toBeNull();
     const c: Change = { id: "x", type: "backing", target: t, note: "", links: ["https://example.com/receipt"] };
-    const plan = planChanges({ pageHash: NEW, after: [], scope: shown.scope, results: [], answers: [], channels: [], subject: IMD }, [c], new Map([["x", null]]));
+    const plan = planChanges({ pageHash: NEW, after: [], scope: shown.scope, results: [], answers: [], channels: [], promptChannels: { list: [], more: 0 }, subject: IMD }, [c], new Map([["x", null]]));
     expect(plan.gone.has("x")).toBe(true);
   });
 });

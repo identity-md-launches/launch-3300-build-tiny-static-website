@@ -1,5 +1,5 @@
 /** "Instructions this job follows": the instruction file an objective names, with its link, hash and full text. */
-import { INSTRUCTIONS, type InstructionName } from "./instructions";
+import { INSTRUCTIONS, paragraphsOf, type InstructionName } from "./instructions";
 
 export function InstructionsBlock({ name, id }: { name: InstructionName; id?: string }) {
   const ins = INSTRUCTIONS[name];
@@ -14,7 +14,11 @@ export function InstructionsBlock({ name, id }: { name: InstructionName; id?: st
         </a>
         , sha256 <span className="mono">{ins.sha256}</span>
       </p>
-      <p className="objective">{ins.text.trim()}</p>
+      <div className="objective ins-text">
+        {paragraphsOf(ins.text).map((p, i) => (
+          <p key={i}>{p}</p>
+        ))}
+      </div>
     </section>
   );
 }

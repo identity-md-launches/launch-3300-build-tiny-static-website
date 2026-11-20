@@ -476,7 +476,7 @@ export function AddButtons({ where, variant = "buttons", routeTarget = null, rou
  * fitChangesPrior), so each target carries its file number and line id. A change whose row is gone after a rebuild
  * (gone), or whose file does not fit (unplaced), holds the submission until the visitor fixes it.
  */
-export function planChanges(rec: Pick<RecordModel, "pageHash" | "after" | "scope" | "results" | "answers" | "channels" | "subject">, list: Change[], live: Map<string, ChangeTarget | null>) {
+export function planChanges(rec: Pick<RecordModel, "pageHash" | "after" | "scope" | "results" | "answers" | "channels" | "promptChannels" | "subject">, list: Change[], live: Map<string, ChangeTarget | null>) {
   const changes = list.map((c) => {
     const t = live.get(c.id);
     return t ? { ...c, target: t } : c;
@@ -491,10 +491,12 @@ export function planChanges(rec: Pick<RecordModel, "pageHash" | "after" | "scope
       return o ? [artifactUrl(o.file)] : [];
     }),
   );
-  const measure = (p: Prior) => changesObjective(changes, p, rec.channels, rec.subject, makeRefOf(p, pageUrl, jobFiles)).length;
+  // The same channel budget as a rebuild: the channels that do not fit stay listed in F1.
+  const ch = rec.promptChannels;
+  const measure = (p: Prior) => changesObjective(changes, p, ch.list, rec.subject, makeRefOf(p, pageUrl, jobFiles), ch.more).length;
   const fit = fitChangesPrior(pageUrl, rec.results, rec.answers, required, measure);
   const refOf = makeRefOf(fit.prior, pageUrl, jobFiles);
-  const body = changesBody(changes, fit.prior, rec.channels, rec.subject, refOf);
+  const body = changesBody(changes, fit.prior, ch.list, rec.subject, refOf, ch.more);
   const unplaced = new Set(targeted.filter((c) => idsOf(c.target).some((x) => !refOf(x))).map((c) => c.id));
   // Never sent with an empty target: a line or key facts row with neither a line reference nor its text.
   for (const c of changes) if ((c.target.kind === "line" || c.target.kind === "keyfact") && !c.target.text.trim() && !idsOf(c.target).some((x) => refOf(x))) unplaced.add(c.id);

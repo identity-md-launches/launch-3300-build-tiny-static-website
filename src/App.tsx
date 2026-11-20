@@ -84,8 +84,8 @@ export interface Ask {
 /* ---------- Actions ---------- */
 
 /** "Rebuild the page": the research action, starting from the page shown now and everything completed after it. */
-export function rebuildAsk(prior: Prior, subject: SubjectRef, hasPage: boolean, channels: ChannelTie[] = []): Ask {
-  const body = rebuildBody(prior, subject, channels);
+export function rebuildAsk(prior: Prior, subject: SubjectRef, hasPage: boolean, channels: ChannelTie[] = [], moreChannels = 0): Ask {
+  const body = rebuildBody(prior, subject, channels, moreChannels);
   return {
     title: hasPage ? `Rebuild the page of ${subject.id}` : `Create the page of ${subject.id}`,
     subject: subject.id,
@@ -127,19 +127,31 @@ function LeftOut({ rec }: { rec: RecordState }) {
           <li key={t}>{t}</li>
         ))}
       </ul>
+      {rec.leftOutItems.length > 0 && (
+        <ul className="plain leftout-items small">
+          {rec.leftOutItems.map((x) => (
+            <li key={x.href + x.label}>
+              <a href={x.href} target="_blank" rel="noreferrer" className="break">
+                {x.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
 function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: Ask) => void; rec: RecordState; price: string; onRefresh: () => void; refreshing: boolean }) {
-  const ask = rebuildAsk(rec.prior, rec.subject, !!rec.page, rec.channels);
+  const ask = rebuildAsk(rec.prior, rec.subject, !!rec.page, rec.promptChannels.list, rec.promptChannels.more);
   const prior = priorText(rec.prior);
-  const ready = rec.snapshot.ok;
+  // Never opened for payment over the limit: the objective must fit in 7,900 characters.
+  const ready = rec.snapshot.ok && !ask.warning;
   return (
     <div className="card" id="rebuild" tabIndex={-1}>
       <h3>{rec.page ? "Rebuild the page" : "Create the page"}</h3>
-      <p className="break">Tidies the record: merges repeats, folds in everything added since the last rebuild, and looks for what is new.</p>
-      {ready ? (
+      <p className="break">Merges repeated lines, folds in the listed results, and looks for what’s new.</p>
+      {rec.snapshot.ok ? (
         <>
           <p className="small">
             {prior === "none"
@@ -149,9 +161,8 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
           <details>
             <summary>Read the objective</summary>
             <p className="small break">
-              One page job starts from the page shown now and every page, sources, edit and changes result it has not folded in yet, carries each line forward or says why
-              it dropped it, merges lines that say the same thing into one (keeping every origin and speaker), and then looks for what is new. It researches{" "}
-              {describeSubject(rec.subject)}.
+              One page job starts from the page shown now and the results listed below, carries each line forward or says why it dropped it, merges lines that say the
+              same thing into one (keeping every origin and speaker), and then looks for what is new. It researches {describeSubject(rec.subject)}.
               {(rec.prior.reconsider?.length ?? 0) > 0 &&
                 ` The page shown dropped lines, so ${rec.prior.reconsider!.length} file${rec.prior.reconsider!.length === 1 ? "" : "s"} they came from ${rec.prior.reconsider!.length === 1 ? "is" : "are"} listed again, marked “reconsider dropped lines”: the job carries those lines forward unless one is a duplicate, off subject or replaced by the same speaker.`}
             </p>
@@ -163,10 +174,10 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
       ) : (
         <SnapshotNote rec={rec} onRefresh={onRefresh} refreshing={refreshing} />
       )}
-      {ready && ask.warning && <p className="warn">{ask.warning}</p>}
+      {rec.snapshot.ok && ask.warning && <p className="warn">{ask.warning}</p>}
       <div className="row-actions">
         <button className="btn" onClick={() => (ready ? onAsk(ask) : undefined)} disabled={!ready}>
-          {ready ? (rec.page ? "Rebuild the page" : "Create the page") : rec.snapshot.loading ? "Reading the record…" : "Record not read"}
+          {ready || ask.warning ? (rec.page ? "Rebuild the page" : "Create the page") : rec.snapshot.loading ? "Reading the record…" : "Record not read"}
         </button>
         <span className="price mono">{price}</span>
       </div>
@@ -589,7 +600,9 @@ export default function App() {
     const plan = planRebuild(mine, ref);
     if (plan.needsReads) return `The page of ${ref.id} dropped lines whose files must be read first. Open its page and rebuild it from Contribute.`;
     if (!plan.ok) return `An earlier result of ${ref.id} could not be read yet. Open its page and use Refresh.`;
-    setAsk(rebuildAsk(plan.prior, ref, plan.hasPage, plan.channels));
+    const a = rebuildAsk(plan.prior, ref, plan.hasPage, plan.channels, plan.moreChannels);
+    if (a.warning) return a.warning;
+    setAsk(a);
     return null;
   };
 

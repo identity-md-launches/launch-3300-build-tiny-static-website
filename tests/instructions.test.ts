@@ -24,7 +24,8 @@ describe("instruction files", () => {
       expect(ins.file).toBe(`${name}-${ins.sha256.slice(0, 12)}.txt`);
       expect(readFileSync(`public/instructions/${ins.file}`).equals(src)).toBe(true);
       expect(sha(Buffer.from(ins.text, "utf8"))).toBe(ins.sha256);
-      expect(ins.url).toBe(`https://record-test-1.identitymd.eth.limo/instructions/${ins.file}`);
+      // The site by its ENS name through the dweb.link subdomain gateway: IMD's check refuses the eth.limo address.
+      expect(ins.url).toBe(`https://record--test--1-identitymd-eth.ipns.dweb.link/instructions/${ins.file}`);
       expect(ins.text).not.toMatch(/<[A-Z]+>/);
     }
   });

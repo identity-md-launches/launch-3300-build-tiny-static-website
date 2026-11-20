@@ -22,7 +22,7 @@ import {
   type Channel,
   type ChannelStatus,
   isFactRow, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
-import { firstPageStatus, statusText, type FirstPageStatus, type RecordModel } from "./model";
+import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, isInstructionsUnavailable, statusText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { OutdatedNote, StillReading } from "./Home";
 import { AddButtons, ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest } from "./Suggest";
@@ -404,7 +404,17 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       </div>
       <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
       {m.outdated && <OutdatedNote o={m.outdated} href={to("rebuild")} />}
-      {rejectedCard && (
+      {rejectedCard && (first?.kind === "instructions" || isInstructionsUnavailable(m.rejected!.rejected)) && (
+        <div className="card empty" id="rejected">
+          <h2>Instructions not verified</h2>
+          <p className="why">{INSTRUCTIONS_UNAVAILABLE}</p>
+          <p>It could not fetch the instruction file its objective names, or the file’s sha256 differed, so it did not research {m.subject.id}. This says nothing about whether the project exists.</p>
+          <p className="small">
+            See <a href={to("activity")}>Activity</a> for the job.
+          </p>
+        </div>
+      )}
+      {rejectedCard && !(first?.kind === "instructions" || isInstructionsUnavailable(m.rejected!.rejected)) && (
         <div className="card empty" id="rejected">
           <h2>No project found</h2>
           <p className="why">{first?.kind === "not-found" ? statusText(first) : `No project found: ${m.rejected!.rejected}`}</p>
@@ -430,7 +440,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
             </>
           ) : first && first.kind !== "none" ? (
             <>
-              <h2>{first.kind === "not-found" ? "No project found" : first.kind === "refused" ? "First page refused" : "First page failed"}</h2>
+              <h2>{first.kind === "not-found" ? "No project found" : first.kind === "instructions" ? "Instructions not verified" : first.kind === "refused" ? "First page refused" : "First page failed"}</h2>
               <p className="why">{statusText(first)}</p>
               <p>
                 See <a href={to("activity")}>Activity</a> for the request. You can try again with <a href={to("rebuild")}>a rebuild</a>.

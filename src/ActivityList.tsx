@@ -3,7 +3,7 @@ import { artifactUrl } from "./bodies";
 import { ACTIONS } from "./config";
 import { jobLink, kindName, lineAnchor, payerName } from "./format";
 import { outcomeOf, outcomeText, VERDICT_WORDS } from "./page";
-import { STANDING_WORDS, type RecordModel } from "./model";
+import { isInstructionsUnavailable, STANDING_WORDS, type RecordModel } from "./model";
 import { TEMPLATE_TITLES, type Template } from "./bodies";
 import { to } from "./route";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity, type useActivity } from "./useActivity";
@@ -132,7 +132,9 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                 {st && <p className="small">{st}</p>}
                 {a.rejected && (
                   <p className="why rejected">
-                    Not a project record: the job set found to false, so nothing from it is shown. Its notes: {a.rejected}
+                    {isInstructionsUnavailable(a.rejected)
+                      ? "The job stopped because it could not verify the instructions, so nothing from it is shown."
+                      : `Not a project record: the job set found to false, so nothing from it is shown. Its notes: ${a.rejected}`}
                   </p>
                 )}
                 {(a.state === "refused" || a.state === "failed") && (
