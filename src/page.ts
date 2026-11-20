@@ -67,7 +67,7 @@ export interface LogoSource {
 }
 export interface LineLink {
   /** confirms: establishes the whole sentence as written; partly: only part of it; contradicts: shows it wrong. */
-  type: "confirms" | "contradicts" | "partly";
+  type: "confirms" | "contradicts" | "partly" | "context";
   target: string;
 }
 /** A row of the key facts box: label, value, an optional link and the line ids it rests on. */
@@ -178,7 +178,7 @@ function parseLinks(v: unknown): LineLink[] {
       const o = obj(x);
       const t = str(o.type, 32).toLowerCase();
       const target = str(o.target, 64).trim();
-      return (t === "confirms" || t === "contradicts" || t === "partly") && target ? [{ type: t as LineLink["type"], target }] : [];
+      return (t === "confirms" || t === "contradicts" || t === "partly" || t === "context") && target ? [{ type: t as LineLink["type"], target }] : [];
     });
 }
 
@@ -609,7 +609,7 @@ export function outcomeText(o: Outcome): string {
  * claim. Marked statements keep their mark until mergeRecord applies the label rule with the record's
  * channels. Sources that could not be opened, or that are not about the subject, contribute no lines.
  */
-export function parseLines(text: string): SourceLines {
+export function parseLines(text: string, opts: { changes?: boolean } = {}): SourceLines {
   const j = obj(JSON.parse(text));
   const sources: SourceRef[] = arr(j.sources).slice(0, 40).map((s) => {
     const o = obj(s);
@@ -634,7 +634,10 @@ export function parseLines(text: string): SourceLines {
       const o = obj(l);
       const sourceId = str(o.source, 64);
       const source = byId.get(sourceId) ?? null;
-      const marked: Kind = kindOf(o.kind) === "statement" ? "statement" : "claim";
+      // A changes result may write a proof, but only one that gives re-run steps; its lines keep their links.
+      const rerun = opts.changes ? str(o.rerun, 1200) : "";
+      const k = kindOf(o.kind);
+      const marked: Kind = k === "statement" ? "statement" : k === "proof" && rerun ? "proof" : "claim";
       return {
         id: str(o.id, 64),
         section: str(o.section, 64),
@@ -647,10 +650,10 @@ export function parseLines(text: string): SourceLines {
         sources: sourceId ? [sourceId] : [],
         srcKeys: [],
         quote: str(o.quote, 400),
-        rerun: "",
-        fact: null,
+        rerun,
+        fact: marked === "proof" ? parseFact(o.fact, str(o.text, 600), rerun) : null,
         from: [],
-        links: [],
+        links: opts.changes ? parseLinks(o.links) : [],
         source,
       };
     })
@@ -660,13 +663,15 @@ export function parseLines(text: string): SourceLines {
 
 /** A record row: a research line, or a line added by a source job (with who paid and where the job is). */
 export interface RecordRow extends Row {
-  origin: { payer: string; jobHref: string } | null;
+  /** raised: the line came from a visitor's changes job ("raised by <payer>"). */
+  origin: { payer: string; jobHref: string; raised?: boolean } | null;
 }
 export interface SourceJob {
   key: string;
   data: SourceLines;
   payer: string;
   jobHref: string;
+  raised?: boolean;
 }
 
 /** One numbered source in the record's single list: research sources first, then each source job's. */
@@ -714,7 +719,7 @@ export function mergeRecord(page: Page | null, jobs: SourceJob[], domain = page?
     .map((section) => {
       const rows: RecordRow[] = page ? orderSection(page, section, placedResearch).map((r) => ({ ...r, origin: null })) : [];
       for (const p of pages)
-        rows.push(...orderSection(p.page, section, p.placed).map((r) => ({ ...r, origin: { payer: p.job.payer, jobHref: p.job.jobHref } })));
+        rows.push(...orderSection(p.page, section, p.placed).map((r) => ({ ...r, origin: { payer: p.job.payer, jobHref: p.job.jobHref, raised: p.job.raised } })));
       return { section, rows };
     })
     .filter((s) => s.rows.length > 0);
@@ -845,4 +850,42 @@ export function droppedLines(page: Pick<Page, "dropped">, files: PriorLines[]): 
     const hit = resolvePriorRef(d.id, files);
     return { ...d, ref: hit.length === 1 ? hit[0]!.ref : d.id, text: hit.length === 1 ? hit[0]!.text : "" };
   });
+}
+
+/* ---------- Changes (artifacts/changes.json) ---------- */
+
+export interface ChangeVerdict {
+  n: number;
+  type: string;
+  target: string;
+  kept: boolean;
+  why: string;
+  lines: string[];
+  finalText: string;
+}
+export interface ChangesResult {
+  items: ChangeVerdict[];
+  /** The new sources and lines, read like an added-source result, with proofs (re-run steps given) and links. */
+  data: SourceLines;
+}
+export function parseChanges(text: string): ChangesResult {
+  const j = obj(JSON.parse(text));
+  return {
+    items: arr(j.items)
+      .slice(0, 200)
+      .map((x, i) => {
+        const o = obj(x);
+        const n = typeof o.n === "number" && Number.isFinite(o.n) ? o.n : Number(str(o.n, 8)) || i + 1;
+        return {
+          n,
+          type: str(o.type, 32).toLowerCase(),
+          target: str(o.target, 600),
+          kept: str(o.verdict, 32).toLowerCase() === "kept",
+          why: str(o.why, 400),
+          lines: arr(o.lines).map((l) => str(l, 64)).filter(Boolean),
+          finalText: str(o.final_text, 600),
+        };
+      }),
+    data: parseLines(text, { changes: true }),
+  };
 }

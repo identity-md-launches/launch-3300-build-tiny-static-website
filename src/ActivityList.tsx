@@ -6,17 +6,78 @@ import { outcomeOf, outcomeText, VERDICT_WORDS } from "./page";
 import { STANDING_WORDS, type RecordModel } from "./model";
 import { TEMPLATE_TITLES, type Template } from "./bodies";
 import { to } from "./route";
-import { isEditJob, isPageJob, isSourceJob, type Activity, type useActivity } from "./useActivity";
+import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity, type useActivity } from "./useActivity";
+import { CHANGE_WORDS, keyFactTarget, lineTarget, newChangeId, noTarget, parseItems, sentenceTarget, type ChangeTarget, type SentItem } from "./changes";
+import { resolveChangeTarget } from "./changeResult";
+import { useSuggest } from "./Suggest";
+import { useState } from "react";
 
 function what(a: Activity) {
   if (a.req.action !== ACTIONS.research) return `Question · ${TEMPLATE_TITLES[a.req.template as Template] ?? kindName(a.req.kind)}`;
   if (isSourceJob(a.req)) return "Sources";
   if (isEditJob(a.req)) return "Edit";
+  if (isChangesJob(a.req)) return "Changes";
   if (isPageJob(a.req)) return "Page rebuild";
   return "Job";
 }
 
-type Shown = Pick<RecordModel, "standing" | "after" | "editRefs">;
+type Shown = Pick<RecordModel, "standing" | "after" | "editRefs" | "resolve" | "pageHash">;
+
+/** A change not kept because nothing backed it: no link was given, or the job says no source supported it. */
+export const lackedSource = (item: Pick<SentItem, "links">, why: string) => item.links.length === 0 || /\b(source|sources|link|links|evidence)\b/i.test(why);
+
+/** Every change of a changes job, with "Kept" or "Not kept: <why>"; one not kept for lack of a source can go back in the tray. */
+function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
+  const s = useSuggest();
+  const [back, setBack] = useState<Set<number>>(() => new Set());
+  const sent = parseItems(a.req.bodyJson?.objective);
+  if (!sent.length) return null;
+  const putBack = (item: SentItem) => {
+    let target: ChangeTarget = noTarget();
+    if (item.targetKind === "sentence") target = sentenceTarget(item.text);
+    else if (item.targetKind !== "none") {
+      const id = item.ref ? resolveChangeTarget(item.ref, a, shown.pageHash, shown.after, (x) => !!shown.resolve(x)) : null;
+      if (item.targetKind === "keyfact") {
+        const i = item.text.indexOf(": ");
+        target = keyFactTarget(i > 0 ? item.text.slice(0, i) : item.text, i > 0 ? item.text.slice(i + 2) : "", id ?? "");
+      } else target = id ? lineTarget(id, item.text) : { kind: "line", key: `old:${item.text}`, lineId: "", text: item.text };
+    }
+    s.tray.put({ id: newChangeId(), type: item.type, target, note: item.note, links: item.links });
+    setBack((b) => new Set([...b, item.n]));
+  };
+  return (
+    <ul className="verdicts" aria-label="Each change and its verdict">
+      {sent.map((item) => {
+        const v = a.changes?.items.find((x) => x.n === item.n);
+        return (
+          <li key={item.n}>
+            <span className="small">{CHANGE_WORDS[item.type]}{item.text ? ":" : ""}</span>
+            {item.text && <span>“{item.text}”</span>}
+            {item.note && <span className="small">{item.type === "reword" ? "New sentence: " : "Note: "}{item.note}</span>}
+            {v ? (
+              v.kept ? (
+                <span className="verdict verdict-supported">Kept{v.type === "reword" && v.finalText ? `: “${v.finalText}”` : ""}</span>
+              ) : (
+                <span className="verdict verdict-unsupported">Not kept: {v.why || "no reason given"}</span>
+              )
+            ) : a.state === "completed" && a.changes ? (
+              <span className="small">No verdict given</span>
+            ) : null}
+            {v && !v.kept && lackedSource(item, v.why) && (
+              back.has(item.n) ? (
+                <span className="small" role="status">Back in your changes, at the bottom of the page.</span>
+              ) : (
+                <button type="button" className="linklike small" onClick={() => putBack(item)}>
+                  Add a link and try again
+                </button>
+              )
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 /** Shown now, folded in (its artifact URL is in the objective of the page shown), or not yet folded in. */
 function standing(a: Activity, shown: Shown): string {
@@ -26,7 +87,7 @@ function standing(a: Activity, shown: Shown): string {
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
-export function ActivityList({ items, error, loading, reload, shown }: ReturnType<typeof useActivity> & { shown: Shown }) {
+export function ActivityList({ items, error, loading, reload, shown }: ReturnType<typeof useActivity> & { shown: Shown; subject?: string }) {
   return (
     <section id="activity" className="tab" aria-labelledby="activity-title">
       <div className="section-head">
@@ -96,6 +157,10 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                     {a.edit.accepted.length ? `${a.edit.accepted.length} sentence${a.edit.accepted.length === 1 ? "" : "s"} accepted as the summary` : "No summary accepted"}
                     {` · ${a.edit.data.lines.length} new line${a.edit.data.lines.length === 1 ? "" : "s"}`}
                   </p>
+                )}
+                {isChangesJob(a.req) && <ChangeItems a={a} shown={shown} />}
+                {isChangesJob(a.req) && a.changes && (
+                  <p className="small">{onTop ? `${plural(a.changes.data.lines.length, "line")} added to the record` : `${plural(a.changes.data.lines.length, "line")} in result`}</p>
                 )}
                 {isSourceJob(a.req) && a.sources && (
                   <ul className="outcomes" aria-label="What each source gave">

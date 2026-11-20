@@ -12,7 +12,7 @@ import { fromStored, loadTaggedRequests, stateOf, getBlockTime, toStored, type C
 import { dropOldFileCache, kvGet, kvSet } from "./store";
 import { cacheGet, cacheSet, fetchLogo, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
-import { parseEdit, parseLines, parsePage, rejectionOf, type EditResult, type Page, type SourceLines } from "./page";
+import { parseChanges, parseEdit, parseLines, parsePage, rejectionOf, type ChangesResult, type EditResult, type Page, type SourceLines } from "./page";
 import { config } from "./wallet";
 import { domainOfId } from "./subject";
 
@@ -31,6 +31,8 @@ export interface Activity {
   sourcesError: string | null;
   /** A completed edit job's edit.json, hash-checked and parsed. */
   edit: EditResult | null;
+  /** A completed changes job's changes.json, hash-checked and parsed. */
+  changes?: ChangesResult | null;
   /** SHA-256 of a completed page, sources or edit job's result file: its artifact id, for <PRIOR>. */
   fileHash: string | null;
   /** A completed page job's page.json, hash-checked and parsed. */
@@ -61,6 +63,7 @@ export interface Activity {
 
 export const isSourceJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "source";
 export const isEditJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "edit";
+export const isChangesJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "changes";
 export const isPageJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "add";
 
 export interface SentTx {
@@ -134,6 +137,7 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, wi
   let sources: SourceLines | null = null;
   let sourcesError: string | null = null;
   let edit: EditResult | null = null;
+  let changes: ChangesResult | null = null;
   let fileHash: string | null = null;
   let page: Page | null = null;
   let via: Activity["via"] = null;
@@ -141,15 +145,18 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, wi
   let logo: string | null = null;
   let logoError: string | null = null;
   let logoHash: string | null = null;
-  const hasFiles = (isSourceJob(req) || isEditJob(req) || isPageJob(req)) && state === "completed" && !!completion;
+  const hasFiles = (isSourceJob(req) || isEditJob(req) || isPageJob(req) || isChangesJob(req)) && state === "completed" && !!completion;
   if (hasFiles && withFiles && completion) {
-    const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : "lines";
+    const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : isChangesJob(req) ? "changes" : "lines";
     try {
       const f = await fetchResearchPage(req, completion, jobId, name);
       fileHash = f.hash ?? null;
       rejected = rejectionOf(f.text);
       if (rejected !== null) rejected ||= "The job found no single real project and gave no notes.";
-      else if (name === "edit") {
+      else if (name === "changes") {
+        changes = parseChanges(f.text);
+        sources = changes.data;
+      } else if (name === "edit") {
         edit = parseEdit(f.text);
         sources = edit.data;
       } else if (name === "page") {
@@ -171,7 +178,7 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, wi
     }
   }
   const [time, ens, doneTime] = await Promise.all([timeOf(req), ensOf(req.payer), completion ? timeOf(completion) : Promise.resolve(null)]);
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: !hasFiles || withFiles };
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: !hasFiles || withFiles };
 }
 
 const SCAN_KEY = "intake";

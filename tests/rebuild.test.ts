@@ -81,7 +81,8 @@ describe("rebuild", () => {
     expect(t).not.toContain("Name the kept line in the dropped entry for an exact duplicate.");
     expect(t).not.toContain("in this order, leaving out any row no line supports");
     // Room is left for <PRIOR> and <SUBJECT> under the Intake's 7,500 characters.
-    expect(t.length).toBeLessThan(7000);
+    // Job 9 added the changes-result rule (78 characters); the room left for <PRIOR> is still checked by fitPrior.
+    expect(t.length).toBeLessThan(7100);
   });
   it("keeps the research action's tag and output, and fills <PRIOR> as a numbered list", () => {
     const b = rebuildBody(PRIOR, IMD);
@@ -233,7 +234,9 @@ describe("tabs", () => {
     expect(routeOf("#/")).toEqual({ subject: null, tab: "overview", target: null });
     expect(routeOf("#overview")).toEqual({ subject: "imd.fun", tab: "overview", target: null });
     expect(routeOf("#actions")).toEqual({ subject: "imd.fun", tab: "contribute", target: null });
-    expect(routeOf("#add-sources")).toEqual({ subject: "imd.fun", tab: "contribute", target: "add-sources" });
+    // Add sources and Suggest an edit are now one card, Suggest changes (job 9).
+    expect(routeOf("#add-sources")).toEqual({ subject: "imd.fun", tab: "contribute", target: "suggest-changes" });
+    expect(routeOf("#/s/example.com/suggest-edit")).toEqual({ subject: "example.com", tab: "contribute", target: "suggest-changes" });
     expect(routeOf("#activity")).toEqual({ subject: "imd.fun", tab: "activity", target: null });
     expect(routeOf("#rebuild")).toEqual({ subject: "imd.fun", tab: "contribute", target: "rebuild" });
     expect(routeOf("#line-L2")).toEqual({ subject: "imd.fun", tab: "record", target: "line-L2" });

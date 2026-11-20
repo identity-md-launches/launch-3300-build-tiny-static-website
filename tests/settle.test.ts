@@ -80,7 +80,7 @@ describe("settled lines", () => {
       "Link type is confirms only when the proof or panel answer establishes the whole sentence as written, including its tense: a value read at deployment confirms 'was X at launch', not 'is X'. Use partly when it establishes only part. Use contradicts when it shows the sentence is wrong.",
     );
     expect(t).toBe(REBUILD_TEMPLATE);
-    expect(t.length).toBeLessThan(7000);
+    expect(t.length).toBeLessThan(7100); // job 9 added the changes-result rule
   });
 
   it("the Record tab renders one row per settled line, led by its marker, with the speaker after", () => {

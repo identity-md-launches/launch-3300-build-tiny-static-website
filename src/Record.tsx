@@ -25,6 +25,8 @@ import {
 import { firstPageStatus, statusText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { StillReading } from "./Home";
+import { AddButtons, ChangePanel, Pencil, PendingTag, useSuggest } from "./Suggest";
+import { keyFactTarget, lineTarget, sentenceTarget } from "./changes";
 
 export type { Filter };
 const KINDS: Kind[] = ["proof", "statement", "claim"];
@@ -119,23 +121,42 @@ function KeyValue({ row }: { row: KeyRow }) {
 
 function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
   const { rows } = useKeyFacts(m);
+  const s = useSuggest();
   if (!rows.length) return null;
   return (
     <section className="keyfacts" aria-labelledby="keyfacts-title">
       <h2 id="keyfacts-title">Key facts</h2>
       <table>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              <th scope="row">{r.label}</th>
-              <td className="kf-value">
-                <KeyValue row={r} />
-              </td>
-              <td className="kf-badge">
-                <RowBadge r={r} ui={ui} />
-              </td>
-            </tr>
-          ))}
+          {rows.map((r, i) => {
+            const target = keyFactTarget(r.label, r.value || r.accounts.map((a) => a.name).join(", "), r.lines[0]?.id ?? "");
+            const src = r.lines[0]?.srcKeys[0];
+            const url = src ? m.sourceList.find((x) => x.key === src)?.url ?? "" : r.url;
+            return (
+              <Fragment key={i}>
+                <tr className="has-pencil">
+                  <th scope="row">{r.label}</th>
+                  <td className="kf-value">
+                    <KeyValue row={r} />
+                    <PendingTag targetKey={target.key} />
+                  </td>
+                  <td className="kf-badge">
+                    <RowBadge r={r} ui={ui} />
+                  </td>
+                  <td className="kf-edit">
+                    <Pencil target={target} label={`Suggest a change`} />
+                  </td>
+                </tr>
+                {s.open === target.key && (
+                  <tr className="kf-panel">
+                    <td colSpan={4}>
+                      <ChangePanel target={target} mode="line" sourceUrl={url} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </section>
@@ -203,26 +224,55 @@ export function SentenceDots({ lines, ui }: { lines: Line[]; ui: Ui }) {
   );
 }
 
+/** One summary sentence: hover highlights it; a click or Enter opens the change panel under its paragraph. */
+function Sentence({ text, active, onOpen }: { text: string; active: boolean; onOpen: () => void }) {
+  return (
+    <span
+      className={`sent${active ? " is-on" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-expanded={active}
+      aria-description="Suggest a change"
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      {text}
+    </span>
+  );
+}
+
 function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
+  const sg = useSuggest();
   if (!m.summary.length) return null;
   return (
     <div className="summary">
-      <div className="section-head">
-        <h2>Summary</h2>
-        <a className="btn btn-small" href={to("suggest-edit")}>
-          Edit
-        </a>
-      </div>
-      {paragraphsOf(m.summary).map((p, i) => (
-        <p key={i} className="prose">
-          {p.map((s, j) => (
-            <Fragment key={j}>
-              {s.text}
-              <SentenceDots lines={s.refs} ui={ui} />{" "}
-            </Fragment>
-          ))}
-        </p>
-      ))}
+      <h2>Summary</h2>
+      {paragraphsOf(m.summary).map((p, i) => {
+        const openHere = p.find((s) => sg.open === sentenceTarget(s.text).key);
+        return (
+          <Fragment key={i}>
+            <p className="prose">
+              {p.map((s, j) => {
+                const target = sentenceTarget(s.text);
+                return (
+                  <Fragment key={j}>
+                    <Sentence text={s.text} active={sg.open === target.key} onOpen={() => sg.setOpen(sg.open === target.key ? null : target.key)} />
+                    <SentenceDots lines={s.refs} ui={ui} />
+                    {s.rewordedBy && <span className="reworded small"> reworded by <span className="mono">{s.rewordedBy}</span></span>}
+                    <PendingTag targetKey={target.key} />{" "}
+                  </Fragment>
+                );
+              })}
+            </p>
+            {openHere && <ChangePanel key={openHere.text} target={sentenceTarget(openHere.text)} mode="sentence" rests={openHere.refs} />}
+          </Fragment>
+        );
+      })}
       <p className="small">
         {m.edit ? (
           <>
@@ -302,7 +352,7 @@ function Related({ m, ui, subjects }: { m: RecordModel; ui: Ui; subjects: Findab
   );
 }
 
-export function OverviewTab({ m, ui, items, price, subjects, chainError = null, retrying = false, readingFiles = false }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean }) {
+export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean }) {
   const { page, latest, error } = m;
   const name = page?.name || m.subject.id;
   // The same first-page status Home shows for this subject: in progress, refused, failed or no project found.
@@ -365,30 +415,23 @@ export function OverviewTab({ m, ui, items, price, subjects, chainError = null, 
           <Summary m={m} ui={ui} />
           {page && !m.summary.length && (
             <p className="small">
-              This page has no summary yet. <a href={to("suggest-edit")}>Suggest one</a> or read the lines in <a href={to("record")}>Record</a>.
+              This page has no summary yet. Read the lines in <a href={to("record")}>Record</a>; the next rebuild writes one.
             </p>
           )}
         </div>
       )}
 
-      <div className="row-actions">
-        <a className="btn btn-primary" href={to("rebuild")}>
-          {page ? "Rebuild the page" : "Create the page"}
-        </a>
-        <a className="btn" href={to("contribute")}>
-          Contribute
-        </a>
-        <span className="price mono">{price}</span>
-      </div>
-
-      <div className="card">
-        <h2>Help build this record</h2>
-        <div className="row-actions">
-          <a className="btn" href={to("confirm")}>Confirm a fact</a>
-          <a className="btn" href={to("add-sources")}>Add sources</a>
-          <a className="btn" href={to("suggest-edit")}>Suggest an edit</a>
+      {page ? (
+        <div className="card quiet" id="suggest">
+          <h2>Something wrong or missing?</h2>
+          <p>Hover any row or click a sentence to suggest a change. Changes are checked by the swarm before they appear.</p>
+          <AddButtons where="overview" />
         </div>
-      </div>
+      ) : null}
+      <p className="more-links small">
+        <a href={to("confirm")}>Ask a panel to check a fact</a>
+        <a href={to("rebuild")}>{page ? "Rebuild the page" : "Create the page"}</a>
+      </p>
     </section>
   );
 }
@@ -436,7 +479,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
       : line.kind === "statement"
         ? `Statement: published on ${line.channel?.label || line.channel?.url || "a channel of the subject"}, labelled “${line.channel ? statusWord(line.channel, ctx.m.page?.domain ?? ctx.m.subject.domain) : STATUS_WORDS.unverified}”.`
         : `Claim: said by ${line.by || "someone other than the subject"}, not on an Own domain or Verified on chain channel of the subject.`;
-  const job = origin ? { what: "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
+  const job = origin ? { what: origin.raised ? "A changes job a visitor raised" : "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
   return (
     <div className="details" id={id}>
       <dl className="facts">
@@ -560,7 +603,7 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
   return (
     <ul className="settled">
       {links.map((k, i) => {
-        const word = k.type === "confirms" ? "Confirmed by" : k.type === "partly" ? "Partly confirmed by" : "Contradicted by";
+        const word = k.type === "confirms" ? "Confirmed by" : k.type === "partly" ? "Partly confirmed by" : k.type === "context" ? "Context" : "Contradicted by";
         const target = ctx.m.resolve(k.target);
         const answer = target ? null : ctx.m.answerRef(k.target);
         let body: React.ReactNode = <span className="mono">{k.target}</span>;
@@ -579,7 +622,7 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
         else if (answer) body = answer.activity ? <a href={to(panelAnchor(answer.activity))}>{answer.text}</a> : <span>{answer.text}</span>;
         return (
           <li key={i} className={`settled-${k.type}`}>
-            <span className="settled-word">{word}:</span> {body}
+            <span className="settled-word">{word}:</span> {k.type === "context" ? <span className="block">{body}</span> : body}
           </li>
         );
       })}
@@ -642,8 +685,11 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
   const toggle = () => ctx.ui.toggle(line.id);
   const s = ctx.settled.by.get(line.id);
   const settled = s && (s.state === "proven" || s.state === "contradicted") ? s : null;
+  const sg = useSuggest();
+  const target = lineTarget(line.id || line.text.slice(0, 40), line.text);
+  const srcUrl = line.srcKeys.map((k) => ctx.numbers.get(k)?.url).find(Boolean) ?? "";
   return (
-    <li className={`row${row.differsWith ? ` row-differs row-${row.level}` : ""}${settled ? ` row-${settled.state}` : ""}${open ? " is-open" : ""}`} id={anchor}>
+    <li className={`row has-pencil${row.differsWith ? ` row-differs row-${row.level}` : ""}${settled ? ` row-${settled.state}` : ""}${open ? " is-open" : ""}`} id={anchor}>
       <DiffersNote row={row} facts={facts} />
       <div className="row-main" onClick={onRowClick(toggle)}>
         <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={toggle}>
@@ -678,18 +724,23 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
                 {showBy && <span className="by">{line.by}</span>}
               </>
             )}
+            {row.origin?.raised && <span className="by small">raised by {row.origin.payer}</span>}
           </span>
         </button>
         <SourceNumbers keys={line.srcKeys} numbers={ctx.numbers} />
+        <Pencil target={target} />
       </div>
+      <PendingTag targetKey={target.key} />
       <LinkNotes line={line} ctx={ctx} />
       {open && <Details row={row} ctx={ctx} id={`${anchor}-d`} />}
+      {sg.open === target.key && <ChangePanel target={target} mode="line" sourceUrl={srcUrl} />}
     </li>
   );
 }
 
 /** Every proof line that carries "fact", in one table under On chain: name, value with unit, chain and block. */
 function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
+  const sg = useSuggest();
   return (
     <table className="fact-table">
       <caption className="sr-only">On-chain facts</caption>
@@ -706,14 +757,16 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
           const anchor = lineAnchor(row.line.id || f.name);
           const open = ctx.ui.openSet.has(row.line.id);
           const toggle = () => ctx.ui.toggle(row.line.id);
+          const target = lineTarget(row.line.id || f.name, `${f.name}: ${f.value}${f.unit ? ` ${f.unit}` : ""}`);
           return (
             <Fragment key={row.line.id || f.name}>
-              <tr id={anchor} className={`fact-row${open ? " is-open" : ""}`} onClick={onRowClick(toggle)}>
+              <tr id={anchor} className={`fact-row has-pencil${open ? " is-open" : ""}`} onClick={onRowClick(toggle)}>
                 <th scope="row">
                   <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={toggle}>
                     <span className="chev" aria-hidden="true" />
                     <span className="row-text">{f.name}</span>
                   </button>
+                  <PendingTag targetKey={target.key} />
                 </th>
                 <td data-label="Value" className="num">
                   {f.value}
@@ -728,8 +781,16 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                   ) : (
                     ", block not given"
                   )}
+                  <Pencil target={target} />
                 </td>
               </tr>
+              {sg.open === target.key && (
+                <tr className="fact-details">
+                  <td colSpan={3}>
+                    <ChangePanel target={target} mode="line" sourceUrl={ctx.numbers.get(row.line.srcKeys[0] ?? "")?.url ?? ""} />
+                  </td>
+                </tr>
+              )}
               {row.line.links.length > 0 && (
                 <tr className="fact-links">
                   <td colSpan={3}>
@@ -961,6 +1022,9 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
             </div>
           ))}
           {counts.all > 0 && shown.length === 0 && <p className="small">{narrowing ? "No lines match." : `No ${FILTER_WORDS[filter].toLowerCase()} lines.`}</p>}
+          <div className="add-row">
+            <AddButtons where="record" />
+          </div>
           <OtherChannels m={m} />
           {page && page.openQuestions.length > 0 && (
             <div className="card">

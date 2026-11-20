@@ -35,7 +35,8 @@ import {
   type Verdict,
 } from "./page";
 import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
-import { isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
+import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
+import { applyChangeLinks, applyRewords } from "./changeResult";
 import type { KnownContract } from "./lookup";
 
 export interface Accounting {
@@ -53,6 +54,9 @@ export interface Accounting {
 /** A summary sentence with the record lines its references name, each resolved in its own scope. */
 export interface ShownSentence extends SummarySentence {
   refs: Line[];
+  /** Set when a kept reword from a changes job replaced this sentence. */
+  rewordedBy?: string;
+  original?: string;
 }
 
 /** Whether every input of <PRIOR> was read: the chain, the page shown, each result not folded in and each panel answer. */
@@ -65,7 +69,7 @@ export interface Snapshot {
 }
 
 const completionOrder = (a: Activity, b: Activity) => completedBefore(a.completion!, b.completion!);
-const isResult = (a: Activity) => (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req)) && a.state === "completed" && !!a.completion && !a.rejected;
+const isResult = (a: Activity) => (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req) || isChangesJob(a.req)) && a.state === "completed" && !!a.completion && !a.rejected;
 /** Completed jobs whose file says found: false, oldest first. */
 export const rejectedOf = (items: Activity[]) =>
   items.filter((a) => a.rejected && a.state === "completed" && a.completion).sort(completionOrder);
@@ -101,11 +105,12 @@ export function coreOf(items: Activity[]): Core {
   const results = done.filter((a) => a !== latest);
   const folded = new Set(results.filter((a) => isFoldedInto(a, latest)).map((a) => a.req.requestId));
   const unfolded = results.filter((a) => !folded.has(a.req.requestId));
-  const after = unfolded.filter((a) => isSourceJob(a.req) || isEditJob(a.req));
+  const after = unfolded.filter((a) => isSourceJob(a.req) || isEditJob(a.req) || isChangesJob(a.req));
   const jobs: SourceJob[] = after
     .filter((a) => a.sources)
-    .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash) }));
-  const sections = mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? ""));
+    .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash), raised: isChangesJob(a.req) }));
+  // A changes result's new lines point at the line they are about; the target row shows what each does to it.
+  const sections = applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), after, latest?.fileHash ?? null);
   return { latest, page, results, folded, unfolded, after, jobs, sections, counts: countKinds(sections) };
 }
 
@@ -296,7 +301,7 @@ export interface Digest {
 /** The completed page, sources and edit results of a subject, as one string: what a digest was taken from. */
 export const resultSig = (list: Activity[]) =>
   list
-    .filter((a) => (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req)) && a.state === "completed")
+    .filter((a) => (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req) || isChangesJob(a.req)) && a.state === "completed")
     .map((a) => a.req.requestId.toLowerCase())
     .sort()
     .join(",");
@@ -461,12 +466,13 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
       return line ? [line] : [];
     });
   };
-  const summary: ShownSentence[] = edit
+  const written: ShownSentence[] = edit
     ? edit.result.accepted.map((s) => {
         const v = edit.result.sentences.find((x) => (x.corrected || x.text).trim() === s.text.trim() || x.text.trim() === s.text.trim());
         return { ...s, refs: editRefs(edit.activity, s.lines, v ? v.verdict : null) };
       })
     : (page?.summary ?? []).map((s) => ({ ...s, refs: s.lines.flatMap((id) => (byId.has(id.trim()) ? [byId.get(id.trim())!] : [])) }));
+  const summary: ShownSentence[] = applyRewords(written, after);
 
   const answerRef = (target: string) => {
     const m = /^A(\d+)$/i.exec(target.trim());

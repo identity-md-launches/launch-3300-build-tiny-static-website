@@ -322,7 +322,7 @@ export function parsePrior(objective: unknown): { files: { n: number; url: strin
   if (typeof objective !== "string") return out;
   // From the last marker: in an edit the visitor's text comes first and may quote these words.
   const at = Math.max(...["Start from the earlier results: ", "The record so far: "].map((k) => objective.lastIndexOf(k)));
-  const m = at < 0 ? null : /^(?:Start from the earlier results: |The record so far: )([\s\S]*?)\. (?:Fetch each file\.|Extra sources from the visitor:)/.exec(objective.slice(at));
+  const m = at < 0 ? null : /^(?:Start from the earlier results: |The record so far: )([\s\S]*?)\. (?:Fetch each file\.|Extra sources from the visitor:|The subject's channels:)/.exec(objective.slice(at));
   if (!m || m[1] === "none") return out;
   const re = /\[(F|A)(\d+)\] ([\s\S]*?)(?=; \[[FA]\d+\] |$)/g;
   for (const x of m[1]!.matchAll(re)) {

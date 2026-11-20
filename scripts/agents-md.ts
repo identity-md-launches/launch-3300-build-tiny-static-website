@@ -5,6 +5,7 @@
 import { writeFileSync } from "node:fs";
 import { describeSubject, refFromId, refFromInput } from "../src/subject";
 import { ACTIONS, API, IMD, INTAKE, TOPIC_COMPLETED, TOPIC_REQUESTED, APP_TAG } from "../src/config";
+import { CHANGES_TEMPLATE, CHANGE_MAX_LINKS, NOTE_MAX, READ_MAX_LINKS, changesBody, itemsText, lineTarget, noTarget, sentenceTarget, type Change } from "../src/changes";
 import { LEGACY_PRESETS, filedUnder, questionContract, questionPage, questionPost, templateBody, SOURCE_TEMPLATE, EDIT_TEMPLATE, REBUILD_TEMPLATE, EDIT_MAX_LINKS, EDIT_MAX_TEXT, editBody, encodeBody, oracleBody, priorText, questionP4, rebuildBody, sourceBody, SOURCE_MAX_LINKS, SOURCE_MAX_URL, SOURCE_MAX_OBJECTIVE } from "../src/bodies";
 
 const fence = (s: string, lang = "") => "```" + lang + "\n" + s + "\n```";
@@ -16,6 +17,11 @@ const src = sourceBody(["<URL 1>", "<URL 2>"], [{ url: "<CHANNEL URL 1>", tie: "
 void SUBJ;
 void subjText;
 const none = { files: [], answers: [] };
+const EXAMPLE_CHANGES: Change[] = [
+  { id: "1", type: "wrong", target: lineTarget("L3", "The token has a fixed supply of 1 billion."), note: "The supply was raised to 1.2 billion in March.", links: ["https://example.com/blog/supply"] },
+  { id: "2", type: "reword", target: sentenceTarget("It is run by a small team."), note: "It is run by a team of three named founders.", links: [] },
+  { id: "3", type: "links", target: noTarget(), note: "", links: ["https://example.com/docs", "https://example.org/review"] },
+];
 const example = {
   files: ["https://api.imd.fun/artifacts/<PAGE HASH>", "https://api.imd.fun/artifacts/<SOURCES HASH>"],
   answers: [{ title: "imd.fun/docs says that a job costs 0.5 IMD", answer: "true", agreed: 5, size: 5, url: "https://explorer.imd.fun/jobs/<JOB ID>" }],
@@ -23,8 +29,9 @@ const example = {
 const md = `# On the record (test): for agents
 
 This site keeps a public record page for any project. Anyone can pay the IMD swarm from their own wallet, on
-Ethereum mainnet (chain 1), to create or rebuild a project's page, to add sources to it, to suggest new summary
-text, or to have a panel confirm one fact. There is no backend. Everything below is what the site itself sends
+Ethereum mainnet (chain 1), to create or rebuild a project's page, to send a batch of suggested changes to it
+(what is wrong, context, a source that backs a line up, a reworded summary sentence, a missing line, links to
+read), or to have a panel confirm one fact. There is no backend. Everything below is what the site itself sends
 and reads.
 
 ## Subjects
@@ -82,8 +89,9 @@ ${fence(describeSubject(EXAMPLE_REF))}
 | Action | Id |
 | --- | --- |
 | Rebuild the page | \`${ACTIONS.research}\` (tag kind \`add\`, outputs \`artifacts/page.json\` and \`artifacts/logo.png\`) |
-| Add sources | \`${ACTIONS.research}\` (tag kind \`source\`, output \`artifacts/lines.json\`) |
-| Suggest an edit | \`${ACTIONS.research}\` (tag kind \`edit\`, output \`artifacts/edit.json\`) |
+| Suggest changes | \`${ACTIONS.research}\` (tag kind \`changes\`, output \`artifacts/changes.json\`) |
+| Add sources (older; no longer offered, results still read) | \`${ACTIONS.research}\` (tag kind \`source\`, output \`artifacts/lines.json\`) |
+| Suggest an edit (older; no longer offered, results still read) | \`${ACTIONS.research}\` (tag kind \`edit\`, output \`artifacts/edit.json\`) |
 | Confirm a fact | \`${ACTIONS.oracle}\` |
 
 ## Paying, in order
@@ -152,7 +160,41 @@ When that page also dropped lines from a file of the rebuild that produced it, t
 
 ${fence(priorText({ ...example, reconsider: ["https://api.imd.fun/artifacts/<HASH OF A FILE THE PAGE DROPPED LINES FROM>"] }))}
 
-## Suggest an edit body (\`${ACTIONS.research}\`)
+## Suggest changes body (\`${ACTIONS.research}\`)
+
+A visitor collects changes in a tray (kept in the browser per subject) and sends them as ONE request, one payment:
+
+${fence(encodeBody({ ...changesBody([], none, [], IMD_REF, () => ""), tag: { app: APP_TAG, kind: "changes", subject: "<subject id>" }, objective: "<CHANGES_OBJECTIVE>" }), "json")}
+
+\`<CHANGES_OBJECTIVE>\` is this text. \`<SUBJECT>\` is filled as above, \`<PRIOR>\` is the same list as for a rebuild
+without files to reconsider (F1 is the page shown, then every result not folded in), \`<CHANNELS>\` is the
+subject's channels as \`url (tie: strong|weak|none)\`, comma-separated (\`none known\` without any), and \`<ITEMS>\`
+is the numbered list of changes.
+
+${fence(CHANGES_TEMPLATE)}
+
+Each item is \`(n) type: <type>; target: <target>; note: <JSON string or none>; links: <space-separated https links or none>\`,
+items separated by one space. Types: \`wrong\`, \`context\`, \`backing\` (a record line or key fact), \`reword\`
+(a summary sentence; the note is the new sentence), \`new_line\` and \`links\` (no target). The target is
+\`F<n>:<line id> "<line text>"\` for a line (its file in \`<PRIOR>\`), \`F<n>:<line id> key fact "<Label: value>"\` for a key
+facts row, \`summary sentence "<text>"\`, or \`none\`. A note is at most ${NOTE_MAX} characters; a change has at most
+${CHANGE_MAX_LINKS} links (\`links\`: up to ${READ_MAX_LINKS}). Example:
+
+${fence(itemsText(EXAMPLE_CHANGES, (id) => (id === "L3" ? "F1:L3" : "")))}
+
+The whole objective must stay under 7,500 characters; the site shows "room for about N more" from that limit.
+
+A changes job writes \`artifacts/changes.json\`: \`items[{n,type,target,verdict,why,lines[],final_text}]\` (verdict
+\`kept\` or \`not_kept\`), \`sources[{id,url,type,publisher,published_at,read_at,could_open,read_via,about_subject}]\`,
+\`lines[{id,source,section,text,kind,by,quote,rerun,fact{name,value,unit},links[{type,target}]}]\` and \`notes\`. The
+site shows its new lines in the record, "raised by <payer>", labelled by the same rule as added-source lines (a proof
+only with re-run steps). Each new line's link names its target; the target row shows "Contradicted by", "Confirmed by",
+"Partly confirmed by" or "Context:" with the new line under it, and a new proof settles the target as Proven or
+Contradicted by the settled-line rules. A kept \`reword\` replaces that summary sentence with \`final_text\`, marked
+"reworded by <payer>". Activity lists every change with "Kept" or "Not kept: <why>". A rebuild folds changes results
+in like sources results, keeping their links (link types \`confirms\`, \`partly\`, \`contradicts\`, \`context\`).
+
+## Suggest an edit body (older: no longer offered; its results still show and fold in)
 
 ${fence(encodeBody({ ...editBody("x", none, [], IMD_REF), objective: "<EDIT_OBJECTIVE>" }), "json")}
 
@@ -162,7 +204,7 @@ spaces collapsed, paragraphs separated by one blank line), \`<PRIOR>\` is the sa
 
 ${fence(EDIT_TEMPLATE)}
 
-## Add sources body (\`${ACTIONS.research}\`), in full
+## Add sources body (older: no longer offered; its results still show and fold in), in full
 
 ${fence(encodeBody({ ...src, objective: "<SOURCE_OBJECTIVE>" }), "json")}
 
@@ -315,7 +357,7 @@ No wallet is needed for any of these.
   \`admission.result.requestId\` for oracle questions.
 - **Job result:** \`GET ${API}/jobs/<jobId>/result\` lists \`files[]\` with \`name\`, \`hash\`. A rebuild writes
   the file \`page\` (\`artifacts/page.json\`), sources write \`lines\` (\`artifacts/lines.json\`), an edit writes
-  \`edit\` (\`artifacts/edit.json\`).
+  \`edit\` (\`artifacts/edit.json\`), a changes job writes \`changes\` (\`artifacts/changes.json\`).
 - **File bytes:** \`GET ${API}/artifacts/<hash>\`. The SHA-256 of the bytes must equal \`hash\`.
 - **Fallback:** the completion's \`uri\` (\`ipfs://<CID>/result.json\`) through an IPFS gateway; its bytes must
   hash (keccak-256) to the event's \`resultHash\`, then fetch the named file as above.

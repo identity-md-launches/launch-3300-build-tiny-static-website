@@ -26,7 +26,9 @@ function inSubject(h: string): { tab: Tab; target: string | null } {
   if (!h) return { tab: "overview", target: null };
   if (TABS.some((t) => t.id === h)) return { tab: h as Tab, target: null };
   if (h === "actions") return { tab: "contribute", target: null };
-  if (h === "add-sources" || h === "suggest-edit" || h === "rebuild" || h === "confirm") return { tab: "contribute", target: h };
+  // The old Add sources and Suggest an edit cards are now one "Suggest changes" card.
+  if (h === "add-sources" || h === "suggest-edit" || h === "suggest-changes") return { tab: "contribute", target: "suggest-changes" };
+  if (h === "rebuild" || h === "confirm") return { tab: "contribute", target: h };
   if (h.startsWith("line-") || h === "dropped" || h === "unaccounted" || h.startsWith("panel-") || h === "panel-answers" || h === "other-channels")
     return { tab: "record", target: h };
   if (h.startsWith("source-")) return { tab: "sources", target: h };
