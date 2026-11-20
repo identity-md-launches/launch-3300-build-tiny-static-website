@@ -106,7 +106,7 @@ const LABELS = [
 ] as const;
 
 const STEPS = [
-  { word: "Add", text: "a project, a batch of links, or an edit to a summary." },
+  { word: "Contribute", text: "add a project or suggest changes to its record." },
   { word: "The swarm checks", text: "a research job reads the sources; a panel of agents answers single yes or no questions." },
   { word: "Everyone reads", text: "a short summary on top, every line and its source underneath." },
 ];

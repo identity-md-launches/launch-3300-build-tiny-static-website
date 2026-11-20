@@ -13,7 +13,9 @@ import {
   PANEL_WORDS,
   READ_MAX_LINKS,
   changesBody,
+  changesObjective,
   cleanNote,
+  fitChangesPrior,
   hasSource,
   makeRefOf,
   newChangeId,
@@ -30,8 +32,17 @@ import {
 import { holdFocus } from "./modal";
 import { lineAnchor } from "./format";
 import { to } from "./route";
+import { lineInFile, originOfLine } from "./changeResult";
+import type { Prior } from "./bodies";
 import type { RecordModel } from "./model";
 import type { Line } from "./page";
+
+/** The research price as the tray shows it, read again when the tray opens, when Review opens and while it is open. */
+export interface Quote {
+  text: string;
+  failed: boolean;
+  refresh: () => void;
+}
 
 /** The one Ask shape PayDialog takes (kept here so the tray can build one without importing App). */
 export interface ChangesAsk {
@@ -52,13 +63,35 @@ interface SuggestState {
   /** The key of the target whose panel is open, or null. */
   open: string | null;
   setOpen: (key: string | null) => void;
+  /** Each saved change's target as the record shows it now (by change id), or null when its row is gone. */
+  live: Map<string, ChangeTarget | null>;
 }
 const Ctx = createContext<SuggestState | null>(null);
 
-export function SuggestProvider({ subject, children }: { subject: string; children: React.ReactNode }) {
+/**
+ * Where a saved change's target is now. A line is found by the file and line id saved with the change: in the page
+ * shown, in a job not folded in, or through the from origins of a rebuild that carried it forward (its id may have
+ * changed). Null when it is no longer shown: the visitor chooses the row again before submitting.
+ */
+export function liveTarget(rec: Pick<RecordModel, "scope" | "resolve">, t: ChangeTarget): ChangeTarget | null {
+  if (t.kind === "sentence" || t.kind === "none") return t;
+  if (t.kind === "keyfact" && !t.lineId && !t.file) return t;
+  const has = (x: string) => !!rec.resolve(x);
+  let id: string | null = null;
+  if (t.file && t.fileLine) id = lineInFile(t.file, t.fileLine, rec.scope, has);
+  // A draft saved before files were kept with it: only while that id still names the same sentence.
+  else if (t.lineId && has(t.lineId) && (t.kind === "keyfact" || rec.resolve(t.lineId)!.text === t.text)) id = t.lineId;
+  if (!id) return null;
+  return t.kind === "line" ? { ...t, lineId: id, key: `line:${id}` } : { ...t, lineId: id };
+}
+
+export function SuggestProvider({ subject, rec, children }: { subject: string; rec: Pick<RecordModel, "scope" | "resolve" | "sections">; children: React.ReactNode }) {
   const tray = useTray(subject);
   const [open, setOpen] = useState<string | null>(null);
-  const value = useMemo(() => ({ subject, tray, open, setOpen }), [subject, tray, open]);
+  // rec.resolve is new on every render; the record's sections and scope are what it reads.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const live = useMemo(() => new Map(tray.list.map((c) => [c.id, liveTarget(rec, c.target)] as const)), [tray.list, rec.sections, rec.scope]);
+  const value = useMemo(() => ({ subject, tray, open, setOpen, live }), [subject, tray, open, live]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -69,7 +102,7 @@ export function useSuggest(): SuggestState {
 }
 
 /** The pending change about this target, if any. */
-export const pendingFor = (s: SuggestState, key: string) => s.tray.list.find((c) => c.target.key === key) ?? null;
+export const pendingFor = (s: SuggestState, key: string) => s.tray.list.find((c) => s.live.get(c.id)?.key === key) ?? null;
 
 /* ---------- The pencil and the pending tag ---------- */
 
@@ -130,9 +163,15 @@ export function ChangePanel({ target, mode, rests = [], sourceUrl = "", onClose 
   const ref = useRef<HTMLDivElement>(null);
   const max = type === "links" ? READ_MAX_LINKS : CHANGE_MAX_LINKS;
   const plan = useMemo(() => planLinks(links, max), [links, max]);
+  // The pencil, sentence, Edit or add button that opened the panel: focus goes back there when it closes.
+  const opener = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);
   const close = () => {
     s.setOpen(null);
     onClose?.();
+    const back = opener.current;
+    requestAnimationFrame(() => {
+      if (back instanceof HTMLElement && back.isConnected && back !== document.body) back.focus({ preventScroll: true });
+    });
   };
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>("input:checked, textarea")?.focus({ preventScroll: true });
@@ -258,34 +297,64 @@ export function AddButtons({ where }: { where: string }) {
 
 /* ---------- The tray: the bar, and the review ---------- */
 
-/** The <PRIOR> file reference of each record line, for <ITEMS>. */
-export function refOfModel(rec: RecordModel) {
+/**
+ * The changes job's own <PRIOR> and body. The file of every row a change targets is reserved first (see
+ * fitChangesPrior), so each target carries its file number and line id. A change whose row is gone after a rebuild
+ * (gone), or whose file does not fit (unplaced), holds the submission until the visitor fixes it.
+ */
+export function planChanges(rec: Pick<RecordModel, "pageHash" | "after" | "scope" | "results" | "answers" | "channels" | "subject">, list: Change[], live: Map<string, ChangeTarget | null>) {
+  const changes = list.map((c) => {
+    const t = live.get(c.id);
+    return t ? { ...c, target: t } : c;
+  });
+  const gone = new Set(list.filter((c) => live.get(c.id) === null).map((c) => c.id));
+  const pageUrl = rec.pageHash ? artifactUrl(rec.pageHash) : null;
   const jobFiles = new Map(rec.after.filter((a) => a.fileHash).map((a) => [a.req.requestId, artifactUrl(a.fileHash!)] as const));
-  return makeRefOf(rec.prior, rec.pageHash ? artifactUrl(rec.pageHash) : null, jobFiles);
+  const targeted = changes.filter((c) => !gone.has(c.id) && (c.target.kind === "line" || c.target.kind === "keyfact") && c.target.lineId);
+  const required = targeted.flatMap((c) => {
+    const o = originOfLine(c.target.lineId, rec.scope);
+    return o ? [artifactUrl(o.file)] : [];
+  });
+  const measure = (p: Prior) => changesObjective(changes, p, rec.channels, rec.subject, makeRefOf(p, pageUrl, jobFiles)).length;
+  const fit = fitChangesPrior(pageUrl, rec.results, rec.answers, required, measure);
+  const refOf = makeRefOf(fit.prior, pageUrl, jobFiles);
+  const body = changesBody(changes, fit.prior, rec.channels, rec.subject, refOf);
+  const unplaced = new Set(targeted.filter((c) => !refOf(c.target.lineId)).map((c) => c.id));
+  return { body, refOf, gone, unplaced, room: roomLeft(body.objective.length, changes, refOf), over: body.objective.length >= MAX_OBJECTIVE };
 }
 
-export function useChangesPlan(rec: RecordModel, list: Change[]) {
-  return useMemo(() => {
-    const refOf = refOfModel(rec);
-    const body = changesBody(list, rec.prior, rec.channels, rec.subject, refOf);
-    return { body, refOf, room: roomLeft(body.objective.length, list, refOf), over: body.objective.length >= MAX_OBJECTIVE };
-  }, [rec, list]);
+export function useChangesPlan(rec: RecordModel, list: Change[], live: Map<string, ChangeTarget | null>) {
+  return useMemo(() => planChanges(rec, list, live), [rec, list, live]);
 }
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+/** How often the tray reads the price again while it is shown. */
+export const PRICE_EVERY_MS = 30_000;
 
-export function TrayBar({ rec, price, onAsk }: { rec: RecordModel; price: string; onAsk: (a: ChangesAsk) => void }) {
+export function TrayBar({ rec, quote, onAsk }: { rec: RecordModel; quote: Quote; onAsk: (a: ChangesAsk) => void }) {
   const s = useSuggest();
   const list = s.tray.list;
   const [review, setReview] = useState(false);
-  const plan = useChangesPlan(rec, list);
+  const plan = useChangesPlan(rec, list, s.live);
   const on = list.length > 0;
+  const { refresh } = quote;
   useEffect(() => {
     document.body.classList.toggle("has-tray", on);
     return () => document.body.classList.remove("has-tray");
   }, [on]);
+  // The price is read when the tray first shows, and again every 30 seconds while it stays.
+  useEffect(() => {
+    if (!on) return;
+    refresh();
+    const t = setInterval(refresh, PRICE_EVERY_MS);
+    return () => clearInterval(t);
+  }, [on, refresh]);
   if (!on) return null;
   const withSource = list.filter(hasSource).length;
+  const openReview = () => {
+    refresh();
+    setReview(true);
+  };
   return (
     <>
       <div className="tray" role="region" aria-label="Your changes">
@@ -297,50 +366,79 @@ export function TrayBar({ rec, price, onAsk }: { rec: RecordModel; price: string
               <span aria-hidden="true"> · </span>
               {plan.over ? "over the 7,500-character limit" : `room for about ${plan.room} more`}
               <span aria-hidden="true"> · </span>
-              <span className="mono">{price}</span>
+              <span className="mono">{quote.text}</span>
+              {quote.failed && (
+                <>
+                  {" "}
+                  <button type="button" className="linklike small tray-retry" onClick={refresh}>
+                    Retry
+                  </button>
+                </>
+              )}
             </span>
           </p>
-          <button type="button" className="btn btn-tray" onClick={() => setReview(true)}>
+          <button type="button" className="btn btn-tray" onClick={openReview}>
             Review and submit
           </button>
         </div>
       </div>
-      {review && <Review rec={rec} price={price} onClose={() => setReview(false)} onAsk={onAsk} />}
+      {review && <Review rec={rec} quote={quote} onClose={() => setReview(false)} onAsk={onAsk} />}
     </>
   );
 }
 
-function AddLink({ change }: { change: Change }) {
+/**
+ * The links of one change in Review: Add a link when it has none, Edit links when it has some. A change put back
+ * after it was not kept for lack of a source opens with its previous links, to replace or remove them.
+ */
+function LinkEditor({ change }: { change: Change }) {
   const s = useSuggest();
-  const [open, setOpen] = useState(false);
-  const [v, setV] = useState("");
+  const max = change.type === "links" ? READ_MAX_LINKS : CHANGE_MAX_LINKS;
+  const [open, setOpen] = useState(!!change.retry && change.links.length > 0);
+  const [v, setV] = useState(change.links.join("\n"));
   const [err, setErr] = useState("");
   const id = useId();
   if (!open)
     return (
       <button type="button" className="linklike small" onClick={() => setOpen(true)}>
-        Add a link
+        {change.links.length ? "Edit links" : "Add a link"}
       </button>
     );
   const save = () => {
-    const p = planLinks(v, CHANGE_MAX_LINKS);
-    if (!p.links.length) return setErr(p.rejected[0] ? `Not used: ${p.rejected[0].why}.` : "Paste an https link.");
-    s.tray.put({ ...change, links: p.links });
+    const p = planLinks(v, max);
+    if (p.rejected.length) return setErr(`Fix or remove: ${p.rejected[0]!.line.slice(0, 60)} (${p.rejected[0]!.why}).`);
+    if (!p.links.length && (change.type === "backing" || change.type === "links")) return setErr("Paste at least one https link.");
+    s.tray.put({ ...change, links: p.links, retry: undefined });
+    setErr("");
+    setOpen(false);
   };
   return (
-    <span className="addlink">
-      <label htmlFor={id} className="sr-only">Link</label>
-      <input id={id} type="url" inputMode="url" placeholder="https://example.com/article" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())} autoFocus aria-invalid={!!err} />
-      <button type="button" className="btn btn-small" onClick={save}>Save link</button>
-      {err && <span className="error block">{err}</span>}
+    <span className="addlink block">
+      <label htmlFor={id} className="small block">
+        {change.retry ? "Replace or remove the links it was sent with" : "Links"}, one per line (up to {max})
+      </label>
+      <textarea id={id} rows={Math.min(Math.max(change.links.length, 2), 6)} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/article" value={v} onChange={(e) => setV(e.target.value)} aria-invalid={!!err} aria-describedby={err ? `${id}-err` : undefined} />
+      <span className="row-actions">
+        <button type="button" className="btn btn-small" onClick={save}>
+          Save links
+        </button>
+        <button type="button" className="btn btn-small" onClick={() => (setOpen(false), setV(change.links.join("\n")), setErr(""))}>
+          Cancel
+        </button>
+      </span>
+      {err && (
+        <span id={`${id}-err`} className="error block">
+          {err}
+        </span>
+      )}
     </span>
   );
 }
 
-function Review({ rec, price, onClose, onAsk }: { rec: RecordModel; price: string; onClose: () => void; onAsk: (a: ChangesAsk) => void }) {
+function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote; onClose: () => void; onAsk: (a: ChangesAsk) => void }) {
   const s = useSuggest();
   const list = s.tray.list;
-  const plan = useChangesPlan(rec, list);
+  const plan = useChangesPlan(rec, list, s.live);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const release = ref.current ? holdFocus(ref.current, onClose) : () => undefined;
@@ -353,9 +451,10 @@ function Review({ rec, price, onClose, onAsk }: { rec: RecordModel; price: strin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list.length]);
   const ready = rec.snapshot.ok;
+  const held = plan.gone.size + plan.unplaced.size;
   const n = list.length;
   const submit = () => {
-    if (!ready || plan.over) return;
+    if (!ready || plan.over || held) return;
     const clear = s.tray.clear;
     onClose();
     onAsk({ title: `Submit ${plural(n, "change")}`, subject: rec.subject.id, action: ACTIONS.research, kind: "changes", body: plan.body, afterSent: clear });
@@ -372,6 +471,14 @@ function Review({ rec, price, onClose, onAsk }: { rec: RecordModel; price: strin
             <li key={c.id} className="review-item">
               <p className="review-type">{CHANGE_WORDS[c.type]}</p>
               {c.target.text && <p className="review-about">“{c.target.text}”</p>}
+              {plan.gone.has(c.id) && (
+                <p className="warn">
+                  This row is no longer on the record as it was: a rebuild changed or removed it. Remove this change and choose the row again on the{" "}
+                  <a href={to("record")} onClick={onClose}>Record</a>.
+                </p>
+              )}
+              {plan.unplaced.has(c.id) && <p className="warn">The file this row comes from does not fit in one request with the others. Remove some changes and send this one on its own.</p>}
+              {c.retry && <p className="small">Not kept last time: {c.retry}</p>}
               {c.note && <p>{c.type === "reword" ? "New sentence: " : ""}{c.note}</p>}
               {c.links.length > 0 && (
                 <ul className="plain small">
@@ -380,20 +487,29 @@ function Review({ rec, price, onClose, onAsk }: { rec: RecordModel; price: strin
                   ))}
                 </ul>
               )}
-              {!hasSource(c) && (
-                <p className="nosource">
-                  {NO_SOURCE} <AddLink change={c} />
-                </p>
-              )}
-              <button type="button" className="linklike small" onClick={() => s.tray.remove(c.id)}>
-                Remove
-              </button>
+              {!hasSource(c) && <p className="nosource">{NO_SOURCE}</p>}
+              <span className="row-actions">
+                <LinkEditor key={`${c.id}:${c.links.join(" ")}`} change={c} />
+                <button type="button" className="linklike small" onClick={() => s.tray.remove(c.id)}>
+                  Remove
+                </button>
+              </span>
             </li>
           ))}
         </ol>
         <dl className="facts">
           <dt>Total</dt>
-          <dd className="mono">{price}, one research job</dd>
+          <dd className="mono">
+            {quote.text}, one research job
+            {quote.failed && (
+              <>
+                {" "}
+                <button type="button" className="linklike small" onClick={quote.refresh}>
+                  Retry price
+                </button>
+              </>
+            )}
+          </dd>
         </dl>
         <details>
           <summary>Read the full request</summary>
@@ -401,8 +517,9 @@ function Review({ rec, price, onClose, onAsk }: { rec: RecordModel; price: strin
         </details>
         {!ready && <p className="warn">{rec.snapshot.why}</p>}
         {plan.over && <p className="warn">The request is {plan.body.objective.length.toLocaleString("en-US")} characters, over the 7,500 the Intake takes. Remove a change or shorten a note.</p>}
+        {held > 0 && <p className="warn">{plural(held, "change")} above need{held === 1 ? "s" : ""} your attention before you submit.</p>}
         <div className="row-actions">
-          <button type="button" className="btn btn-primary" onClick={submit} disabled={!ready || plan.over}>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={!ready || plan.over || held > 0}>
             Submit {plural(n, "change")}
           </button>
           <span className="small">One request, one payment.</span>

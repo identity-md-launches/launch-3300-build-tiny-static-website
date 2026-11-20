@@ -21,12 +21,13 @@ import {
   statusWord,
   type Channel,
   type ChannelStatus,
-  type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
+  isFactRow, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
 import { firstPageStatus, statusText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { StillReading } from "./Home";
 import { AddButtons, ChangePanel, Pencil, PendingTag, useSuggest } from "./Suggest";
 import { keyFactTarget, lineTarget, sentenceTarget } from "./changes";
+import { originOfLine } from "./changeResult";
 
 export type { Filter };
 const KINDS: Kind[] = ["proof", "statement", "claim"];
@@ -129,7 +130,7 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
       <table>
         <tbody>
           {rows.map((r, i) => {
-            const target = keyFactTarget(r.label, r.value || r.accounts.map((a) => a.name).join(", "), r.lines[0]?.id ?? "");
+            const target = keyFactTarget(r.label, r.value || r.accounts.map((a) => a.name).join(", "), r.lines[0]?.id ?? "", r.lines[0]?.id ? originOfLine(r.lines[0].id, m.scope) : null);
             const src = r.lines[0]?.srcKeys[0];
             const url = src ? m.sourceList.find((x) => x.key === src)?.url ?? "" : r.url;
             return (
@@ -686,7 +687,7 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
   const s = ctx.settled.by.get(line.id);
   const settled = s && (s.state === "proven" || s.state === "contradicted") ? s : null;
   const sg = useSuggest();
-  const target = lineTarget(line.id || line.text.slice(0, 40), line.text);
+  const target = lineTarget(line.id || line.text.slice(0, 40), line.text, line.id ? originOfLine(line.id, ctx.m.scope) : null);
   const srcUrl = line.srcKeys.map((k) => ctx.numbers.get(k)?.url).find(Boolean) ?? "";
   return (
     <li className={`row has-pencil${row.differsWith ? ` row-differs row-${row.level}` : ""}${settled ? ` row-${settled.state}` : ""}${open ? " is-open" : ""}`} id={anchor}>
@@ -757,7 +758,7 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
           const anchor = lineAnchor(row.line.id || f.name);
           const open = ctx.ui.openSet.has(row.line.id);
           const toggle = () => ctx.ui.toggle(row.line.id);
-          const target = lineTarget(row.line.id || f.name, `${f.name}: ${f.value}${f.unit ? ` ${f.unit}` : ""}`);
+          const target = lineTarget(row.line.id || f.name, `${f.name}: ${f.value}${f.unit ? ` ${f.unit}` : ""}`, row.line.id ? originOfLine(row.line.id, ctx.m.scope) : null);
           return (
             <Fragment key={row.line.id || f.name}>
               <tr id={anchor} className={`fact-row has-pencil${open ? " is-open" : ""}`} onClick={onRowClick(toggle)}>
@@ -766,6 +767,7 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                     <span className="chev" aria-hidden="true" />
                     <span className="row-text">{f.name}</span>
                   </button>
+                  {row.origin?.raised && <span className="by small block">raised by {row.origin.payer}</span>}
                   <PendingTag targetKey={target.key} />
                 </th>
                 <td data-label="Value" className="num">
@@ -876,7 +878,8 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   // While a search or the settled filter is on, every section with matches opens; what the visitor toggles then
   // is kept apart and forgotten when the controls change, so clearing them restores the manual state above.
   const [narrowOpen, setNarrowOpen] = useState<{ key: string; open: Record<string, boolean> }>({ key: "", open: {} });
-  const factRows = all.filter((r) => r.line.kind === "proof" && r.line.fact && !r.origin);
+  // A proof a visitor's changes job raised joins the table too, with "raised by <payer>" on its row.
+  const factRows = all.filter(isFactRow);
   const facts = new Set(factRows.map((r) => r.line.id));
   // A search or any filter but All opens every section with matches, as the settled checkbox did before.
   const narrowing = query.trim() !== "" || filter !== "all";

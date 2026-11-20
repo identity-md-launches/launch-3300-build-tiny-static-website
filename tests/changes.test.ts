@@ -169,7 +169,7 @@ describe("a changes result", () => {
     const objective = changesBody([CHANGES[0]!], { files: [artifactUrl(h("a"))], answers: [] }, [], IMD, () => "F1:L3").objective;
     const a = act({ requestId: "0xch", kind: "changes", objective, changes: parseChanges(RESULT), fileHash: h("c") });
     const merged = mergeRecord(page, [{ key: "0xch", data: a.changes!.data, payer: "alice.eth", jobHref: "", raised: true }]);
-    const sections = applyChangeLinks(merged, [a], h("a"));
+    const sections = applyChangeLinks(merged, { pageHash: h("a"), after: [a], carried: new Map() });
     const lines = sections.flatMap((s) => s.rows.map((r) => r.line));
     const target = lines.find((l) => l.id === "L3")!;
     expect(target.links).toEqual([{ type: "contradicts", target: "0xch:N1" }, { type: "context", target: "0xch:N2" }]);

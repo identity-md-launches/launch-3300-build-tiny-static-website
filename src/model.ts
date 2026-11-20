@@ -36,7 +36,7 @@ import {
 } from "./page";
 import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
-import { applyChangeLinks, applyRewords } from "./changeResult";
+import { applyChangeLinks, applyRewords, carriedOf, type LineScope } from "./changeResult";
 import type { KnownContract } from "./lookup";
 
 export interface Accounting {
@@ -94,6 +94,8 @@ export interface Core {
   /** Sources and edit results not folded in, oldest first: their lines join the record. */
   after: Activity[];
   jobs: SourceJob[];
+  /** Where a line of the page, a job or an earlier file is shown now (see changeResult.ts). */
+  scope: LineScope;
   sections: { section: string; rows: RecordRow[] }[];
   counts: ReturnType<typeof countKinds>;
 }
@@ -109,9 +111,11 @@ export function coreOf(items: Activity[]): Core {
   const jobs: SourceJob[] = after
     .filter((a) => a.sources)
     .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash), raised: isChangesJob(a.req) }));
-  // A changes result's new lines point at the line they are about; the target row shows what each does to it.
-  const sections = applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), after, latest?.fileHash ?? null);
-  return { latest, page, results, folded, unfolded, after, jobs, sections, counts: countKinds(sections) };
+  // A changes result's new lines point at the line they are about; the target row shows what each does to it,
+  // also when a rebuild has since carried that line forward under another id.
+  const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective) };
+  const sections = applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), scope);
+  return { latest, page, results, folded, unfolded, after, jobs, scope, sections, counts: countKinds(sections) };
 }
 
 /**
@@ -395,6 +399,11 @@ export interface RecordModel {
   standing: (a: Activity) => Standing;
   snapshot: Snapshot;
   prior: Prior;
+  /** Where a line of the page, a job or an earlier file is shown now. */
+  scope: LineScope;
+  /** Every completed result not folded in that has a file, oldest first, and the panel answers: a changes job fits its own <PRIOR> from them. */
+  results: { id: string; url: string }[];
+  answers: PriorAnswer[];
   /** How many results not folded in were left out of <PRIOR> to stay under 7,500 characters, and panel answers. */
   leftOut: number;
   answersLeftOut: number;
@@ -412,7 +421,7 @@ export interface RecordModel {
 /** The model for one subject. `items` are that subject's requests only. */
 export function useRecordModel(items: Activity[] | null, chainError: string | null, subjectId: string): RecordModel {
   const core = useMemo(() => coreOf(items ?? []), [items]);
-  const { latest, page, unfolded, after, jobs, sections, counts } = core;
+  const { latest, page, unfolded, after, jobs, sections, counts, scope } = core;
   const pageHash = latest?.fileHash ?? null;
   const via = latest?.via ?? null;
   const error = latest && !page ? latest.sourcesError ?? "The page could not be read" : null;
@@ -427,12 +436,13 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   const panel = useMemo(() => (items ?? []).filter((a) => a.req.action === ACTIONS.oracle && a.state === "completed" && a.completion).sort(completionOrder), [items]);
   const given = useMemo(() => parsePrior(latest?.req.bodyJson?.objective), [latest]);
   const [accounting, setAccounting] = useState<Accounting>({ state: "none", missing: [], files: 0, error: "", dropped: [], read: [] });
+  const results = useMemo(() => unfolded.filter((a) => a.fileHash).map((a) => ({ id: a.req.requestId, url: artifactUrl(a.fileHash!) })), [unfolded]);
+  const answers = useMemo(() => answersOf(items ?? []), [items]);
   const fit = useMemo(() => {
-    const results = unfolded.filter((a) => a.fileHash).map((a) => ({ id: a.req.requestId, url: artifactUrl(a.fileHash!) }));
     // Bare dropped ids are resolved with the same reads Record's accounting makes.
     const again = reconsiderFiles(page?.dropped ?? [], given.files, [], accounting.state === "done" ? accounting.read : undefined);
-    return fitPrior(page && pageHash ? artifactUrl(pageHash) : null, results, answersOf(items ?? []), (p) => rebuildObjective(p, subject).length, again);
-  }, [items, unfolded, page, pageHash, subject, given, accounting]);
+    return fitPrior(page && pageHash ? artifactUrl(pageHash) : null, results, answers, (p) => rebuildObjective(p, subject).length, again);
+  }, [results, answers, page, pageHash, subject, given, accounting]);
 
   const sourceList = useMemo(() => allSources(page, jobs), [page, jobs]);
   const byId = useMemo(() => new Map(sections.flatMap((s) => s.rows.map((r) => [r.line.id, r.line] as const))), [sections]);
@@ -567,6 +577,9 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     standing,
     snapshot,
     prior: fit.prior,
+    scope,
+    results,
+    answers,
     leftOut: fit.leftOut,
     answersLeftOut: fit.answersLeftOut,
     reconsiderLeftOut: fit.reconsiderLeftOut,

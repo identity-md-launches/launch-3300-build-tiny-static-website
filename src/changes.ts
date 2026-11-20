@@ -46,6 +46,12 @@ export interface ChangeTarget {
   lineId: string;
   /** The line's sentence, "Label: value" for a key fact, or the summary sentence. */
   text: string;
+  /**
+   * The artifact hash of the file the line was written in, and its id there, saved when the change is made. After
+   * a rebuild the line is found again through the rebuilt lines' from origins; lineId and key are then refreshed.
+   */
+  file?: string;
+  fileLine?: string;
 }
 export interface Change {
   id: string;
@@ -53,10 +59,14 @@ export interface Change {
   target: ChangeTarget;
   note: string;
   links: string[];
+  /** Set when Activity put the change back after it was not kept for lack of a source: the job's reason. */
+  retry?: string;
 }
 
-export const lineTarget = (id: string, text: string): ChangeTarget => ({ kind: "line", key: `line:${id}`, lineId: id, text });
-export const keyFactTarget = (label: string, value: string, lineId: string): ChangeTarget => ({ kind: "keyfact", key: `kf:${label}`, lineId, text: `${label}: ${value}` });
+export type Origin = { file: string; id: string } | null;
+const withOrigin = (o: Origin) => (o ? { file: o.file, fileLine: o.id } : {});
+export const lineTarget = (id: string, text: string, origin: Origin = null): ChangeTarget => ({ kind: "line", key: `line:${id}`, lineId: id, text, ...withOrigin(origin) });
+export const keyFactTarget = (label: string, value: string, lineId: string, origin: Origin = null): ChangeTarget => ({ kind: "keyfact", key: `kf:${label}`, lineId, text: `${label}: ${value}`, ...withOrigin(origin) });
 export const sentenceTarget = (text: string): ChangeTarget => ({ kind: "sentence", key: `sent:${text.trim()}`, lineId: "", text: text.trim() });
 export const noTarget = (): ChangeTarget => ({ kind: "none", key: `new:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, lineId: "", text: "" });
 
@@ -146,6 +156,37 @@ export function roomLeft(objectiveLength: number, changes: Change[], refOf: RefO
   const sizes = changes.map((c, i) => itemText(c, i + 1, refOf).length + 1);
   const avg = Math.max(160, sizes.length ? Math.round(sizes.reduce((a, b) => a + b, 0) / sizes.length) : 220);
   return Math.floor(left / avg);
+}
+
+/**
+ * The <PRIOR> of a changes job. The page shown is F1 and the file of every row a change targets is required:
+ * room is reserved for them first. Then the newest other results that fit (oldest dropped first), then the newest
+ * panel answers in the room left. `missing` lists required files that do not fit; their changes are held back.
+ */
+export function fitChangesPrior(
+  page: string | null,
+  results: { id: string; url: string }[],
+  answers: Prior["answers"],
+  required: string[],
+  measure: (p: Prior) => number,
+): { prior: Prior; missing: string[] } {
+  const order = results.map((r) => r.url).filter((u, i, all) => u !== page && all.indexOf(u) === i);
+  const missing = required.filter((u, i) => u !== page && !order.includes(u) && required.indexOf(u) === i);
+  let req = order.filter((u) => required.includes(u));
+  let rest = order.filter((u) => !req.includes(u));
+  let as: Prior["answers"] = [];
+  const make = (): Prior => ({ files: [...(page ? [page] : []), ...order.filter((u) => req.includes(u) || rest.includes(u))], answers: as });
+  while (rest.length > 0 && measure(make()) >= MAX_OBJECTIVE) rest = rest.slice(1);
+  while (req.length > 0 && measure(make()) >= MAX_OBJECTIVE) {
+    missing.push(req.at(-1)!);
+    req = req.slice(0, -1);
+  }
+  for (let k = answers.length; k > 0; k--) {
+    as = answers.slice(answers.length - k);
+    if (measure(make()) < MAX_OBJECTIVE) break;
+    as = [];
+  }
+  return { prior: make(), missing };
 }
 
 /** "<PRIOR> file reference" of a record line: page lines are in F1 (the page shown), job lines in their own file. */

@@ -1,6 +1,6 @@
 # Design
 
-Taken from `src/styles.css`, `src/App.tsx`, `src/Home.tsx`, `src/Record.tsx` and `src/ActivityList.tsx` as built.
+Taken from `src/styles.css`, `src/App.tsx`, `src/Home.tsx`, `src/Record.tsx`, `src/Suggest.tsx` and `src/ActivityList.tsx` as built.
 
 ## Tokens
 
@@ -32,7 +32,7 @@ amounts, ids and request bodies. Weights 400 and 600. Six sizes:
 | `--text-title` | 22px | Tab titles, "Summary" |
 | `--text-heading` | 17px | Card headings, "Key facts" |
 | `--text-body` | 16px | Body, buttons, rows, summary paragraphs (line height 1.6, at most 68ch) |
-| `--text-nav` | 14px | The five tabs below 512px wide |
+| `--text-nav` | 14px | The five tabs below 512px wide; the lookup hint and its button label below 368px |
 | `--text-small` | 13px | Meta lines, infobox rows, kind markers, notes |
 
 No tracked capitals, no eyebrows above headings.
@@ -40,7 +40,10 @@ No tracked capitals, no eyebrows above headings.
 ## Components
 
 - **Header**: brand "On the record (test)" (a link to Home) and the wallet's Connect control on one row.
-- **Home** (`#/`): h1 "Projects, on the record" and one lead line, then the search row (a search input and, below
+- **Home lookup** (`#/`, first screen): h1 "Look up any crypto project.", one lead line, and a 56px bar: an input
+  with the hint "A domain or a 0x address" on a grey fill and a primary "Look it up" button. How it works has
+  three steps; the first is "Contribute: add a project or suggest changes to its record."
+- **Home list**: the search row (a search input and, below
   832px, an "Add a project" primary button that scrolls to and focuses the form), the count line and the subject
   list. Each subject is a row with a top rule: its name as a 17px link with the id in small mono beside it, the
   one_line (or "No page yet: …"), then the kind counts with their 9px coloured dots, "Changed <date>" and any
@@ -64,8 +67,10 @@ No tracked capitals, no eyebrows above headings.
   each name linked to its channel with its own label pill. Badges wrap inside their cell (`max-width: 100%`,
   `overflow-wrap: anywhere`), so a long publisher name never widens the page. Without `infobox`, at most four
   rows: Website, Main contract, token symbol, token supply. Then the **summary** in short paragraphs with one 9px dot per kind after each sentence (24px round
-  target) and an Edit button beside its heading, then Rebuild the page / Create the page (primary), Contribute
-  and the price. With no page, a "No page yet" card; when the research said `found: false`, a "Not a project
+  target). Each sentence is a `.sent` span (tabindex 0): hover tints it violet-50, a click or Enter opens the change
+  panel under its paragraph, and an open one keeps the tint with a 2px violet underline. Under the summary one quiet
+  card (white, 1px border, no primary button): "Something wrong or missing?", one line, and the two add buttons;
+  below it two small links to Contribute, "Ask a panel to check a fact" and "Rebuild the page". With no page, a "No page yet" card; when the research said `found: false`, a "Not a project
   record" card with the job's notes and a link to Activity instead. There is no panel box on Overview.
 - **Record**: the accounting warning (orange left rule on orange-50), a closed `details` "Dropped in the last
   rebuild", the kind filter (All, Proof, Statement, Claim with counts; pressed state is dark fill), then one card
@@ -81,11 +86,29 @@ No tracked capitals, no eyebrows above headings.
   in the next rebuild", refusal reasons, "Not a project record: … Its notes: …" for a `found: false` result,
   panel answers, per-source outcomes, edit verdict pills with "Backed by" links, and links to the job and result
   file.
-- **Contribute**: Rebuild the page (filled objective under "Read the objective", "It is given N earlier files
-  and M panel answers", a left-out note past 7,500 characters; disabled with a reason until everything is read),
-  Confirm a fact (three template choices as 44px radio tiles, each with its short form; the contract template's
-  chain picker lists only chains the oracle accepts), Add sources and Suggest an edit. Every action opens the
-  same pay dialog with amount, Intake, action id and the full body before any wallet prompt.
+- **Pencil** (`.pencil`): a 16px pencil icon in a 32px button (40px on touch) at the right end of every Record
+  line, facts-table row and Key facts row, label "Suggest a change". Opacity 0 until the row is hovered or holds
+  focus; on touch screens always at 0.74 (secondary grey stroke, about 3:1 on white).
+- **Change panel** (`.cpanel`): white box, 1px border, 10px radius, under the row or sentence. The choices are tiles
+  (`.opt`, 44px, bold word and one short hint line, checked = 1px inset dark ring, no radio circle), then the note
+  (count of 300), the links box (3, or 20 for Add links to read), the orange no-source note while there is no link,
+  and "Add to my changes" (dark `btn-ink`) and "Cancel". Closing it returns focus to the pencil, sentence, Edit
+  or add button that opened it. A row with a pending change shows the violet pill "In your changes" and Edit.
+- **Tray** (`.tray`): fixed to the bottom of every tab while a change is pending, gray-900 with white text:
+  "N changes", "X with a source, Y without · room for about Z more · <price>" in 13px gray-200, and a white
+  "Review and submit" button. The price is read when the tray appears, when Review opens and every 30 seconds;
+  a failed read shows "Price unavailable" and Retry. `main` gets 9rem bottom padding so nothing hides under it.
+- **Review** (wide sheet): a numbered list of changes (type in bold, the text it is about in secondary grey, the
+  note, the links in mono, the no-source note, then "Add a link" or "Edit links" and "Remove"). A change put back
+  from Activity opens its link editor with the old links to replace or remove. A change whose row a rebuild removed,
+  or whose file does not fit, shows an alert and holds Submit. Then Total (price, Retry price on failure), "Read the
+  full request" and "Submit N changes" (primary).
+- **Contribute**: three full-width cards in a `.stack`: Suggest changes (three numbered steps and the two add
+  buttons), Ask a panel to check a fact ("What to check" as three equal 44px segment buttons, label on one line,
+  selected = dark fill; the contract template's chain picker lists only chains the oracle accepts), and Rebuild the
+  page last with a secondary button, "It is given N earlier files and M panel answers", and the objective under
+  "Read the objective". Every action opens the same pay dialog with amount, Intake, action id and the full body
+  before any wallet prompt.
 - **Dialog**: bottom sheet on phones, centred from 640px; Escape and the × close it. Escape goes to the top
   modal only: with the wallet sheet open over the pay dialog, one Escape closes the sheet and focus returns to the
   dialog's Connect button. While a dialog or the
@@ -104,7 +127,13 @@ No tracked capitals, no eyebrows above headings.
   every tab keeps its full label and a 44px target.
 - Key facts: below 640px each row stacks label, value, then badge; from 640px label (11rem), value and badge
   (16rem) are three columns of a fixed-layout table, and badges wrap within the badge column.
-- Below 640px the facts table becomes stacked rows. From 832px Contribute's cards are two columns.
-- Controls are at least 44px tall, except filter buttons (40px), the Edit button (36px), the Copy button and
+- Below 640px the facts table becomes stacked rows. Contribute's cards are always one full-width column.
+- What to check: one column of equal buttons below 640px (40rem), three equal columns from 640px, so the longest
+  label ("A contract returns") fits on one line inside its button.
+- Home lookup: up to 400px (25rem) both controls use 8px inline padding; up to 384px the bar takes 8px of the
+  gutter on each side with a 4px gap and a 16px button label; below 368px the gap is 2px, the button padding 6px,
+  and the hint and button label are 14px.
+- The tray wraps its text above the button on narrow screens and respects the bottom safe area.
+- Controls are at least 44px tall, except the pencil (32px with a pointer, 40px on touch), filter buttons (40px), the Edit button (36px), the Copy button and
   badges (24px) and the summary dots (24px targets).
 - Reduced motion turns off the button press scale and the chevron rotation transition.

@@ -33,7 +33,7 @@ import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubjec
 import { Home, StillReading } from "./Home";
 import { useDigests } from "./digest";
 import type { Activity } from "./useActivity";
-import { AddButtons, SuggestProvider, TrayBar } from "./Suggest";
+import { AddButtons, SuggestProvider, TrayBar, type Quote } from "./Suggest";
 import { takeConfirmSeed } from "./changes";
 
 type RecordState = RecordModel;
@@ -44,13 +44,21 @@ async function readPrice(action: string): Promise<bigint> {
   return readContract(config, { address: INTAKE, abi: INTAKE_ABI, functionName: "priceOf", args: [actionId(action), IMD], chainId: CHAIN_ID });
 }
 
-function usePrice(action: string) {
+/** The price of an action, read once on load; refresh reads it again (the tray does, so its price stays live). */
+function usePrice(action: string): Quote {
   const [price, setPrice] = useState<bigint | null>(null);
   const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    readPrice(action).then(setPrice, () => setFailed(true));
+  const refresh = useCallback(() => {
+    readPrice(action).then(
+      (p) => {
+        setPrice(p);
+        setFailed(false);
+      },
+      () => setFailed(true),
+    );
   }, [action]);
-  return failed ? "Price unavailable" : price === null ? "Reading price…" : imd(price);
+  useEffect(refresh, [refresh]);
+  return useMemo(() => ({ text: failed ? "Price unavailable" : price === null ? "Reading price…" : imd(price), failed, refresh }), [failed, price, refresh]);
 }
 
 export interface Ask {
@@ -154,7 +162,7 @@ const Err = ({ id, msg }: { id: string; msg?: string }) => (msg ? <p id={`${id}-
 
 /** "Confirm a fact": three short forms, one per question template, each ending with the subject's "filed under" sentence. */
 function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState }) {
-  const oraclePrice = usePrice(ACTIONS.oracle);
+  const oraclePrice = usePrice(ACTIONS.oracle).text;
   const [tpl, setTpl] = useState<Template>("post");
   const [f, setF] = useState({ url: "", handle: "", text: "", chain: String(CHAIN_CHOICES.some((c) => c.id === rec.subject.chainId) ? rec.subject.chainId : 1), signature: "", address: rec.subject.address || rec.main, value: "" });
   const [errs, setErrs] = useState<Record<string, string | undefined>>({});
@@ -445,7 +453,7 @@ function useRoute() {
   return route;
 }
 
-function SubjectView({ subject, items, activity, route, onAsk, researchPrice, subjects, readingFiles }: {
+function SubjectView({ subject, items, activity, route, onAsk, researchPrice, researchQuote, subjects, readingFiles }: {
   readingFiles: boolean;
   subject: string;
   /** Every subject on the site, so Related can link to the ones that have a page here. */
@@ -455,6 +463,7 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, su
   route: ReturnType<typeof useRoute>;
   onAsk: (a: Ask) => void;
   researchPrice: string;
+  researchQuote: Quote;
 }) {
   const rec = useRecordModel(items, activity.error, subject);
   const [filter, setFilter] = useState<Filter>("all");
@@ -503,7 +512,7 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, su
 
   const refresh = () => void activity.reload();
   return (
-    <SuggestProvider subject={subject}>
+    <SuggestProvider subject={subject} rec={rec}>
       <nav aria-label={`${name} tabs`} className="tabs">
         {TABS.map((t) => (
           <a key={t.id} href={subjectHref(subject, t.id)} aria-current={route.tab === t.id ? "page" : undefined}>
@@ -516,7 +525,7 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, su
       {route.tab === "sources" && <SourcesTab m={rec} />}
       {route.tab === "activity" && <ActivityList {...activity} items={items} shown={rec} subject={subject} />}
       {route.tab === "contribute" && <ContributeTab onAsk={onAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} />}
-      <TrayBar rec={rec} price={researchPrice} onAsk={onAsk} />
+      <TrayBar rec={rec} quote={researchQuote} onAsk={onAsk} />
     </SuggestProvider>
   );
 }
@@ -528,7 +537,8 @@ export default function App() {
   const subject = route.subject;
   const activity = useActivity(subject ?? null);
   const [ask, setAsk] = useState<Ask | null>(null);
-  const researchPrice = usePrice(ACTIONS.research);
+  const researchQuote = usePrice(ACTIONS.research);
+  const researchPrice = researchQuote.text;
   const { digests, logos } = useDigests(activity.items, subject ?? null);
   if (subject) setLinkSubject(subject);
   // A subject's page waits until its result files are read: until then its requests are the home list's light ones.
@@ -572,7 +582,7 @@ export default function App() {
       </header>
       <main id="root-main" tabIndex={-1}>
         {subject ? (
-          <SubjectView key={subject} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={setAsk} researchPrice={researchPrice} />
+          <SubjectView key={subject} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={setAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
         ) : (
           <Home key={route.add ?? ""} items={activity.items} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
         )}

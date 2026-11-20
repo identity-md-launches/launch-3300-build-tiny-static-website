@@ -666,6 +666,8 @@ export interface RecordRow extends Row {
   /** raised: the line came from a visitor's changes job ("raised by <payer>"). */
   origin: { payer: string; jobHref: string; raised?: boolean } | null;
 }
+/** A row of the on-chain facts table: a proof with a fact, from the page or raised by a visitor's changes job. */
+export const isFactRow = (r: RecordRow) => r.line.kind === "proof" && !!r.line.fact && (!r.origin || !!r.origin.raised);
 export interface SourceJob {
   key: string;
   data: SourceLines;

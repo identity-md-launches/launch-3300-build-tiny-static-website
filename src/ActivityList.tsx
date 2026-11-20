@@ -8,7 +8,7 @@ import { TEMPLATE_TITLES, type Template } from "./bodies";
 import { to } from "./route";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity, type useActivity } from "./useActivity";
 import { CHANGE_WORDS, keyFactTarget, lineTarget, newChangeId, noTarget, parseItems, sentenceTarget, type ChangeTarget, type SentItem } from "./changes";
-import { resolveChangeTarget } from "./changeResult";
+import { originOfLine, resolveChangeTarget } from "./changeResult";
 import { useSuggest } from "./Suggest";
 import { useState } from "react";
 
@@ -21,7 +21,7 @@ function what(a: Activity) {
   return "Job";
 }
 
-type Shown = Pick<RecordModel, "standing" | "after" | "editRefs" | "resolve" | "pageHash">;
+type Shown = Pick<RecordModel, "standing" | "after" | "editRefs" | "resolve" | "pageHash" | "scope">;
 
 /** A change not kept because nothing backed it: no link was given, or the job says no source supported it. */
 export const lackedSource = (item: Pick<SentItem, "links">, why: string) => item.links.length === 0 || /\b(source|sources|link|links|evidence)\b/i.test(why);
@@ -32,17 +32,17 @@ function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
   const [back, setBack] = useState<Set<number>>(() => new Set());
   const sent = parseItems(a.req.bodyJson?.objective);
   if (!sent.length) return null;
-  const putBack = (item: SentItem) => {
+  const putBack = (item: SentItem, v: { why: string } | undefined) => {
     let target: ChangeTarget = noTarget();
     if (item.targetKind === "sentence") target = sentenceTarget(item.text);
     else if (item.targetKind !== "none") {
-      const id = item.ref ? resolveChangeTarget(item.ref, a, shown.pageHash, shown.after, (x) => !!shown.resolve(x)) : null;
+      const id = item.ref ? resolveChangeTarget(item.ref, a, shown.scope, (x) => !!shown.resolve(x)) : null;
       if (item.targetKind === "keyfact") {
         const i = item.text.indexOf(": ");
-        target = keyFactTarget(i > 0 ? item.text.slice(0, i) : item.text, i > 0 ? item.text.slice(i + 2) : "", id ?? "");
-      } else target = id ? lineTarget(id, item.text) : { kind: "line", key: `old:${item.text}`, lineId: "", text: item.text };
+        target = keyFactTarget(i > 0 ? item.text.slice(0, i) : item.text, i > 0 ? item.text.slice(i + 2) : "", id ?? "", id ? originOfLine(id, shown.scope) : null);
+      } else target = id ? lineTarget(id, item.text, originOfLine(id, shown.scope)) : { kind: "line", key: `old:${item.text}`, lineId: "", text: item.text };
     }
-    s.tray.put({ id: newChangeId(), type: item.type, target, note: item.note, links: item.links });
+    s.tray.put({ id: newChangeId(), type: item.type, target, note: item.note, links: item.links, retry: v?.why || "no source supported it" });
     setBack((b) => new Set([...b, item.n]));
   };
   return (
@@ -67,7 +67,7 @@ function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
               back.has(item.n) ? (
                 <span className="small" role="status">Back in your changes, at the bottom of the page.</span>
               ) : (
-                <button type="button" className="linklike small" onClick={() => putBack(item)}>
+                <button type="button" className="linklike small" onClick={() => putBack(item, v)}>
                   Add a link and try again
                 </button>
               )
