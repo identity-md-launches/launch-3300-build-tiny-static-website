@@ -347,6 +347,30 @@ export const MAX_OBJECTIVE = 7500;
 
 export const rebuildObjective = (p: Prior, subject: SubjectRef) => fillTemplate(REBUILD_TEMPLATE, { SUBJECT: describeSubject(subject), PRIOR: priorText(p) });
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * True when an objective is what the current templates/rebuild.txt sends, apart from its <PRIOR> list. <SUBJECT> is
+ * matched as whatever the request named (the same text at every place), so a subject later known by its contract
+ * is not taken for a format change.
+ */
+export function matchesTemplate(objective: unknown, template = REBUILD_TEMPLATE): boolean {
+  if (typeof objective !== "string") return false;
+  let subject = false;
+  const re = template
+    .split(/(<SUBJECT>|<PRIOR>)/)
+    .map((part) => {
+      if (part === "<PRIOR>") return "[\\s\\S]*?";
+      if (part === "<SUBJECT>") {
+        const first = !subject;
+        subject = true;
+        return first ? "([\\s\\S]*?)" : "\\1";
+      }
+      return escapeRe(part);
+    })
+    .join("");
+  return new RegExp(`^${re}$`).test(objective.trim());
+}
+
 /**
  * A rebuild's two named outputs, both always written: the page file, and artifacts/logo.png. When the subject's own
  * domain serves no icon the job writes a 1 by 1 transparent placeholder PNG there and leaves page.logo out; the site

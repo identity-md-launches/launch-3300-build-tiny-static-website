@@ -227,6 +227,19 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .subject-line { color: var(--color-text-secondary); }
 .subject-status { color: var(--orange-800); }
 .subject-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); color: var(--color-text-secondary); }
+/* A row whose page file and logo are still being read: two light bars, no text to read past. */
+.subject-loading .logo { opacity: 0.45; }
+.bar { display: block; height: 0.75em; width: min(28rem, 90%); margin-block: 0.3em; border-radius: var(--radius-control); background: var(--color-bg-hover); animation: pulse 1.4s ease-in-out infinite; }
+.bar-short { width: min(14rem, 60%); }
+@keyframes pulse { 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { .bar { animation: none; } }
+/* Out of date: a quiet orange line with its Rebuild link. */
+.outdated { color: var(--orange-800); display: flex; flex-wrap: wrap; gap: 0 var(--space-2); align-items: baseline; }
+.outdated a { font-weight: 600; color: inherit; text-decoration: underline; text-underline-offset: 2px; min-height: 24px; display: inline-flex; align-items: center; }
+.home-list .filter { margin-block: var(--space-2); }
+/* One line per token in the Tokens row of Key facts. */
+.kf-tokens { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.kf-tokens li { overflow-wrap: anywhere; }
 .count-kind { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
 .how { display: grid; gap: var(--space-3); }
 .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }

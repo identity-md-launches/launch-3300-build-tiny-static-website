@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { ACTIONS } from "./config";
-import { artifactUrl, MAX_OBJECTIVE, parsePrior, rebuildObjective, type Prior, type PriorAnswer } from "./bodies";
+import { artifactUrl, matchesTemplate, MAX_OBJECTIVE, parsePrior, rebuildObjective, type Prior, type PriorAnswer } from "./bodies";
 import { completedBefore } from "./chain";
 import { fetchArtifact } from "./api";
 import { jobLink, payerName } from "./format";
@@ -243,10 +243,14 @@ export interface SubjectSummary {
   id: string;
   name: string;
   oneLine: string;
-  /** Null when the subject's page has not been opened in this browser yet, so no digest exists. */
+  /** Null while the subject's files have not been read in this browser yet, so no digest exists. */
   counts: ReturnType<typeof countKinds> | null;
-  /** True when results arrived after the digest was taken: open the page to update it. */
+  /** True when results arrived after the digest was taken: Home reads the subject's files again. */
   stale?: boolean;
+  /** True while there is neither a digest nor read files: Home shows a placeholder row while it reads them. */
+  unread?: boolean;
+  /** Why its page needs a rebuild, or null. */
+  outdated: Outdated;
   /** When the record last changed: the newest completed result's time, else the newest request's. */
   changed: number | null;
   requests: number;
@@ -275,7 +279,7 @@ export function firstPageStatus(list: Activity[]): FirstPageStatus {
   const why = (a: Activity) => [a.refusal?.reason, a.refusal?.detail].filter(Boolean).join(": ") || "no reason given";
   if (last.state === "refused") return { kind: "refused", reason: why(last) };
   if (last.state === "failed") return { kind: "failed", reason: why(last) };
-  // Completed, but its file is read only when the subject's page is opened.
+  // Completed, but its file has not been read here yet: Home reads it for the digest.
   if (last.state === "completed" && last.filesRead === false) return { kind: "unread" };
   if (last.rejected) return { kind: "not-found", notes: last.rejected };
   // Completed, but its file has not been read (yet): still on its way to a first page.
@@ -288,7 +292,7 @@ export function statusText(s: FirstPageStatus): string {
     case "pending":
       return "First page in progress";
     case "unread":
-      return "Open the page to read its record.";
+      return "Reading its record…";
     case "refused":
       return `First page refused: ${s.reason}`;
     case "failed":
@@ -306,6 +310,8 @@ export function statusText(s: FirstPageStatus): string {
  */
 export interface Digest {
   type: "digest";
+  /** 2 since the digest keeps what the out-of-date note needs; older digests are read again. */
+  v: 2;
   id: string;
   /** The completed results it was taken from; a different list means newer results exist. */
   sig: string;
@@ -319,6 +325,10 @@ export interface Digest {
   contracts: KnownContract[];
   /** Why there is no page, when the files said so (found: false). */
   status: FirstPageStatus | null;
+  /** Completed results not folded into the page shown, when it was taken. */
+  unfolded: number;
+  /** The request that produced the page shown: Home compares its objective with the current template. */
+  pageReq: string | null;
 }
 
 /** The completed page, sources and edit results of a subject, as one string: what a digest was taken from. */
@@ -332,12 +342,14 @@ export const resultSig = (list: Activity[]) =>
 /** The digest of a subject whose files were read; null while any of them is unread. */
 export function digestOf(id: string, list: Activity[]): Digest | null {
   if (list.some((a) => a.filesRead === false)) return null;
-  const s = summaryOf(id, list);
-  return { type: "digest", id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status };
+  // A file that failed to download is not a page that does not exist: no digest until it reads.
+  if (list.some((a) => a.sourcesError)) return null;
+  const core = coreOf(list);
+  const s = summaryOf(id, list, core);
+  return { type: "digest", v: 2, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status, unfolded: core.page ? core.unfolded.length : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null };
 }
 
-function summaryOf(id: string, list: Activity[]): SubjectSummary {
-  const core = coreOf(list);
+function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSummary {
   const doneTimes = list.filter((a) => a.state === "completed").map((a) => a.doneTime ?? a.time ?? 0);
   const anyTimes = list.map((a) => a.time ?? 0);
   const changed = Math.max(0, ...(doneTimes.length ? doneTimes : anyTimes)) || null;
@@ -357,7 +369,17 @@ function summaryOf(id: string, list: Activity[]): SubjectSummary {
     logo: core.latest?.logo ?? null,
     logoHash: core.latest?.logoHash ?? null,
     status: core.page ? null : firstPageStatus(list),
+    outdated: outdatedOf(core),
   };
+}
+
+/** The out-of-date note from a digest: its unfolded count, else the producing request's objective against the template. */
+export function digestOutdated(d: Digest, list: Activity[]): Outdated {
+  if (!d.hasPage || !d.pageReq) return null;
+  if (d.unfolded > 0) return { kind: "results", n: d.unfolded };
+  const req = list.find((a) => a.req.requestId === d.pageReq);
+  if (!req) return null;
+  return matchesTemplate(req.req.bodyJson?.objective) ? null : { kind: "format" };
 }
 
 /**
@@ -373,7 +395,7 @@ export function subjectSummaries(items: Activity[], digests: Map<string, Digest>
     const own = summaryOf(id, list);
     if (!list.some((a) => a.filesRead === false)) return own;
     const d = digests.get(id);
-    if (!d) return { ...own, counts: own.hasPage ? own.counts : null };
+    if (!d) return { ...own, counts: own.hasPage ? own.counts : null, unread: !own.hasPage, outdated: null };
     return {
       ...own,
       name: d.name || id,
@@ -386,6 +408,7 @@ export function subjectSummaries(items: Activity[], digests: Map<string, Digest>
       logo: d.logoHash ? logos.get(d.logoHash) ?? null : null,
       logoHash: d.logoHash,
       status: d.hasPage ? null : d.status && d.sig === resultSig(list) ? d.status : own.status,
+      outdated: digestOutdated(d, list),
     };
   });
   return out.sort((a, b) => (b.changed ?? 0) - (a.changed ?? 0) || a.id.localeCompare(b.id));
@@ -406,6 +429,8 @@ export interface RecordModel {
   main: string;
   /** Completed sources and edit results not folded in, oldest first. */
   after: Activity[];
+  /** Why the page shown needs a rebuild, or null. */
+  outdated: Outdated;
   jobs: SourceJob[];
   /** The newest accepted edit shown as the summary, if any. */
   edit: { activity: Activity; result: EditResult; key: string } | null;
@@ -583,6 +608,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     channels,
     main: page?.main ?? "",
     after,
+    outdated: outdatedOf(core),
     jobs,
     edit,
     summary,
@@ -618,6 +644,24 @@ export function answersOf(items: Activity[]): PriorAnswer[] {
       size: a.oracle!.panelSize,
       url: jobLink(a.jobId, a.req.transactionHash),
     }));
+}
+
+/**
+ * Why the page shown needs a rebuild: completed results not folded into it yet, or the request that produced it
+ * sent an objective other than what templates/rebuild.txt sends now (apart from <PRIOR>). Null when it is current
+ * or there is no page.
+ */
+export type Outdated = { kind: "results"; n: number } | { kind: "format" } | null;
+
+export function outdatedOf(core: Pick<Core, "latest" | "page" | "unfolded">): Outdated {
+  if (!core.latest || !core.page) return null;
+  if (core.unfolded.length) return { kind: "results", n: core.unfolded.length };
+  return matchesTemplate(core.latest.req.bodyJson?.objective) ? null : { kind: "format" };
+}
+
+/** "Out of date: 2 results not folded in" or "Out of date: built with an older format". */
+export function outdatedText(o: NonNullable<Outdated>): string {
+  return o.kind === "results" ? `Out of date: ${o.n.toLocaleString("en-US")} result${o.n === 1 ? "" : "s"} not folded in` : "Out of date: built with an older format";
 }
 
 /**

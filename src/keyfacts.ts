@@ -27,6 +27,60 @@ export interface KeyRow {
    * can link there. Their individual labels are listed on Sources; the row shows only its one status badge.
    */
   accounts: Account[];
+  /** The Tokens row: one entry per token the value lists, each shown on its own line. Empty on other rows. */
+  tokens: TokenItem[];
+}
+
+/** One token of a Tokens value: its symbol, what it is for, and its contract address ("" when the value gives none). */
+export interface TokenItem {
+  symbol: string;
+  purpose: string;
+  address: string;
+}
+
+/** Rows that list tokens one per line. */
+export const TOKEN_ROWS = /^tokens?$/i;
+
+/**
+ * Each token a Tokens value lists, such as "IMD: pays for jobs, 0xd34a… on Ethereum; SEAT (seat pass) 0x12…". Items
+ * are split at semicolons or new lines, else after each address. The symbol is the first word when it is written
+ * like a ticker ($IMD, IMD, sIMD); the purpose is what is left once the symbol and address are taken out.
+ */
+export function tokensOf(value: string): TokenItem[] {
+  const v = value.trim();
+  if (!v) return [];
+  let parts = v.split(/\s*(?:;|\n)\s*/).filter(Boolean);
+  if (parts.length === 1 && (v.match(/0x[0-9a-fA-F]{40}/g) ?? []).length > 1)
+    parts = v
+      .split(/(?<=0x[0-9a-fA-F]{40}\)?)\s*(?:,|\band\b)?\s*/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+  return parts.map((p) => {
+    const address = /0x[0-9a-fA-F]{40}/.exec(p)?.[0] ?? "";
+    let rest = p.replace(/0x[0-9a-fA-F]{40}/, " ");
+    const sym = /^\s*\$?([A-Za-z0-9][A-Za-z0-9.\-]{0,11})(?=\s*(?:[:(\-–—,]|$|\s))/.exec(rest);
+    // A ticker has two capitals in a row (IMD, sIMD, veCRV, USDC.e) or a $ before it; "Pays" or "Governance" is a word.
+    const symbol = sym && (/[A-Z]{2,}/.test(sym[1]!) || /^\s*\$/.test(sym[0])) ? sym[1]! : "";
+    if (symbol) rest = rest.slice(sym![0].length);
+    const purpose = rest
+      .replace(/\(\s*\)/g, " ")
+      .replace(/\b(at|contract|address)\s*(?=[,;.)]|\s*$)/gi, " ")
+      .replace(/\s+/g, " ")
+      .replace(/^[\s:,(–—-]+|[\s:,(–—-]+$/g, "")
+      .replace(/^\((.*)\)$/, "$1")
+      .trim();
+    return { symbol, purpose, address };
+  });
+}
+
+/**
+ * A speaker who is not named: empty, or a stand-in such as "an outside source", "a news site", "media reports". The
+ * Key facts badge names the host of the line's first source instead.
+ */
+export function isGenericSpeaker(by: string): boolean {
+  const s = by.trim().toLowerCase().replace(/[.:]+$/, "");
+  if (!s) return true;
+  return /^(?:(?:an?|the|some|one|several|various|other|multiple)\s+)?(?:(?:outside|external|third[- ]party|unnamed|anonymous|unknown|independent|online|crypto|news|media|industry)\s+)*(?:source|site|website|web site|news site|news outlet|outlet|post|article|blog|report|reports|publisher|publication|media|press|user|users|account|party|commentator|observer|someone|people|analyst|analysts|reporter|journalist|forum|community member)s?$/.test(s);
 }
 
 export interface Account {
@@ -57,7 +111,7 @@ export const TIE_ROWS = /^(website|official accounts?)$/i;
  * else "Stated by <channel>" for a statement; else "Reported by <who>". Pass every record line as `all` so a link
  * to a proof outside the row's own lines is still seen.
  */
-export function badgeOf(lines: Line[], all: Line[] = lines): Badge | null {
+export function badgeOf(lines: Line[], all: Line[] = lines, sourceUrl: (l: Line) => string = () => ""): Badge | null {
   const proofs = proofIdsOf(all);
   const states = lines.map((l) => settleOf(l, proofs).state);
   if (states.includes("contradicted")) return { text: "Contradicted", tone: "contradicted" };
@@ -66,9 +120,15 @@ export function badgeOf(lines: Line[], all: Line[] = lines): Badge | null {
   const st = lines.find((l) => l.kind === "statement");
   if (st) return { text: `Stated by ${st.channel?.label || hostOf(st.channel?.url ?? "") || st.by || "the project"}`, tone: "statement" };
   const cl = lines.find((l) => l.kind === "claim");
-  if (cl) return { text: `Reported by ${cl.by || "an outside source"}`, tone: "claim" };
+  if (cl) return { text: `Reported by ${reporter(cl, sourceUrl)}`, tone: "claim" };
   return null;
 }
+/** Who a claim's badge names: its speaker, or when that is missing or generic the host of its first source. */
+function reporter(l: Line, sourceUrl: (l: Line) => string): string {
+  if (!isGenericSpeaker(l.by)) return l.by.trim();
+  return hostOf(sourceUrl(l)) || "a source not named in the record";
+}
+
 /** A channel's label as a badge: Own domain, Verified on chain or Not verified. */
 export const statusBadge = (c: Channel, domain: string): Badge => toBadge(channelStatus(c, domain));
 const toBadge = (s: ChannelStatus): Badge => ({ text: STATUS_WORDS[s], tone: s });
@@ -130,7 +190,7 @@ export function websiteOf(channels: Channel[], domain: string): Channel | null {
  * another contract's symbol or supply is left out, and so is the row when no proof establishes it for this token.
  * Never every channel and contract.
  */
-export function keyFacts(page: Page | null, resolve: (id: string) => Line | undefined, all: Line[]): { rows: KeyRow[]; fromInfobox: boolean; otherChannels: Channel[] } {
+export function keyFacts(page: Page | null, resolve: (id: string) => Line | undefined, all: Line[], sourceUrl: (l: Line) => string = () => ""): { rows: KeyRow[]; fromInfobox: boolean; otherChannels: Channel[] } {
   if (!page) return { rows: [], fromInfobox: false, otherChannels: [] };
   const domain = page.domain ?? "";
   if (page.infobox.length) {
@@ -152,8 +212,9 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // the URL and the subject's domain when no channel matches); every other row shows only Proven on chain,
       // Stated by or Reported by.
       const status = tied ? rowStatus(r, channel, accounts, domain) : null;
-      const badge = tied ? null : badgeOf(lines, all);
-      return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge, status, accounts };
+      const badge = tied ? null : badgeOf(lines, all, sourceUrl);
+      const tokens = TOKEN_ROWS.test(r.label.trim()) ? tokensOf(r.value) : [];
+      return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge, status, accounts, tokens };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }
@@ -162,20 +223,20 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
   if (site) {
     const lines = linesOn(all, site);
     const shown = site.url.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-    rows.push({ label: "Website", value: shown || site.url, url: site.url, note: "", lines, channel: site, badge: null, status: statusBadge(site, domain), accounts: [] });
+    rows.push({ label: "Website", value: shown || site.url, url: site.url, note: "", lines, channel: site, badge: null, status: statusBadge(site, domain), accounts: [], tokens: [] });
   }
   const main = page.contracts.find((c) => c.main && /^0x[0-9a-fA-F]{40}$/.test(c.address));
   if (main) {
     const addr = main.address.toLowerCase();
     const lines = all.filter((l) => [l.text, l.rerun, l.quote, l.fact?.value ?? ""].some((s) => s.toLowerCase().includes(addr)));
     const id = chainIdOf(main.chain);
-    rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines, all), status: null, accounts: [] });
+    rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines, all, sourceUrl), status: null, accounts: [], tokens: [] });
   }
   const token = tokenAddresses(page);
   for (const which of ["symbol", "supply"] as const) {
     const l = all.find((x) => x.kind === "proof" && !!x.fact && isTokenFact(x, which) && provesToken(x, token));
     if (!l) continue;
-    rows.push({ label: l.fact!.name, value: `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l]), status: null, accounts: [] });
+    rows.push({ label: l.fact!.name, value: `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l], [l], sourceUrl), status: null, accounts: [], tokens: [] });
   }
   return { rows, fromInfobox: false, otherChannels: page.channels.filter((c) => c !== site) };
 }

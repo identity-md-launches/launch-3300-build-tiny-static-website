@@ -24,7 +24,7 @@ import {
   isFactRow, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
 import { firstPageStatus, statusText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
-import { StillReading } from "./Home";
+import { OutdatedNote, StillReading } from "./Home";
 import { AddButtons, ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest } from "./Suggest";
 import { formatNumbers } from "./numbers";
 import { keyFactTarget, lineTarget, sentenceTarget } from "./changes";
@@ -98,6 +98,25 @@ function KeyValue({ row }: { row: KeyRow }) {
         {row.accounts.map((a, i) => (
           <li key={i}>
             {a.channel && safeHref(a.channel.url) ? <ExtLink url={a.channel.url} className="break">{a.name}</ExtLink> : <span className="break">{a.name}</span>}
+          </li>
+        ))}
+      </ul>
+    );
+  if (row.tokens.length)
+    return (
+      <ul className="kf-tokens">
+        {row.tokens.map((t, i) => (
+          <li key={i}>
+            {t.symbol && <strong>{t.symbol}</strong>}
+            {t.symbol && t.purpose ? ": " : ""}
+            {t.purpose && formatNumbers(t.purpose)}
+            {t.address && (
+              <>
+                {" "}
+                <span className="mono" title={t.address}>{shortHex(t.address)}</span>
+                <Copy value={t.address} />
+              </>
+            )}
           </li>
         ))}
       </ul>
@@ -199,7 +218,8 @@ const allLines = (m: Pick<RecordModel, "sections">) => m.sections.flatMap((s) =>
 
 export function useKeyFacts(m: RecordModel) {
   const all = m.sections.flatMap((s) => s.rows.map((r) => r.line));
-  return keyFacts(m.page, m.resolve, all);
+  const sourceUrl = (l: Line) => (l.srcKeys[0] ? m.sourceList.find((s) => s.key === l.srcKeys[0])?.url ?? "" : "");
+  return keyFacts(m.page, m.resolve, all, sourceUrl);
 }
 
 /** After each sentence, one small coloured dot per kind among its lines; a dot opens those lines in Record. */
@@ -372,6 +392,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
         <h1 id="record-title" tabIndex={-1}>{name}</h1>
       </div>
       <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
+      {m.outdated && <OutdatedNote o={m.outdated} href={to("rebuild")} />}
       {rejectedCard && (
         <div className="card empty" id="rejected">
           <h2>No project found</h2>

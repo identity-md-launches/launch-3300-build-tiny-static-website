@@ -4,7 +4,7 @@
  * first-rebuild dialog.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { statusText, subjectSummaries, type Digest, type SubjectSummary } from "./model";
+import { outdatedText, statusText, subjectSummaries, type Digest, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
@@ -18,7 +18,39 @@ function when(t: number | null) {
   return new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function SubjectItem({ s }: { s: SubjectSummary }) {
+/** "Out of date: …" with a Rebuild link to the subject's Contribute tab: on Overview and on a home row. */
+export function OutdatedNote({ o, href }: { o: NonNullable<SubjectSummary["outdated"]>; href: string }) {
+  return (
+    <p className="outdated small">
+      <span>{outdatedText(o)}.</span> <a href={href}>Rebuild</a>
+    </p>
+  );
+}
+
+/** While a subject's page file and logo are read for its digest: a light row with its id, never "Open the page". */
+function PlaceholderItem({ s, failed }: { s: SubjectSummary; failed: string }) {
+  return (
+    <li className={`subject${failed ? "" : " subject-loading"}`} aria-busy={!failed}>
+      <SubjectLogo name={s.name} logo={null} size={28} />
+      <div className="subject-body">
+        <a className="subject-link" href={subjectHref(s.id)}>
+          <span className="subject-name">{s.id}</span>
+        </a>
+        {failed ? (
+          <p className="subject-line">Its record could not be read here ({failed}). It is read again on the next visit.</p>
+        ) : (
+          <>
+            <p className="subject-line"><span className="sr-only">Reading its record…</span><span className="bar" aria-hidden="true" /></p>
+            <p className="subject-meta small" aria-hidden="true"><span className="bar bar-short" /></p>
+          </>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function SubjectItem({ s, reading, failed }: { s: SubjectSummary; reading: boolean; failed: string }) {
+  if (s.unread) return <PlaceholderItem s={s} failed={reading ? "" : failed} />;
   const status = s.status ? statusText(s.status) : "";
   return (
     <li className="subject">
@@ -43,12 +75,30 @@ function SubjectItem({ s }: { s: SubjectSummary }) {
           )}
           <span>Changed {when(s.changed)}</span>
           {s.pending > 0 && <span>{plural(s.pending, "request")} pending</span>}
-          {s.stale && <span>New results since you last opened it</span>}
+          {s.stale && reading && <span>Reading newer results…</span>}
         </p>
+        {s.outdated && <OutdatedNote o={s.outdated} href={subjectHref(s.id, "rebuild")} />}
       </div>
     </li>
   );
 }
+
+/** All, or only the pages that need a rebuild. */
+function ListFilter({ all, needs, only, set }: { all: number; needs: number; only: boolean; set: (v: boolean) => void }) {
+  return (
+    <div className="filter" role="group" aria-label="Show projects">
+      <button type="button" className="btn btn-filter" aria-pressed={!only} onClick={() => set(false)}>
+        All <span className="num">{all.toLocaleString("en-US")}</span>
+      </button>
+      <button type="button" className="btn btn-filter" aria-pressed={only} onClick={() => set(true)}>
+        Needs a rebuild <span className="num">{needs.toLocaleString("en-US")}</span>
+      </button>
+    </div>
+  );
+}
+
+const listNote = (shown: number, all: number, q: string, only: boolean) =>
+  q ? `${plural(shown, "project")} ${only ? "that need a rebuild " : ""}match “${q}”.` : only ? `${plural(shown, "project")} need${shown === 1 ? "s" : ""} a rebuild.` : `${plural(all, "project")} on the record, newest change first.`;
 
 export type AddInput = { domain: string; address: string; chain: string };
 
@@ -127,7 +177,7 @@ export function StillReading({ error, retrying }: { error: string | null; retryi
   );
 }
 
-export function Home({ items, error, loading, retrying, cached, digests, logos, reload, onAdd, price, bad, prefill }: {
+export function Home({ items, error, loading, retrying, cached, digests, logos, reading, failed, reload, onAdd, price, bad, prefill }: {
   items: Activity[] | null;
   error: string | null;
   loading: boolean;
@@ -138,6 +188,9 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   /** Each subject's digest and the logos they name, from IndexedDB: Home reads no full page file. */
   digests?: Map<string, Digest>;
   logos?: Map<string, string>;
+  /** Subjects whose files are being read for their digest, and those that failed: placeholder rows. */
+  reading?: Set<string>;
+  failed?: Map<string, string>;
   reload: () => Promise<void>;
   onAdd: (i: AddInput) => string | null;
   price: string;
@@ -150,7 +203,9 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const [err, setErr] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const all = useMemo(() => subjectSummaries(items ?? [], digests, logos), [items, digests, logos]);
-  const shown = all.filter((s) => matchesQuery(s, q));
+  const [onlyStale, setOnlyStale] = useState(false);
+  const needs = all.filter((s) => s.outdated).length;
+  const shown = all.filter((s) => matchesQuery(s, q) && (!onlyStale || !!s.outdated));
 
   const look = (raw: string) => {
     const parsed = parseLookup(raw);
@@ -257,12 +312,18 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
         ) : shown.length ? (
           <>
             {cached && loading && <p className="small" role="status">Shown from this browser. Reading newer blocks…</p>}
-            <p className="small" aria-live="polite">{q.trim() ? `${plural(shown.length, "project")} match “${q.trim()}”.` : `${plural(all.length, "project")} on the record, newest change first.`}</p>
+            <ListFilter all={all.length} needs={needs} only={onlyStale} set={setOnlyStale} />
+            <p className="small" aria-live="polite">{listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
             <ul className="subjects">
               {shown.map((s) => (
-                <SubjectItem key={s.id} s={s} />
+                <SubjectItem key={s.id} s={s} reading={!!reading?.has(s.id)} failed={failed?.get(s.id) ?? ""} />
               ))}
             </ul>
+          </>
+        ) : onlyStale && all.length ? (
+          <>
+            <ListFilter all={all.length} needs={needs} only={onlyStale} set={setOnlyStale} />
+            <p className="small" aria-live="polite">{q.trim() ? `No project that needs a rebuild matches “${q.trim()}”.` : "No page needs a rebuild."}</p>
           </>
         ) : (
           <p className="small" aria-live="polite">{q.trim() ? `No project matches “${q.trim()}”. Press Look it up to add it.` : "No projects yet. Add the first one with the bar above."}</p>

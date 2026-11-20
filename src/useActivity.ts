@@ -2,8 +2,8 @@
  * Every tagged request, followed to completion from the Intake's events and IMD's public read routes.
  *
  * Loading: the last block scanned and the requests found are kept in IndexedDB. A return visit shows them at once
- * and then scans only newer blocks. Result files (page, lines, edit, logo) are read only for the subject whose page
- * is open; the home list uses each subject's small digest instead (digest.ts).
+ * and then scans only newer blocks. Result files (page, lines, edit, logo) are read for the subject whose page is
+ * open, and by readSubject, which the home list uses to take a digest of each subject it has none for (digest.ts).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getEnsName } from "wagmi/actions";
@@ -192,6 +192,11 @@ export interface ActivityState {
   /** True while the items shown come from the browser's cache and the scan for newer blocks has not ended. */
   cached: boolean;
   reload: () => Promise<void>;
+  /**
+   * Reads one subject's result files (page, lines, edit, changes and the logo) without opening its page, and returns
+   * its requests. What is read is kept, so opening the subject later does not read it again.
+   */
+  readSubject: (id: string) => Promise<Activity[]>;
 }
 
 /** `subject`: the subject whose page is open; its requests are read with their result files. */
@@ -276,5 +281,15 @@ export function useActivity(subject: string | null = null): ActivityState {
     return () => window.clearTimeout(timer.current);
   }, [items, load]);
 
-  return { items, error, loading, retrying, cached, reload: load };
+  const readSubject = useCallback(
+    async (id: string) => {
+      const s = scan.current;
+      if (!s) return [];
+      const research = (r: TaggedRequest) => isPageJob(r) || isSourceJob(r) || isEditJob(r) || isChangesJob(r);
+      return Promise.all(s.requests.filter((r) => r.subject === id).map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), research(r))));
+    },
+    [followed],
+  );
+
+  return { items, error, loading, retrying, cached, reload: load, readSubject };
 }

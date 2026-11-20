@@ -116,7 +116,7 @@ describe("storage", () => {
   });
 
   it("the home list uses a digest per subject and never needs the page file", () => {
-    const digest: Digest = { type: "digest", id: "example.com", sig: "0x01", name: "Example", oneLine: "Does things", counts: { all: 3, proven: 1, contradicted: 0, proof: 1, statement: 1, claim: 0, said: 1 }, logoHash: "ab", changed: 5, hasPage: true, main: "", contracts: [], status: null };
+    const digest: Digest = { type: "digest", v: 2, unfolded: 0, pageReq: null, id: "example.com", sig: "0x01", name: "Example", oneLine: "Does things", counts: { all: 3, proven: 1, contradicted: 0, proof: 1, statement: 1, claim: 0, said: 1 }, logoHash: "ab", changed: 5, hasPage: true, main: "", contracts: [], status: null };
     const { digests, logos } = splitDigests([digest, { type: "logo", hash: "ab", url: "data:image/png;base64,AAAA" }, { type: "logo", hash: "cd", url: "javascript:x" }]);
     expect(logos.size).toBe(1);
     const light = {
@@ -128,8 +128,8 @@ describe("storage", () => {
     const [s] = subjectSummaries([light], digests, logos);
     expect(s).toMatchObject({ name: "Example", oneLine: "Does things", hasPage: true, logo: "data:image/png;base64,AAAA", stale: false });
     expect(s!.counts!.proven).toBe(1);
-    // Without a digest the subject is listed by its id and asks to be opened.
+    // Without a digest the subject is listed by its id as unread: Home shows a placeholder row while it reads it.
     const [bare] = subjectSummaries([light]);
-    expect(bare).toMatchObject({ name: "example.com", counts: null, status: { kind: "unread" } });
+    expect(bare).toMatchObject({ name: "example.com", counts: null, unread: true, status: { kind: "unread" } });
   });
 });
