@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getEnsName } from "wagmi/actions";
 import type { Hex } from "viem";
 import { loadTaggedRequests, stateOf, getBlockTime, type Completion, type TaggedRequest } from "./chain";
-import { cacheGet, cacheSet, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
+import { cacheGet, cacheSet, fetchLogo, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
 import { parseEdit, parseLines, parsePage, rejectionOf, type EditResult, type Page, type SourceLines } from "./page";
 import { config } from "./wallet";
@@ -37,6 +37,12 @@ export interface Activity {
   rejected: string | null;
   /** When the result was written: the completion's block time, or null while pending or unknown. */
   doneTime: number | null;
+  /**
+   * A completed page job's logo file as a data: URL: downloaded from api.imd.fun, checked against its listed
+   * SHA-256 and accepted only as a PNG. Null when the job wrote none or it failed a check (see logoError).
+   */
+  logo?: string | null;
+  logoError?: string | null;
 }
 
 export const isSourceJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "source";
@@ -118,6 +124,8 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
   let page: Page | null = null;
   let via: Activity["via"] = null;
   let rejected: string | null = null;
+  let logo: string | null = null;
+  let logoError: string | null = null;
   if ((isSourceJob(req) || isEditJob(req) || isPageJob(req)) && state === "completed" && completion) {
     const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : "lines";
     try {
@@ -131,6 +139,11 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
       } else if (name === "page") {
         page = parsePage(f.text, domainOfId(req.subject));
         via = { jobId: f.jobId, path: f.path };
+        try {
+          logo = await fetchLogo(req, completion, f.jobId ?? jobId);
+        } catch (e) {
+          logoError = e instanceof Error ? e.message : "The logo could not be read";
+        }
       } else sources = parseLines(f.text);
       jobId ??= f.jobId;
     } catch (e) {
@@ -138,7 +151,7 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
     }
   }
   const [time, ens, doneTime] = await Promise.all([timeOf(req), ensOf(req.payer), completion ? timeOf(completion) : Promise.resolve(null)]);
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash, page, via, rejected, doneTime };
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, fileHash, page, via, rejected, doneTime, logo, logoError };
 }
 
 export function useActivity() {

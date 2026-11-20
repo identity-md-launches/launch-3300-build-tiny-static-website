@@ -80,6 +80,8 @@ async function mock(page, opts = {}) {
       const fx = f;
       if ((m = /^\/intake\/1\/(0x[0-9a-f]+)$/.exec(url.pathname))) return json(fx.intake[m[1]] ?? { entries: [] });
       if ((m = /^\/jobs\/([^/]+)\/result$/.exec(url.pathname))) return fx.results[m[1]] ? json(fx.results[m[1]]) : json({}, 404);
+      if ((m = /^\/artifacts\/([0-9a-f]{64})$/.exec(url.pathname)) && fx.bin?.[m[1]])
+        return route.fulfill({ status: 200, contentType: "image/png", headers: { "access-control-allow-origin": "*" }, body: Buffer.from(fx.bin[m[1]], "base64") });
       if ((m = /^\/artifacts\/([0-9a-f]{64})$/.exec(url.pathname)))
         return fx.files[m[1]] ? route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*" }, body: fx.files[m[1]] }) : json({}, 404);
       if (/^\/oracle\/requests\//.test(url.pathname)) return json({ id: fx.oracleId, status: "completed", panelSize: 5, jobId: "job-6", agreement: { agreed: 5, answer: true } });
@@ -122,27 +124,61 @@ try {
     const item = await page.locator(".subjects .subject").first().innerText();
     check(`${W} a subject shows its name, one_line, counts and when it changed`, /IMD/.test(item) && /imd\.fun/.test(item) && /\d+ proofs?/.test(item) && /\d+ statements?/.test(item) && /\d+ claims?/.test(item) && /Changed /.test(item), item.replace(/\n/g, " | "));
     check(`${W} the title is On the record (test)`, (await page.title()) === "On the record (test)");
-    const search = await page.locator("#search").boundingBox();
-    const addBtn = await page.locator(width >= 832 ? "#add-title" : ".add-jump").boundingBox();
-    check(`${W} search and Add a project are on the first screen`, search && addBtn && search.y + search.height < 844 && addBtn.y + addBtn.height < 844, JSON.stringify({ search, addBtn }));
-    await page.fill("#search", "zzz-nothing");
-    check(`${W} search filters the list`, (await page.locator(".subjects .subject").count()) === 0 && /No project matches/.test(await page.locator(".home-list").innerText()));
-    await page.fill("#search", "imd");
-    check(`${W} search finds by name or id`, (await page.locator(".subjects .subject").count()) === 1);
-    // Add a project: validation, then the Rebuild dialog with the subject's tag and <SUBJECT>.
-    await page.click("text=Review the first rebuild");
-    check(`${W} an empty form asks for a domain`, /Write the project's domain/.test(await page.locator("#add").innerText()));
-    await page.fill("#add-domain", "https://www.Example.com/about");
-    await page.fill("#add-address", "0x1111111111111111111111111111111111111111");
-    await page.selectOption("#add-chain", "8453");
-    check(`${W} the form shows the page it will make`, /#\/s\/example\.com/.test(await page.locator("#add-id").innerText()));
-    await page.click("text=Review the first rebuild");
+    check(`${W} a subject shows its logo, checked and shown as a data: URL at 28 pixels`, await page.evaluate(() => { const i = document.querySelector(".subjects .subject img.logo"); return !!i && i.getAttribute("src")?.startsWith("data:image/png;base64,") && i.getBoundingClientRect().width === 28; }));
+    const hero = await page.evaluate(() => {
+      const h1 = document.querySelector("h1");
+      const lead = document.querySelector(".hero .lead");
+      const inp = document.querySelector("#lookup");
+      const btn = document.querySelector(".btn-lookup");
+      const cs = inp && getComputedStyle(inp);
+      const r = (e) => e?.getBoundingClientRect();
+      return { h1: h1?.textContent, lead: lead?.textContent, center: h1 && getComputedStyle(h1).textAlign, ph: inp?.getAttribute("placeholder"), btn: btn?.textContent, h: r(inp)?.height, radius: cs?.borderTopLeftRadius, size: cs?.fontSize, bg: cs?.backgroundColor, inBottom: r(inp)?.bottom, btnBottom: r(btn)?.bottom, sameRow: Math.abs((r(inp)?.top ?? 0) - (r(btn)?.top ?? 1)) < 2 };
+    });
+    check(`${W} the headline and the line under it are the brief's, centred`, hero.h1 === "Look up any crypto project." && /^See what a project says, what can be proven, and where the two differ\. Every line points to its source, and a swarm of independent agents checks each one before it goes in\.$/.test(hero.lead ?? "") && hero.center === "center", JSON.stringify(hero));
+    check(`${W} one bar: 56px high, 14px corners, 17px text, light grey fill, placeholder and Look it up beside it`, hero.h === 56 && hero.radius === "14px" && hero.size === "17px" && hero.bg === "rgb(236, 238, 242)" && hero.ph === "A domain or a 0x address" && hero.btn === "Look it up" && hero.sameRow, JSON.stringify(hero));
+    check(`${W} the bar and its button are on the first screen`, hero.inBottom < 844 && hero.btnBottom < 844, JSON.stringify(hero));
+    check(`${W} the separate search box and Add a project form are gone`, (await page.locator("#search, #add, #add-domain").count()) === 0);
+    check(`${W} the small line under the bar`, /People and agents can both add\. Nothing is edited by hand\./.test(await page.locator(".hero").innerText()));
+    const cards = await page.$$eval(".label-cards li", (ls) => ls.map((l) => [l.textContent?.trim(), getComputedStyle(l.querySelector(".kind")).color]));
+    check(`${W} three label cards in the Record tab's colours`, cards.length === 3 && /^Proof: anyone can re-run the check and get the same answer\.$/.test(cards[0][0]) && /^Statement: the project said it, on its own channels\.$/.test(cards[1][0]) && /^Claim: someone else said it; their name is on it\.$/.test(cards[2][0]) && cards[0][1] === "rgb(20, 108, 54)" && cards[1][1] === "rgb(30, 79, 168)" && cards[2][1] === "rgb(154, 61, 0)", JSON.stringify(cards));
+    const steps = await page.$$eval(".steps li", (ls) => ls.map((l) => l.textContent?.replace(/\s+/g, " ").trim()));
+    check(`${W} How it works: three numbered cards below the list`, steps.length === 3 && steps[0] === "1. Add: a project, a batch of links, or an edit to a summary." && steps[1] === "2. The swarm checks: a research job reads the sources; a panel of agents answers single yes or no questions." && steps[2] === "3. Everyone reads: a short summary on top, every line and its source underneath." && await page.evaluate(() => (document.querySelector(".home-list").compareDocumentPosition(document.querySelector(".how")) & Node.DOCUMENT_POSITION_FOLLOWING) > 0), JSON.stringify(steps));
+    await page.fill("#lookup", "zzz-nothing");
+    check(`${W} typing filters the list`, (await page.locator(".subjects .subject").count()) === 0 && /No project matches/.test(await page.locator(".home-list").innerText()));
+    await page.fill("#lookup", "imd");
+    check(`${W} typing finds by name or id`, (await page.locator(".subjects .subject").count()) === 1);
+    await page.fill("#lookup", "");
+    await page.click(".btn-lookup");
+    check(`${W} an empty bar asks for a domain or address`, /Write a domain/.test(await page.locator("#lookup-err").innerText()));
+    // A pasted link to a project with no page: the offer, then the first-rebuild dialog.
+    await page.fill("#lookup", "https://www.Example.com/about");
+    await page.press("#lookup", "Enter");
+    const offer = await page.waitForSelector(".offer", { timeout: 5000 }).then(() => page.locator(".offer").innerText(), () => "");
+    check(`${W} no page yet: the price and one research job, directly under the bar`, /No page yet for https:\/\/www\.Example\.com\/about\. Adding one costs 0\.5 IMD and starts one research job\./.test(offer) && (await page.locator("#offer-chain").count()) === 0, offer);
+    await page.click("text=Add this project");
     const dlg = await page.waitForSelector('[role="dialog"]', { timeout: 5000 }).then(() => true, () => false);
     const body = dlg ? await page.locator("pre.body").innerText() : "";
-    check(`${W} Add opens the Rebuild dialog for that subject`, dlg && /Create the page of example\.com/.test(await page.locator("#pay-title").innerText()));
-    check(`${W} its tag carries the subject`, /"subject": "example\.com"/.test(body) && /"kind": "add"/.test(body), body.slice(0, 120));
-    check(`${W} its objective names the project and contract`, body.includes("one subject: the project at example.com, whose main contract is 0x1111111111111111111111111111111111111111 on chain 8453.") && body.includes("Start from the earlier results: none."));
+    check(`${W} Add this project opens the first-rebuild dialog for the link's host`, dlg && /Create the page of example\.com/.test(await page.locator("#pay-title").innerText()));
+    check(`${W} its tag carries the subject and it asks for the page and the logo`, /"subject": "example\.com"/.test(body) && /"kind": "add"/.test(body) && /"name": "logo"/.test(body) && /"mediaType": "image\/png"/.test(body), body.slice(0, 300));
+    check(`${W} its objective names the project`, body.includes("one subject: the project at example.com.") && body.includes("Start from the earlier results: none."));
     if (dlg) await page.keyboard.press("Escape");
+    // An address: the optional chain picker.
+    await page.fill("#lookup", "0x1111111111111111111111111111111111111111");
+    await page.click(".btn-lookup");
+    await page.waitForSelector("#offer-chain", { timeout: 5000 }).catch(() => {});
+    await page.selectOption("#offer-chain", "8453");
+    await page.click("text=Add this project");
+    const d2 = await page.waitForSelector('[role="dialog"]', { timeout: 5000 }).then(() => true, () => false);
+    const b2 = d2 ? await page.locator("pre.body").innerText() : "";
+    check(`${W} an address with a chain picked gets its chain:address rebuild`, d2 && /"subject": "8453:0x1111111111111111111111111111111111111111"/.test(b2) && b2.includes("one subject: the project whose main contract is 0x1111111111111111111111111111111111111111 on chain 8453."), b2.slice(0, 200));
+    if (d2) await page.keyboard.press("Escape");
+    // A subject that exists opens.
+    await page.fill("#lookup", "IMD.fun");
+    await page.click(".btn-lookup");
+    await page.waitForFunction(() => location.hash === "#/s/imd.fun", null, { timeout: 5000 }).catch(() => {});
+    check(`${W} Look it up opens a subject that exists`, (await page.evaluate(() => location.hash)) === "#/s/imd.fun");
+    await page.goto(base);
+    await page.waitForSelector(".subjects .subject", { timeout: 30000 });
     check(`${W} no horizontal scroll on home`, (await overflow(page)) <= 0);
     if (width === 390) await page.screenshot({ path: join(out, `390-home.png`) });
 
@@ -166,12 +202,15 @@ try {
         const lead = document.querySelector("main .lead");
         const actions = document.querySelector("main .tab > .row-actions");
         const summary = document.querySelector(".summary");
-        return lead?.nextElementSibling?.classList.contains("overview") && document.querySelector(".overview")?.firstElementChild?.classList.contains("keyfacts") && !!actions && !!summary && (summary.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING) > 0;
+        return lead?.nextElementSibling?.classList.contains("overview") && document.querySelector(".overview .facts-col")?.firstElementChild?.classList.contains("keyfacts") && !!actions && !!summary && (summary.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING) > 0;
       }));
       check(`${W} every key fact row has a status badge`, (await page.locator(".keyfacts .badge").count()) >= 1);
       const kfRows = await page.$$eval(".keyfacts tbody tr", (trs) => trs.map((tr) => ({ label: tr.querySelector("th")?.textContent?.trim() ?? "", badges: [...tr.querySelectorAll(".badge")].map((b) => b.textContent?.trim() ?? "") })));
       const row = (l) => kfRows.find((r) => r.label === l)?.badges ?? [];
-      check(`${W} the Website row shows its channel's label, Own domain, and a badge from its line's kind`, row("Website").includes("Own domain") && row("Website").includes("Stated by imd.fun"), JSON.stringify(kfRows));
+      check(`${W} one badge per row; the Website row shows only its channel's label, Own domain`, row("Website").join() === "Own domain" && kfRows.every((r) => r.badges.length === 1), JSON.stringify(kfRows));
+      check(`${W} the logo shows at 40 pixels beside the name, from the checked file`, await page.evaluate(() => { const i = document.querySelector(".title-row img.logo"); return !!i && i.getAttribute("src")?.startsWith("data:image/png;base64,") && i.getBoundingClientRect().width === 40; }));
+      const rel = await page.locator(".related").innerText().catch(() => "");
+      check(`${W} Related under Key facts: each with its relation; a subject on the site links to its page, else Add this project`, /Ethereum Name Service/.test(rel) && /names its agents/.test(rel) && (await page.locator('.related a[href="#/s/imd.fun"]').count()) === 0 && (await page.locator('.related a[href="#/add/ens.domains"]').count()) === 1, rel);
       check(`${W} only Website and Official accounts rows show a channel label`, kfRows.filter((r) => !/^(Website|Official accounts?)$/.test(r.label)).every((r) => r.badges.every((b) => !/Own domain|Verified on chain|Not verified/.test(b))) && row("Seat supply").join() === "Proven on chain", JSON.stringify(kfRows));
       check(`${W} no old tie words anywhere on Overview`, !/Confirmed on chain|Names the contract|Not confirmed/.test(await page.locator("main").innerText()));
       check(`${W} Checked by a panel is gone from Overview`, !/Checked by a panel/.test(await page.locator("main").innerText()));
@@ -187,10 +226,27 @@ try {
 
     // Record: panel answers at the bottom
     await page.goto(base + "#/s/imd.fun/record");
-    await page.waitForSelector(".lines", { timeout: 30000 });
+    await page.waitForSelector(".section-toggle", { timeout: 30000 });
     const rec = await page.locator("main").innerText();
     check(`${W} panel answers list at the bottom of Record`, (await page.locator("#panel-answers").count()) === 1);
-    check(`${W} Record shows lines`, /What it does|Money|On chain/.test(rec));
+    check(`${W} Record shows its sections`, /What it does|Money|On chain/.test(rec));
+    const toggles = await page.$$eval(".section-toggle", (bs) => bs.map((b) => [b.getAttribute("aria-expanded"), b.textContent]));
+    check(`${W} sections start closed, each with its name and counts of proofs, statements and claims`, toggles.length > 0 && toggles.every(([x, s]) => x === "false" && /\d+ proofs?, \d+ statements?, \d+ claims?/.test(s)) && (await page.locator(".lines .row").count()) === 0, JSON.stringify(toggles));
+    const rp = await page.locator("#repeats").innerText().catch(() => "");
+    check(`${W} the repeat check warns and lists the lines`, /^1 line repeats another line/.test(rp) && /L1/.test(rp) && /L4/.test(rp), rp);
+    await page.locator(".section-toggle", { hasText: "What it does" }).click();
+    check(`${W} a section opens`, (await page.locator(".lines .row").count()) >= 1);
+    await page.fill("#record-search", "a forum");
+    check(`${W} the search finds a line by its speaker`, (await page.locator(".lines .row").count()) === 1 && /imd is a swarm of agents/.test(await page.locator(".lines").innerText()));
+    await page.fill("#record-search", "");
+    await page.locator(".section-toggle", { hasText: "What it does" }).click();
+    await page.check("text=Only lines that are confirmed or contradicted");
+    const settled = await page.$$eval(".lines .row .row-text, .fact-table .row-text", (rs) => rs.map((r) => r.textContent));
+    check(`${W} the filter keeps only confirmed or contradicted lines`, settled.length === 2 && settled.includes("A post says a job costs 5 IMD.") && settled.includes("Seat supply"), JSON.stringify(settled));
+    await page.locator(".fact-table .row-toggle").first().click();
+    check(`${W} a line with history shows its earlier readings`, /Earlier readings\s*Block 26,400,000: 1,500/.test(await page.locator(".fact-details").innerText().catch(() => "")));
+    check(`${W} no horizontal scroll on Record`, (await overflow(page)) <= 0, await wideOf(page));
+    if (width === 390) await page.screenshot({ path: join(out, `390-record.png`), fullPage: true });
 
     // Activity labels
     await page.goto(base + "#/s/imd.fun/activity");
@@ -228,23 +284,29 @@ try {
     await page.goto(base + "#/s/imd.fun/sources");
     await page.waitForSelector(".channels-block", { timeout: 30000 });
     const ch = await page.locator(".channels-block").innerText();
-    check(`${W} Sources labels the channel on the subject's domain Own domain and explains the three labels`, /Own domain/.test(ch) && /Verified on chain:/.test(ch) && /Not verified:/.test(ch) && !/Confirmed on chain|Names the contract/.test(ch), ch.slice(0, 300));
+    check(`${W} Sources labels the channel on the subject's domain Own domain and explains the three labels`, /Own domain/.test(ch) && /Verified on chain:/.test(ch) && /Not verified:/.test(ch) && !/Confirmed on chain|Names the contract|not confirmed/i.test(ch), ch.slice(0, 300));
+    check(`${W} the legend is the brief's sentence`, ch.includes("Lines published on Own domain or Verified on chain channels show as statements; everything else is a claim."));
 
     // Add a project on a chain the oracle list does not name (8aeb5d8b).
     await page.goto(base);
     await page.waitForSelector(".subjects .subject", { timeout: 30000 });
-    await page.fill("#add-address", "0x1111111111111111111111111111111111111111");
-    await page.selectOption("#add-chain", "other");
-    await page.fill("#add-chain-other", "polygon");
-    await page.click("text=Review the first rebuild");
-    check(`${W} Other chain ID asks for a number`, (await page.locator("#add-chain-err").count()) === 1 && (await page.locator('[role="dialog"]').count()) === 0);
-    await page.fill("#add-chain-other", "137");
-    check(`${W} Other chain ID builds the chain:address id`, /#\/s\/137:0x1111111111111111111111111111111111111111/.test(await page.locator("#add-id").innerText()));
-    await page.click("text=Review the first rebuild");
+    await page.fill("#lookup", "0x1111111111111111111111111111111111111111");
+    await page.click(".btn-lookup");
+    await page.waitForSelector("#offer-chain", { timeout: 5000 }).catch(() => {});
+    await page.selectOption("#offer-chain", "other");
+    await page.fill("#offer-chain-other", "polygon");
+    await page.click("text=Add this project");
+    check(`${W} Other chain ID asks for a number`, /Write the chain ID as a number/.test(await page.locator(".offer").innerText()) && (await page.locator('[role="dialog"]').count()) === 0);
+    await page.fill("#offer-chain-other", "137");
+    await page.click("text=Add this project");
     const d137 = await page.waitForSelector('[role="dialog"]', { timeout: 5000 }).then(() => true, () => false);
     const b137 = d137 ? await page.locator("pre.body").innerText() : "";
     check(`${W} a chain 137 project gets its own rebuild`, d137 && /"subject": "137:0x1111111111111111111111111111111111111111"/.test(b137) && b137.includes("one subject: the project whose main contract is 0x1111111111111111111111111111111111111111 on chain 137."), b137.slice(0, 200));
     if (d137) await page.keyboard.press("Escape");
+    // Related's Add this project opens the bar filled in.
+    await page.goto(base + "#/add/ens.domains");
+    const pre = await page.waitForSelector(".offer", { timeout: 30000 }).then(() => page.locator(".offer").innerText(), () => "");
+    check(`${W} Add this project from Related fills the bar and offers the add`, (await page.inputValue("#lookup")) === "ens.domains" && /No page yet for ens\.domains/.test(pre), pre);
 
     // Long subject ids wrap (358e18f4).
     for (const id of ["1:0x1111111111111111111111111111111111111111", "pneumaticstatisticsandtokenregistry.example"]) {
@@ -283,8 +345,11 @@ try {
   {
     const { ctx, page } = await variantPage({ fx: fx.variants.person });
     await page.goto(base);
-    await page.waitForSelector(".home-list p.small[aria-live]", { timeout: 30000 });
-    check("390: a found: false result is not listed as a project", (await page.locator(".subjects .subject").count()) === 0 && !/Sample Person/.test(await page.locator("main").innerText()));
+    await page.waitForSelector(".subjects .subject", { timeout: 30000 });
+    const home = await page.locator(".subjects").innerText();
+    check("390: a found: false result is listed as No project found, with its notes, never the person's name", /person\.example/.test(home) && /No project found: The domain identifies a person, not a project\./.test(home) && !/Sample Person/.test(await page.locator("main").innerText()), home);
+    check("390: a pending first page shows First page in progress", /pending\.example[\s\S]*First page in progress/.test(home), home);
+    check("390: a subject with no logo shows its first letter", (await page.locator(".subjects .logo-tile").allInnerTexts()).sort().join() === "P,P");
     await page.goto(base + "#/s/person.example");
     await page.waitForSelector("#rejected", { timeout: 30000 }).catch(() => {});
     const main = await page.locator("main").innerText();
@@ -302,10 +367,12 @@ try {
     await page.click("text=Try again");
     await page.waitForSelector("text=Try again", { timeout: 60000 });
     check("390: failed read: no 'No projects yet'", !/No projects yet/.test(await page.locator("main").innerText()));
-    await page.fill("#add-domain", "imd.fun");
-    await page.click("text=Review the first rebuild");
+    await page.fill("#lookup", "imd.fun");
+    await page.click(".btn-lookup");
+    await page.waitForSelector(".offer", { timeout: 5000 }).catch(() => {});
+    if (await page.locator(".offer").count()) await page.click("text=Add this project");
     await page.waitForTimeout(300);
-    check("390: failed read: no rebuild review, retry guidance instead", (await page.locator('[role="dialog"]').count()) === 0 && /The project list could not be read\. Try again before reviewing a rebuild\./.test(await page.locator("#add").innerText()));
+    check("390: failed read: no rebuild review, retry guidance instead", (await page.locator('[role="dialog"]').count()) === 0 && /The project list could not be read\. Try again before reviewing a rebuild\./.test(await page.locator("main").innerText()));
     await ctx.close();
   }
 } finally {

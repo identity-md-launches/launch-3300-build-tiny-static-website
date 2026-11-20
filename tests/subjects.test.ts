@@ -213,7 +213,8 @@ describe("key facts", () => {
     const k = keyFacts(p, () => undefined, p.lines);
     expect(k.fromInfobox).toBe(false);
     expect(k.rows.map((r) => [r.label, r.badge?.text ?? null, r.status?.text ?? null])).toEqual([
-      ["Website", "Stated by Home", "Own domain"],
+      // One badge per row: Website shows only its channel's label.
+      ["Website", null, "Own domain"],
       ["Main contract", "Proven on chain", null],
       ["Token symbol", "Proven on chain", null],
       ["Total supply", "Proven on chain", null],
@@ -256,7 +257,7 @@ describe("key facts", () => {
     expect(k.rows.map((r) => [r.label, r.badge?.text ?? null, r.status?.text ?? null])).toEqual([
       ["Website", null, "Own domain"],
       ["Token", "Reported by a blog", null],
-      ["Official accounts", "Stated by @ex", "Verified on chain"],
+      ["Official accounts", null, "Verified on chain"],
       // A Blog with tie weak is Not verified: its line shows as a claim, and the row shows no channel label.
       ["Founder or creator", "Reported by Blog", null],
     ]);
@@ -324,14 +325,14 @@ describe("panel answers never push a result file out of <PRIOR> (aa9250dc)", () 
     const src = { id: "s", url: artifactUrl(h("a")) };
     const answers = Array.from({ length: 20 }, (_, i) => ({ title: "A".repeat(88), answer: "true", agreed: 5, size: 5, url: `https://explorer.imd.fun/jobs/${String(i).padStart(36, "0")}` }));
     const measure = (p: Parameters<typeof rebuildObjective>[0]) => rebuildObjective(p, ref).length;
-    expect(measure({ files: [f1, src.url], answers })).toBe(9414);
+    expect(measure({ files: [f1, src.url], answers })).toBe(10730);
     const fit = fitPrior(f1, [src], answers, measure);
     expect(fit.prior.files).toEqual([f1, src.url]);
     expect(fit.included.has("s")).toBe(true);
     expect(fit.leftOut).toBe(0);
-    expect(fit.prior.answers).toEqual(answers.slice(11));
-    expect(fit.answersLeftOut).toBe(11);
-    expect(measure(fit.prior)).toBe(7445);
+    expect(fit.prior.answers).toEqual(answers.slice(19));
+    expect(fit.answersLeftOut).toBe(19);
+    expect(measure(fit.prior)).toBe(7337);
   });
 });
 
@@ -354,14 +355,14 @@ describe("a found: false result is not a project record (21585f40)", () => {
     expect(rejectionOf(PAGE("Ex"))).toBeNull();
     expect(rejectionOf("not json")).toBeNull();
   });
-  it("is never the page shown and keeps its subject off Home", () => {
+  it("is never the page shown; Home lists its subject as No project found, with the notes", () => {
     const r = act("add", { block: 10, hash: h("9"), subject: "person.example" });
     r.rejected = rejectionOf(REJECT);
     const core = coreOf([r]);
     expect(core.latest).toBeUndefined();
     expect(core.page).toBeNull();
     expect(core.unfolded).toEqual([]);
-    expect(subjectSummaries([r])).toEqual([]);
+    expect(subjectSummaries([r]).map((s) => [s.id, s.hasPage, s.status])).toEqual([["person.example", false, { kind: "not-found", notes: "The domain identifies a person, not a project." }]]);
     // A later real page lists the subject again.
     const p = act("add", { block: 20, hash: h("8"), subject: "person.example", page: PAGE("Real") });
     expect(subjectSummaries([r, p]).map((s) => s.name)).toEqual(["Real"]);

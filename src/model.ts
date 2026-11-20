@@ -220,17 +220,54 @@ export interface SubjectSummary {
   requests: number;
   pending: number;
   hasPage: boolean;
+  /** The page's main contract, so the home bar finds a subject by it. */
+  main: string;
+  /** The page job's checked PNG logo as a data: URL, or null: a letter tile is shown instead. */
+  logo: string | null;
+  /** For a subject with no page: why, in the words Home shows. Null when it has a page. */
+  status: FirstPageStatus | null;
+}
+
+/** A subject with no page: its first page job is pending, was refused (or failed), or found no project. */
+export type FirstPageStatus = { kind: "pending" } | { kind: "refused"; reason: string } | { kind: "failed"; reason: string } | { kind: "not-found"; notes: string } | { kind: "none" };
+
+export function firstPageStatus(list: Activity[]): FirstPageStatus {
+  const pages = list.filter((a) => isPageJob(a.req));
+  if (pages.some((a) => a.state === "pending")) return { kind: "pending" };
+  const last = [...pages].sort((a, b) => (a.req.blockNumber < b.req.blockNumber ? -1 : a.req.blockNumber > b.req.blockNumber ? 1 : 0)).at(-1);
+  if (!last) return { kind: "none" };
+  const why = (a: Activity) => [a.refusal?.reason, a.refusal?.detail].filter(Boolean).join(": ") || "no reason given";
+  if (last.state === "refused") return { kind: "refused", reason: why(last) };
+  if (last.state === "failed") return { kind: "failed", reason: why(last) };
+  if (last.rejected) return { kind: "not-found", notes: last.rejected };
+  // Completed, but its file has not been read (yet): still on its way to a first page.
+  return last.state === "completed" && !last.page ? { kind: "pending" } : { kind: "none" };
+}
+
+/** The words Home shows for a subject with no page. */
+export function statusText(s: FirstPageStatus): string {
+  switch (s.kind) {
+    case "pending":
+      return "First page in progress";
+    case "refused":
+      return `First page refused: ${s.reason}`;
+    case "failed":
+      return `First page failed: ${s.reason}`;
+    case "not-found":
+      return `No project found: ${s.notes}`;
+    default:
+      return "No page yet.";
+  }
 }
 
 /**
- * One entry per subject found on chain, newest change first. A subject whose research came back found: false
- * and that has no page is not a project record, so it is not listed (its link still shows why).
+ * One entry per subject found on chain, newest change first. A subject with no page is listed with its first
+ * page's state: in progress, refused (with the reason) or no project found (with the job's notes).
  */
 export function subjectSummaries(items: Activity[]): SubjectSummary[] {
   const by = new Map<string, Activity[]>();
   for (const a of items) by.set(a.req.subject, [...(by.get(a.req.subject) ?? []), a]);
-  const projects = [...by].filter(([, list]) => !rejectedOf(list).length || !!coreOf(list).page);
-  const out = projects.map(([id, list]): SubjectSummary => {
+  const out = [...by].map(([id, list]): SubjectSummary => {
     const core = coreOf(list);
     const doneTimes = list.filter((a) => a.state === "completed").map((a) => a.doneTime ?? a.time ?? 0);
     const anyTimes = list.map((a) => a.time ?? 0);
@@ -244,6 +281,9 @@ export function subjectSummaries(items: Activity[]): SubjectSummary[] {
       requests: list.length,
       pending: list.filter((a) => a.state === "pending").length,
       hasPage: !!core.page,
+      main: core.page?.main ?? "",
+      logo: core.latest?.logo ?? null,
+      status: core.page ? null : firstPageStatus(list),
     };
   });
   return out.sort((a, b) => (b.changed ?? 0) - (a.changed ?? 0) || a.id.localeCompare(b.id));

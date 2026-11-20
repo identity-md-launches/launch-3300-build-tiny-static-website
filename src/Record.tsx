@@ -3,7 +3,9 @@ import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { keyFacts, splitAddresses, type KeyRow } from "./keyfacts";
-import { to } from "./route";
+import { addHref, subjectHref, to } from "./route";
+import { SubjectLogo } from "./Logo";
+import { countsText, findSubject, isSettled, kindCounts, lineMatches, parseLookup, repeatCount, repeatsOf, type Findable } from "./lookup";
 import {
   blockNumber,
   channelStatus,
@@ -13,6 +15,7 @@ import {
   SECTION_TITLES,
   SECTIONS,
   STATUS_HELP,
+  STATUS_LEGEND,
   STATUS_WORDS,
   statusWord,
   type Channel,
@@ -135,33 +138,40 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                 <KeyValue row={r} />
               </td>
               <td className="kf-badge">
-                {r.status && (
-                  <span className={`badge badge-${r.status.tone}`} title={STATUS_HELP[r.status.tone as ChannelStatus]}>
-                    {r.status.text}
-                  </span>
-                )}
-                {r.badge &&
-                  (r.lines.length ? (
-                    <a
-                      className={`badge badge-${r.badge.tone}`}
-                      href={to(lineAnchor(r.lines[0]!.id))}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        ui.openLines(r.lines.map((l) => l.id));
-                      }}
-                      aria-label={`${r.label}: ${r.badge.text}. Open the ${r.lines.length === 1 ? "line" : `${r.lines.length} lines`} it rests on`}
-                    >
-                      {r.badge.text}
-                    </a>
-                  ) : (
-                    <span className={`badge badge-${r.badge.tone}`}>{r.badge.text}</span>
-                  ))}
+                <RowBadge r={r} ui={ui} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
     </section>
+  );
+}
+
+/** The row's one badge: its channel's label on Website and Official accounts, else the kind of its lines. Opens them. */
+function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
+  const b = r.status ?? r.badge;
+  if (!b) return null;
+  const title = r.status ? STATUS_HELP[r.status.tone as ChannelStatus] : undefined;
+  if (!r.lines.length)
+    return (
+      <span className={`badge badge-${b.tone}`} title={title}>
+        {b.text}
+      </span>
+    );
+  return (
+    <a
+      className={`badge badge-${b.tone}`}
+      title={title}
+      href={to(lineAnchor(r.lines[0]!.id))}
+      onClick={(e) => {
+        e.preventDefault();
+        ui.openLines(r.lines.map((l) => l.id));
+      }}
+      aria-label={`${r.label}: ${b.text}. Open the ${r.lines.length === 1 ? "line" : `${r.lines.length} lines`} it rests on`}
+    >
+      {b.text}
+    </a>
   );
 }
 
@@ -259,11 +269,54 @@ function PanelAnswers({ m }: { m: RecordModel }) {
   );
 }
 
-export function OverviewTab({ m, ui, items, price }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string }) {
+/**
+ * Related projects under Key facts: each with its relation. A link to its page here when a subject with that
+ * domain or contract exists on the site; otherwise "Add this project", which opens the home bar filled in.
+ */
+function Related({ m, ui, subjects }: { m: RecordModel; ui: Ui; subjects: Findable[] }) {
+  const related = m.page?.related ?? [];
+  if (!related.length) return null;
+  return (
+    <section className="related" aria-labelledby="related-title">
+      <h2 id="related-title">Related</h2>
+      <ul className="plain related-list">
+        {related.map((r, i) => {
+          const q = parseLookup(r.id);
+          const found = q.kind === "domain" || q.kind === "address" ? findSubject(q, subjects.filter((s) => s.id !== m.subject.id)) : null;
+          const lines = r.lines.map(m.resolve).filter((l): l is Line => !!l);
+          const addable = q.kind === "domain" || (q.kind === "address" && q.chainId !== null) ? r.id : q.kind === "address" ? q.address : "";
+          return (
+            <li key={i} className="related-item">
+              <span className="related-name">
+                {found ? <a href={subjectHref(found)}>{r.name}</a> : <strong>{r.name}</strong>}
+                {r.id && <span className="small mono"> {r.id}</span>}
+              </span>
+              <span className="related-rel">
+                {r.relation || "related"}
+                <SentenceDots lines={lines} ui={ui} />
+              </span>
+              {!found && addable && (
+                <a className="btn btn-small" href={addHref(addable)}>
+                  Add this project
+                </a>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+export function OverviewTab({ m, ui, items, price, subjects }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[] }) {
   const { page, latest, error } = m;
+  const name = page?.name || m.subject.id;
   return (
     <section className="tab" aria-labelledby="record-title">
-      <h1 id="record-title" tabIndex={-1}>{page?.name || m.subject.id}</h1>
+      <div className="title-row">
+        <SubjectLogo name={name} logo={latest?.logo} size={40} />
+        <h1 id="record-title" tabIndex={-1}>{name}</h1>
+      </div>
       <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
       {!page && m.rejected && items !== null && !(latest && !error) && (
         <div className="card empty" id="rejected">
@@ -284,7 +337,10 @@ export function OverviewTab({ m, ui, items, price }: { m: RecordModel; ui: Ui; i
       )}
       {(page || m.summary.length > 0) && (
         <div className="overview">
-          <KeyFacts m={m} ui={ui} />
+          <div className="facts-col">
+            <KeyFacts m={m} ui={ui} />
+            <Related m={m} ui={ui} subjects={subjects} />
+          </div>
           <Summary m={m} ui={ui} />
           {page && !m.summary.length && (
             <p className="small">
@@ -382,6 +438,27 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
           {checked}
           {line.labelNote && <span className="block small">{line.labelNote}</span>}
         </dd>
+        {!!line.history?.length && (
+          <>
+            <dt>Earlier readings</dt>
+            <dd>
+              <ul className="plain history">
+                {line.history.map((h, i) => (
+                  <li key={i}>
+                    {h.block ? (
+                      <>
+                        Block <span className="num">{/^\d+$/.test(h.block) ? BigInt(h.block).toLocaleString("en-US") : h.block}</span>:{" "}
+                      </>
+                    ) : (
+                      "Block not given: "
+                    )}
+                    <span className="num">{h.value}</span>
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        )}
         {line.from.length > 0 && (
           <>
             <dt>Carried from</dt>
@@ -614,29 +691,47 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
     ui,
   };
   const { filter } = ui;
-  // A link to one line opens it when the tab is reached by that link.
-  useEffect(() => {
-    if (!ui.target?.startsWith("line-")) return;
-    const row = sections.flatMap((s) => s.rows).find((r) => lineAnchor(r.line.id) === ui.target);
-    if (row && !ui.openSet.has(row.line.id)) ui.toggle(row.line.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ui.target, sections]);
 
+  const [query, setQuery] = useState("");
+  const [settledOnly, setSettledOnly] = useState(false);
+  // Sections start closed. A section the visitor opened or closed keeps that; one holding an opened line, or
+  // any section while a search or the settled filter is on, shows open so its matches are visible.
+  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({});
   const all = sections.flatMap((s) => s.rows);
   const factRows = all.filter((r) => r.line.kind === "proof" && r.line.fact && !r.origin);
   const facts = new Set(factRows.map((r) => r.line.id));
-  const keep = (r: RecordRow) => filter === "all" || r.line.kind === filter;
+  const narrowing = query.trim() !== "" || settledOnly;
+  const keep = (r: RecordRow) => (filter === "all" || r.line.kind === filter) && (!settledOnly || isSettled(r.line)) && lineMatches(r.line, query);
   const shownFacts = factRows.filter(keep);
   const named = new Set(sections.map((s) => s.section));
-  if (shownFacts.length) named.add("on_chain");
+  if (factRows.length) named.add("on_chain");
   const order = [...SECTIONS.filter((s) => named.has(s)), ...[...named].filter((s) => !(SECTIONS as readonly string[]).includes(s))];
   const shown = order
-    .map((section) => ({
-      section,
-      rows: (sections.find((s) => s.section === section)?.rows ?? []).filter((r) => !facts.has(r.line.id) && keep(r)),
-      table: section === "on_chain" ? shownFacts : [],
-    }))
+    .map((section) => {
+      const every = sections.find((s) => s.section === section)?.rows ?? [];
+      const rows = every.filter((r) => !facts.has(r.line.id) && keep(r));
+      const table = section === "on_chain" ? shownFacts : [];
+      const inSection = [...rows, ...table].map((r) => r.line);
+      const hasOpen = inSection.some((l) => ui.openSet.has(l.id));
+      const open = sectionOpen[section] ?? (hasOpen || narrowing);
+      return { section, rows, table, counts: kindCounts(inSection), open };
+    })
     .filter((s) => s.rows.length > 0 || s.table.length > 0);
+  // A link to one line opens it, and its section, when the tab is reached by that link; a search or the
+  // settled filter that would hide it is cleared.
+  useEffect(() => {
+    if (!ui.target?.startsWith("line-")) return;
+    const row = sections.flatMap((s) => s.rows).find((r) => lineAnchor(r.line.id) === ui.target);
+    if (!row) return;
+    if (!ui.openSet.has(row.line.id)) ui.toggle(row.line.id);
+    setQuery("");
+    setSettledOnly(false);
+    setSectionOpen((s) => Object.fromEntries(Object.entries(s).filter(([, v]) => v)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ui.target, sections]);
+  const matched = shown.reduce((n, s) => n + s.rows.length + s.table.length, 0);
+  const repeats = repeatsOf(all.map((r) => r.line));
+  const repeated = repeatCount(repeats);
 
   return (
     <section className="tab" aria-labelledby="record-tab-title">
@@ -659,20 +754,77 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
               ))}
             </div>
           )}
-          {shown.map(({ section, rows, table }) => (
-            <div key={section} className="card">
-              <h2>{SECTION_TITLES[section] ?? section}</h2>
-              {table.length > 0 && <FactTable rows={table} ctx={ctx} />}
-              {rows.length > 0 && (
-                <ul className="lines">
-                  {rows.map((row) => (
-                    <LineRow key={row.line.id || row.line.text} row={row} ctx={ctx} facts={facts} />
-                  ))}
-                </ul>
+          {repeated > 0 && (
+            <div className="warn-box" id="repeats" role="note">
+              <h2>
+                {repeated} line{repeated === 1 ? " repeats" : "s repeat"} another line
+              </h2>
+              <p className="small">These lines have the same text, ignoring case and punctuation. The next rebuild merges them into one.</p>
+              <ul className="plain small repeat-list">
+                {repeats.map((g, i) => (
+                  <li key={i}>
+                    “{g[0]!.text}”:{" "}
+                    {g.map((l, j) => (
+                      <Fragment key={j}>
+                        {j > 0 && ", "}
+                        <a
+                          href={to(lineAnchor(l.id))}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            ui.openLines([l.id]);
+                          }}
+                        >
+                          <span className="mono">{l.id || "no id"}</span>
+                        </a>
+                        {l.by && l.kind !== "proof" ? ` (${l.by})` : ""}
+                      </Fragment>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {counts.all > 0 && (
+            <div className="record-tools">
+              <label htmlFor="record-search" className="sr-only">Search lines by text or speaker</label>
+              <input id="record-search" type="search" placeholder="Search lines by text or speaker" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <label className="check">
+                <input type="checkbox" checked={settledOnly} onChange={(e) => setSettledOnly(e.target.checked)} />
+                Only lines that are confirmed or contradicted
+              </label>
+              {narrowing && <p className="small" aria-live="polite">{matched.toLocaleString("en-US")} line{matched === 1 ? "" : "s"} match.</p>}
+            </div>
+          )}
+          {shown.map(({ section, rows, table, counts: c, open }) => (
+            <div key={section} className={`card section${open ? " is-open" : ""}`}>
+              <h2 className="section-toggle-h">
+                <button
+                  type="button"
+                  className="section-toggle"
+                  aria-expanded={open}
+                  aria-controls={`sec-${section}`}
+                  onClick={() => setSectionOpen((s) => ({ ...s, [section]: !open }))}
+                >
+                  <span className="chev" aria-hidden="true" />
+                  <span className="section-name">{SECTION_TITLES[section] ?? section}</span>
+                  <span className="section-counts small">{countsText(c)}</span>
+                </button>
+              </h2>
+              {open && (
+                <div id={`sec-${section}`} className="section-body">
+                  {table.length > 0 && <FactTable rows={table} ctx={ctx} />}
+                  {rows.length > 0 && (
+                    <ul className="lines">
+                      {rows.map((row) => (
+                        <LineRow key={row.line.id || row.line.text} row={row} ctx={ctx} facts={facts} />
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
           ))}
-          {counts.all > 0 && shown.length === 0 && <p className="small">No lines of this kind.</p>}
+          {counts.all > 0 && shown.length === 0 && <p className="small">{narrowing ? "No lines match." : "No lines of this kind."}</p>}
           <OtherChannels m={m} />
           {page && page.openQuestions.length > 0 && (
             <div className="card">
@@ -738,7 +890,7 @@ export function SourcesTab({ m }: { m: RecordModel }) {
             ))}
           </ul>
           <p className="small tie-key">
-            {STATUS_HELP.own} {STATUS_HELP.verified} {STATUS_HELP.unverified} Only lines published on Own domain or Verified on chain channels show as statements.
+            {STATUS_HELP.own} {STATUS_HELP.verified} {STATUS_HELP.unverified} {STATUS_LEGEND}
           </p>
         </div>
       )}

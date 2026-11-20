@@ -1,8 +1,14 @@
-/** Home: a search box, the subjects found on chain, and "Add a project", which opens the Rebuild dialog. */
-import { useMemo, useState } from "react";
-import { subjectSummaries, type SubjectSummary } from "./model";
+/**
+ * Home: the headline, one bar that both searches and adds, the three labels, the subjects found on chain, and
+ * how it works. Submitting the bar opens a subject that exists, or offers "Add this project", which opens the
+ * first-rebuild dialog.
+ */
+import { useEffect, useMemo, useRef, useState } from "react";
+import { statusText, subjectSummaries, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
-import { CHAIN_CHOICES, OTHER_CHAIN, subjectIdOf, validateSubject } from "./subject";
+import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
+import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
+import { SubjectLogo } from "./Logo";
 import type { Activity } from "./useActivity";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
@@ -13,137 +19,236 @@ function when(t: number | null) {
 }
 
 function SubjectItem({ s }: { s: SubjectSummary }) {
+  const status = s.status ? statusText(s.status) : "";
   return (
     <li className="subject">
-      <a className="subject-link" href={subjectHref(s.id)}>
-        <span className="subject-name">{s.name}</span>
-        {s.name !== s.id && <span className="subject-id mono">{s.id}</span>}
-      </a>
-      <p className="subject-line">{s.oneLine || (s.hasPage ? "No one-line description yet." : "No page yet: the first rebuild is under way or was refused.")}</p>
-      <p className="subject-meta small">
-        <span className="count-kind kind-proof"><span className="dot" aria-hidden="true" />{plural(s.counts.proof, "proof")}</span>
-        <span className="count-kind kind-statement"><span className="dot" aria-hidden="true" />{plural(s.counts.statement, "statement")}</span>
-        <span className="count-kind kind-claim"><span className="dot" aria-hidden="true" />{plural(s.counts.claim, "claim")}</span>
-        <span>Changed {when(s.changed)}</span>
-        {s.pending > 0 && <span>{plural(s.pending, "request")} pending</span>}
-      </p>
+      <SubjectLogo name={s.name} logo={s.logo} size={28} />
+      <div className="subject-body">
+        <a className="subject-link" href={subjectHref(s.id)}>
+          <span className="subject-name">{s.name}</span>
+          {s.name !== s.id && <span className="subject-id mono">{s.id}</span>}
+        </a>
+        <p className={`subject-line${s.status && s.status.kind !== "pending" && s.status.kind !== "none" ? " subject-status" : ""}`}>
+          {s.hasPage ? s.oneLine || "No one-line description yet." : status}
+        </p>
+        <p className="subject-meta small">
+          <span className="count-kind kind-proof"><span className="dot" aria-hidden="true" />{plural(s.counts.proof, "proof")}</span>
+          <span className="count-kind kind-statement"><span className="dot" aria-hidden="true" />{plural(s.counts.statement, "statement")}</span>
+          <span className="count-kind kind-claim"><span className="dot" aria-hidden="true" />{plural(s.counts.claim, "claim")}</span>
+          <span>Changed {when(s.changed)}</span>
+          {s.pending > 0 && <span>{plural(s.pending, "request")} pending</span>}
+        </p>
+      </div>
     </li>
   );
 }
 
-function AddProject({ onAdd, price }: { onAdd: (i: { domain: string; address: string; chain: string }) => string | null; price: string }) {
-  const [f, setF] = useState({ domain: "", address: "", chain: "1", otherChain: "" });
-  const [errs, setErrs] = useState<ReturnType<typeof validateSubject>>({});
+export type AddInput = { domain: string; address: string; chain: string };
+
+/** "No page yet for <input>": the price, a chain picker for an address, and "Add this project". */
+function AddOffer({ q, shown, price, onAdd }: { q: Extract<Lookup, { kind: "domain" | "address" }>; shown: string; price: string; onAdd: (i: AddInput) => string | null }) {
+  const [chain, setChain] = useState(q.kind === "address" && q.chainId !== null ? (CHAIN_CHOICES.some((c) => c.id === q.chainId) ? String(q.chainId) : OTHER_CHAIN) : "1");
+  const [other, setOther] = useState(q.kind === "address" && q.chainId !== null ? String(q.chainId) : "");
   const [msg, setMsg] = useState("");
-  const other = f.chain === OTHER_CHAIN;
-  // The subject as the form describes it: a listed chain, or the chain id typed under "Other chain ID".
-  const input = { domain: f.domain, address: f.address, chain: other ? f.otherChain.trim() : f.chain };
-  const id = subjectIdOf(input);
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const found = validateSubject(input);
-    setErrs(found);
-    const first = (["domain", "address", "chain"] as const).find((k) => found[k]);
-    if (first) {
-      setMsg("");
-      document.getElementById(first === "chain" && other ? "add-chain-other" : `add-${first}`)?.focus();
+  const cost = /IMD$/.test(price) ? price : "the research price";
+  const add = () => {
+    if (q.kind === "domain") return setMsg(onAdd({ domain: q.domain, address: "", chain: "" }) ?? "");
+    const id = chain === OTHER_CHAIN ? other.trim() : chain;
+    if (!/^\d{1,12}$/.test(id) || Number(id) < 1) {
+      setMsg("Write the chain ID as a number, such as 137.");
+      document.getElementById("offer-chain-other")?.focus();
       return;
     }
-    setMsg(onAdd(input) ?? "");
+    setMsg(onAdd({ domain: "", address: q.address, chain: id }) ?? "");
   };
   return (
-    <section className="card add" id="add" aria-labelledby="add-title" tabIndex={-1}>
-      <h2 id="add-title">Add a project</h2>
-      <p className="small">One research job writes the first page. You see its request and price first.</p>
-      <form className="form" onSubmit={submit} noValidate>
-        <label htmlFor="add-domain">Website domain</label>
-        <input id="add-domain" name="domain" type="text" inputMode="url" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="example.com"
-          value={f.domain} onChange={(e) => setF({ ...f, domain: e.target.value })} aria-invalid={!!errs.domain} aria-describedby={errs.domain ? "add-domain-err" : "add-id"} />
-        {errs.domain && <p id="add-domain-err" className="error">{errs.domain}</p>}
-        <label htmlFor="add-address">Main contract address (optional)</label>
-        <input id="add-address" name="address" type="text" className="mono" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="0x…"
-          value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} aria-invalid={!!errs.address} aria-describedby={errs.address ? "add-address-err" : undefined} />
-        {errs.address && <p id="add-address-err" className="error">{errs.address}</p>}
-        <label htmlFor="add-chain">Chain of that contract</label>
-        <select id="add-chain" name="chain" value={f.chain} onChange={(e) => setF({ ...f, chain: e.target.value })} aria-invalid={!!errs.chain && !other}
-          aria-describedby={errs.chain && !other ? "add-chain-err" : undefined}>
-          {CHAIN_CHOICES.map((c) => (
-            <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
-          ))}
-          <option value={OTHER_CHAIN}>Other chain ID</option>
-        </select>
-        {other && (
-          <>
-            <label htmlFor="add-chain-other">Chain ID</label>
-            <input id="add-chain-other" name="otherChain" type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" placeholder="137"
-              className="mono" value={f.otherChain} onChange={(e) => setF({ ...f, otherChain: e.target.value })}
-              aria-invalid={!!errs.chain} aria-describedby={errs.chain ? "add-chain-err" : undefined} />
-          </>
-        )}
-        {errs.chain && <p id="add-chain-err" className="error">{errs.chain}</p>}
-        <p id="add-id" className="small">
-          {id ? <>Its page will be <span className="mono break">{subjectHref(id)}</span></> : "Projects only: a domain, or a contract if it has no website."}
-        </p>
-        {msg && <p className="error" role="alert">{msg}</p>}
-        <div className="row-actions">
-          <button className="btn btn-primary" type="submit">Review the first rebuild</button>
-          <span className="price mono">{price}</span>
+    <div className="offer" role="status" aria-live="polite">
+      <p>
+        No page yet for <strong className="break">{shown}</strong>. Adding one costs <span className="mono nowrap">{cost}</span> and starts one research job.
+      </p>
+      {q.kind === "address" && (
+        <div className="offer-chain">
+          <label htmlFor="offer-chain">Chain of this contract (optional)</label>
+          <select id="offer-chain" value={chain} onChange={(e) => setChain(e.target.value)}>
+            {CHAIN_CHOICES.map((c) => (
+              <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+            ))}
+            <option value={OTHER_CHAIN}>Other chain ID</option>
+          </select>
+          {chain === OTHER_CHAIN && (
+            <>
+              <label htmlFor="offer-chain-other" className="sr-only">Chain ID</label>
+              <input id="offer-chain-other" type="text" inputMode="numeric" className="mono" placeholder="Chain ID, such as 137" autoComplete="off" value={other} onChange={(e) => setOther(e.target.value)} />
+            </>
+          )}
+          <p className="small">Its page will be filed under {chain === OTHER_CHAIN ? (other.trim() ? `chain ${other.trim()}` : "the chain you write") : chainName(chain)}.</p>
         </div>
-      </form>
-    </section>
+      )}
+      {msg && <p className="error" role="alert">{msg}</p>}
+      <div className="row-actions">
+        <button type="button" className="btn btn-primary" onClick={add}>Add this project</button>
+      </div>
+    </div>
   );
 }
 
-export function Home({ items, error, loading, reload, onAdd, price, bad }: {
+const LABELS = [
+  { kind: "proof", word: "Proof", text: "anyone can re-run the check and get the same answer." },
+  { kind: "statement", word: "Statement", text: "the project said it, on its own channels." },
+  { kind: "claim", word: "Claim", text: "someone else said it; their name is on it." },
+] as const;
+
+const STEPS = [
+  { word: "Add", text: "a project, a batch of links, or an edit to a summary." },
+  { word: "The swarm checks", text: "a research job reads the sources; a panel of agents answers single yes or no questions." },
+  { word: "Everyone reads", text: "a short summary on top, every line and its source underneath." },
+];
+
+export function Home({ items, error, loading, reload, onAdd, price, bad, prefill }: {
   items: Activity[] | null;
   error: string | null;
   loading: boolean;
   reload: () => Promise<void>;
-  onAdd: (i: { domain: string; address: string; chain: string }) => string | null;
+  onAdd: (i: AddInput) => string | null;
   price: string;
   bad?: string;
+  /** A domain or chain:0x… handed over by "Add this project" under Related: the bar starts filled in with it. */
+  prefill?: string;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(prefill ?? "");
+  const [submitted, setSubmitted] = useState<{ raw: string; q: Lookup } | null>(null);
+  const [err, setErr] = useState("");
+  const input = useRef<HTMLInputElement>(null);
   const all = useMemo(() => subjectSummaries(items ?? []), [items]);
-  const needle = q.trim().toLowerCase();
-  const shown = needle ? all.filter((s) => [s.id, s.name, s.oneLine].some((x) => x.toLowerCase().includes(needle))) : all;
+  const shown = all.filter((s) => matchesQuery(s, q));
+
+  const look = (raw: string) => {
+    const parsed = parseLookup(raw);
+    setSubmitted(null);
+    if (parsed.kind === "empty") {
+      setErr("Write a domain, such as imd.fun, or a 0x contract address.");
+      input.current?.focus();
+      return;
+    }
+    if (parsed.kind === "invalid") {
+      setErr(`“${raw.trim()}” is not a domain or a 0x address. Write a domain such as imd.fun, paste a link, or a contract address.`);
+      input.current?.focus();
+      return;
+    }
+    setErr("");
+    const found = findSubject(parsed, all);
+    if (found) {
+      location.hash = subjectHref(found);
+      return;
+    }
+    if (items === null) {
+      setErr("Still reading the projects from Ethereum. Try again in a moment.");
+      return;
+    }
+    setSubmitted({ raw: raw.trim(), q: parsed });
+  };
+
+  // "Add this project" under Related lands here with the bar filled in: look it up once the list is read.
+  const handed = useRef(false);
+  useEffect(() => {
+    if (!prefill || handed.current || items === null) return;
+    handed.current = true;
+    setQ(prefill);
+    look(prefill);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill, items]);
+
+  const offer = submitted && (submitted.q.kind === "domain" || submitted.q.kind === "address") ? submitted.q : null;
+  const offerName = offer ? (offer.kind === "domain" ? offer.domain : offer.address) : "";
+
   return (
     <section className="tab home" aria-labelledby="home-title">
-      <h1 id="home-title" tabIndex={-1}>Projects, on the record</h1>
-      <p className="lead">What a crypto project is, who said each line and how it was checked.</p>
-      {bad && <p className="warn" role="status">“{bad}” is not a project id. Ids are a domain, such as imd.fun, or chain and contract, such as 1:0x….</p>}
-      <div className="home-grid">
-        <div className="home-list">
-          <div className="search-row">
-            <label htmlFor="search" className="sr-only">Search projects</label>
-            <input id="search" type="search" placeholder="Search projects" autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)} />
-            <a className="btn btn-primary add-jump" href="#/" onClick={(e) => { e.preventDefault(); const el = document.getElementById("add"); el?.scrollIntoView({ block: "start" }); document.getElementById("add-domain")?.focus({ preventScroll: true }); }}>
-              Add a project
-            </a>
-          </div>
-          {error && (
-            <p className="error">
-              Unable to read the chain: {error}.{" "}
-              <button type="button" className="linklike" onClick={() => void reload()} disabled={loading}>{loading ? "Reading chain…" : "Try again"}</button>
-            </p>
-          )}
-          {items === null || (error && !all.length) ? (
-            items === null && <p className="small" role="status">Reading the projects from Ethereum…</p>
-          ) : shown.length ? (
-            <>
-              <p className="small" aria-live="polite">{needle ? `${plural(shown.length, "project")} match “${q.trim()}”.` : `${plural(all.length, "project")} on the record, newest change first.`}</p>
-              <ul className="subjects">
-                {shown.map((s) => (
-                  <SubjectItem key={s.id} s={s} />
-                ))}
-              </ul>
-            </>
-          ) : (
-            <p className="small" aria-live="polite">{needle ? `No project matches “${q.trim()}”. Add it below.` : "No projects yet. Add the first one."}</p>
-          )}
-        </div>
-        <AddProject onAdd={onAdd} price={price} />
+      <div className="hero">
+        <h1 id="home-title" tabIndex={-1}>Look up any crypto project.</h1>
+        <p className="lead">
+          See what a project says, what can be proven, and where the two differ. Every line points to its source, and a swarm of independent agents checks each one before it goes in.
+        </p>
+        <form
+          className="lookup"
+          role="search"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            look(q);
+          }}
+        >
+          <label htmlFor="lookup" className="sr-only">A domain or a 0x address</label>
+          <input
+            id="lookup"
+            ref={input}
+            type="text"
+            inputMode="url"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            placeholder="A domain or a 0x address"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setErr("");
+              if (submitted && e.target.value.trim() !== submitted.raw) setSubmitted(null);
+            }}
+            aria-invalid={!!err}
+            aria-describedby={err ? "lookup-err" : "lookup-note"}
+          />
+          <button type="submit" className="btn btn-primary btn-lookup">Look it up</button>
+        </form>
+        {err && <p id="lookup-err" className="error lookup-msg" role="alert">{err}</p>}
+        {offer && <AddOffer key={`${offer.kind}:${offerName}`} q={offer} shown={submitted!.raw} price={price} onAdd={onAdd} />}
+        <p id="lookup-note" className="small lookup-note">People and agents can both add. Nothing is edited by hand.</p>
       </div>
+
+      <ul className="label-cards" aria-label="The three labels">
+        {LABELS.map((l) => (
+          <li key={l.kind} className={`label-card label-${l.kind}`}>
+            <span className={`kind kind-${l.kind}`}><span className="dot" aria-hidden="true" />{l.word}:</span> {l.text}
+          </li>
+        ))}
+      </ul>
+
+      {bad && <p className="warn" role="status">“{bad}” is not a project id. Ids are a domain, such as imd.fun, or chain and contract, such as 1:0x….</p>}
+
+      <div className="home-list">
+        <h2 className="list-title">Projects</h2>
+        {error && (
+          <p className="error">
+            Unable to read the chain: {error}.{" "}
+            <button type="button" className="linklike" onClick={() => void reload()} disabled={loading}>{loading ? "Reading chain…" : "Try again"}</button>
+          </p>
+        )}
+        {items === null || (error && !all.length) ? (
+          items === null && <p className="small" role="status">Reading the projects from Ethereum…</p>
+        ) : shown.length ? (
+          <>
+            <p className="small" aria-live="polite">{q.trim() ? `${plural(shown.length, "project")} match “${q.trim()}”.` : `${plural(all.length, "project")} on the record, newest change first.`}</p>
+            <ul className="subjects">
+              {shown.map((s) => (
+                <SubjectItem key={s.id} s={s} />
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="small" aria-live="polite">{q.trim() ? `No project matches “${q.trim()}”. Press Look it up to add it.` : "No projects yet. Add the first one with the bar above."}</p>
+        )}
+      </div>
+
+      <section className="how" aria-labelledby="how-title">
+        <h2 id="how-title" className="list-title">How it works</h2>
+        <ol className="steps">
+          {STEPS.map((s, i) => (
+            <li key={s.word} className="step">
+              <span className="step-n num" aria-hidden="true">{i + 1}.</span>
+              <p><strong>{s.word}:</strong> {s.text}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
     </section>
   );
 }

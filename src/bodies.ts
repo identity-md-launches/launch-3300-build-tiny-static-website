@@ -347,12 +347,21 @@ export const MAX_OBJECTIVE = 7500;
 
 export const rebuildObjective = (p: Prior, subject: SubjectRef) => fillTemplate(REBUILD_TEMPLATE, { SUBJECT: describeSubject(subject), PRIOR: priorText(p) });
 
+/**
+ * A rebuild's two named outputs: the page file, and the subject's logo when its own domain serves one. IMD's
+ * free request check (POST /requests/check) accepted a job body with both on 2026-11-20 (see the README).
+ */
+export const REBUILD_OUTPUTS = [
+  { name: "page", path: "artifacts/page.json", mediaType: "application/json" },
+  { name: "logo", path: "artifacts/logo.png", mediaType: "image/png" },
+];
+
 /** "Rebuild the page": the research action and tag, with the earlier results filled in. */
 export function rebuildBody(p: Prior, subject: SubjectRef) {
   return {
     tag: jobTag("add", subject.id),
     skill: "research-report",
-    outputs: [{ name: "page", path: "artifacts/page.json", mediaType: "application/json" }],
+    outputs: REBUILD_OUTPUTS,
     objective: rebuildObjective(p, subject),
   };
 }

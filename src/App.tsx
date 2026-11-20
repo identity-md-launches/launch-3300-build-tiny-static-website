@@ -33,7 +33,8 @@ import { ActivityList } from "./ActivityList";
 import { ConnectSheet, config } from "./wallet";
 import { rememberSent, useActivity } from "./useActivity";
 import { holdFocus } from "./modal";
-import { planRebuild, subjectRefFor, useRecordModel, type RecordModel } from "./model";
+import { planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
+import type { Findable } from "./lookup";
 import { lineAnchor } from "./format";
 import { TABS, routeOf, setLinkSubject, subjectHref, to } from "./route";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
@@ -566,8 +567,10 @@ function useRoute() {
   return route;
 }
 
-function SubjectView({ subject, items, activity, route, onAsk, researchPrice }: {
+function SubjectView({ subject, items, activity, route, onAsk, researchPrice, subjects }: {
   subject: string;
+  /** Every subject on the site, so Related can link to the ones that have a page here. */
+  subjects: Findable[];
   items: Activity[] | null;
   activity: ReturnType<typeof useActivity>;
   route: ReturnType<typeof useRoute>;
@@ -629,7 +632,7 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice }: 
           </a>
         ))}
       </nav>
-      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} />}
+      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} subjects={subjects} />}
       {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
       {route.tab === "sources" && <SourcesTab m={rec} />}
       {route.tab === "activity" && <ActivityList {...activity} items={items} shown={rec} />}
@@ -648,6 +651,7 @@ export default function App() {
   const subject = route.subject;
   if (subject) setLinkSubject(subject);
   const items = useMemo(() => (activity.items === null || !subject ? activity.items : activity.items.filter((a) => a.req.subject === subject)), [activity.items, subject]);
+  const subjects = useMemo<Findable[]>(() => subjectSummaries(activity.items ?? []).map((s) => ({ id: s.id, main: s.main })), [activity.items]);
   useEffect(() => {
     if (!subject) document.title = "On the record (test)";
   }, [subject]);
@@ -681,9 +685,9 @@ export default function App() {
       </header>
       <main id="root-main" tabIndex={-1}>
         {subject ? (
-          <SubjectView key={subject} subject={subject} items={items} activity={activity} route={route} onAsk={setAsk} researchPrice={researchPrice} />
+          <SubjectView key={subject} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={setAsk} researchPrice={researchPrice} />
         ) : (
-          <Home items={activity.items} error={activity.error} loading={activity.loading} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} />
+          <Home key={route.add ?? ""} items={activity.items} error={activity.error} loading={activity.loading} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
         )}
         <footer className="about">
           <p>About: a test. Payments go to IMD and are not refunded. Every line comes from a paid job or panel answer on Ethereum.</p>

@@ -14,7 +14,7 @@ export interface KeyRow {
   lines: Line[];
   /** The channel the row names, on the Website and Official accounts rows only. */
   channel: Channel | null;
-  /** From the kinds of the lines the row rests on only (badgeOf). */
+  /** From the kinds of the lines the row rests on only (badgeOf); null on a row that shows its channel's label instead. */
   badge: Badge | null;
   /** The channel's label (Own domain, Verified on chain, Not verified), on the Website and Official accounts rows only. */
   status: Badge | null;
@@ -111,7 +111,11 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       const lone = listed.length === 1 ? listed[0]!.channel : null;
       const channel = tied && !accounts.length ? lone ?? named : null;
       if (channel) used.add(channel);
-      return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge: badgeOf(lines), status: channel ? statusBadge(channel, domain) : null, accounts };
+      // One badge per row: Website and Official accounts show only their channel's label (each listed account its
+      // own); every other row shows only Proven on chain, Stated by or Reported by.
+      const status = channel ? statusBadge(channel, domain) : null;
+      const badge = tied && (status || accounts.length) ? null : badgeOf(lines);
+      return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge, status, accounts };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }
@@ -120,7 +124,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
   if (site) {
     const lines = linesOn(all, site);
     const shown = site.url.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-    rows.push({ label: "Website", value: shown || site.url, url: site.url, note: "", lines, channel: site, badge: badgeOf(lines), status: statusBadge(site, domain), accounts: [] });
+    rows.push({ label: "Website", value: shown || site.url, url: site.url, note: "", lines, channel: site, badge: null, status: statusBadge(site, domain), accounts: [] });
   }
   const main = page.contracts.find((c) => c.main && /^0x[0-9a-fA-F]{40}$/.test(c.address));
   if (main) {

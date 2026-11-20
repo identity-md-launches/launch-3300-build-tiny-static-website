@@ -17,6 +17,8 @@ export interface Route {
   target: string | null;
   /** A subject link whose id is not a valid subject id. */
   bad?: string;
+  /** "#/add/<domain or chain:0x…>": home, with the bar filled in to add that project. */
+  add?: string;
 }
 
 /** Which tab a part after the subject opens, and the element inside it. */
@@ -43,6 +45,8 @@ export function routeOf(hash: string): Route {
     return { subject: null, tab: "overview", target: null }; // a truncated or mistyped escape such as "#%"
   }
   if (h === "" || h === "/") return { subject: null, tab: "overview", target: null };
+  const add = /^\/add\/(.+)$/.exec(h);
+  if (add) return { subject: null, tab: "overview", target: null, add: add[1]!.trim().slice(0, 300) };
   const m = /^\/s\/([^/]+)(?:\/(.*))?$/.exec(h);
   if (m) {
     const id = m[1]!.toLowerCase();
@@ -52,6 +56,9 @@ export function routeOf(hash: string): Route {
   if (h.startsWith("/")) return { subject: null, tab: "overview", target: null };
   return { subject: DEFAULT_SUBJECT, ...inSubject(h) };
 }
+
+/** Home with the bar filled in to add a project ("Add this project" under Related). */
+export const addHref = (id: string) => `#/add/${encodeURIComponent(id)}`;
 
 /** The link to a subject, or to one of its tabs or elements. */
 export const subjectHref = (subject: string, part = "") => `#/s/${subject}${part ? `/${part}` : ""}`;

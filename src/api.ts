@@ -73,6 +73,93 @@ async function fetchVerified(file: ResultFile): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
+/** The eight bytes every PNG file starts with. */
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+export const MAX_LOGO_BYTES = 512 * 1024;
+
+/** True when the bytes are a PNG: its signature, then an IHDR chunk. Any other format is refused. */
+export function isPng(b: Uint8Array): boolean {
+  if (b.length < 24 || b.length > MAX_LOGO_BYTES) return false;
+  if (!PNG_SIGNATURE.every((x, i) => b[i] === x)) return false;
+  return String.fromCharCode(b[12]!, b[13]!, b[14]!, b[15]!) === "IHDR";
+}
+
+/** Width and height from a PNG's IHDR chunk. */
+export function pngSize(b: Uint8Array): { width: number; height: number } {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  return { width: v.getUint32(16), height: v.getUint32(20) };
+}
+
+/** A data: URL of checked PNG bytes. The image is never loaded from the project's server or any other site. */
+export function pngDataUrl(b: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return `data:image/png;base64,${btoa(s)}`;
+}
+
+const resultMemo = new Map<string, Promise<{ files: ResultFile[] }>>();
+
+/** The completed job's result listing (its named files and their SHA-256), from api.imd.fun or the completion's IPFS uri. */
+function jobResult(r: TaggedRequest, c: Completion, jobIdHint: string | null): Promise<{ files: ResultFile[] }> {
+  const key = r.requestId;
+  const hit = resultMemo.get(key);
+  if (hit) return hit;
+  const p = (async () => {
+    let firstError: unknown = null;
+    if (jobIdHint) {
+      try {
+        const result = await getJson<JobResult>(`${API}/jobs/${jobIdHint}/result`);
+        return { files: result.files ?? [] };
+      } catch (e) {
+        firstError = e;
+      }
+    }
+    const m = /^ipfs:\/\/([A-Za-z0-9]+)\/result\.json$/.exec(c.uri);
+    if (m)
+      for (const gw of IPFS_GATEWAYS) {
+        try {
+          const res = await fetch(`${gw}${m[1]}/result.json`);
+          if (!res.ok) continue;
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          if (keccak256(bytes).toLowerCase() !== c.resultHash.toLowerCase()) continue;
+          return { files: (JSON.parse(new TextDecoder().decode(bytes)) as JobResult).files ?? [] };
+        } catch (e) {
+          firstError ??= e;
+        }
+      }
+    throw firstError instanceof Error ? firstError : new Error("The job result could not be read");
+  })();
+  p.catch(() => resultMemo.delete(key));
+  resultMemo.set(key, p);
+  return p;
+}
+
+/**
+ * The subject's logo from a completed page job: the result file named "logo", downloaded from
+ * api.imd.fun/artifacts/<hash>, its bytes checked against the listed SHA-256, and accepted only as a PNG.
+ * Null when the job wrote no logo; throws when one is listed but fails a check.
+ */
+export async function fetchLogo(r: TaggedRequest, c: Completion, jobIdHint: string | null): Promise<string | null> {
+  const key = `logo:${r.requestId}`;
+  const cached = cacheGet<{ url: string | null }>(key);
+  if (cached) return cached.url;
+  const { files } = await jobResult(r, c, jobIdHint);
+  const file = files.find((f) => f.name === "logo");
+  let url: string | null = null;
+  if (file) {
+    if (!/^[0-9a-f]{64}$/.test(file.hash)) throw new Error("The logo's listed hash is not 64 hex characters");
+    const res = await fetch(`${API}/artifacts/${file.hash}`);
+    if (!res.ok) throw new Error(`logo artifact answered ${res.status}`);
+    const buf = await res.arrayBuffer();
+    if ((await sha256Hex(buf)) !== file.hash) throw new Error("The logo's bytes do not match the listed hash");
+    const bytes = new Uint8Array(buf);
+    if (!isPng(bytes)) throw new Error("The logo is not a PNG file");
+    url = pngDataUrl(bytes);
+  }
+  cacheSet(key, { url });
+  return url;
+}
+
 /** One artifact by its SHA-256, checked and cached: the files a rebuild was given. */
 export async function fetchArtifact(hash: string): Promise<string> {
   const key = `artifact:${hash}`;

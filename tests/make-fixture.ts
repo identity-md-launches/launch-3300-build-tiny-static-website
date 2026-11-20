@@ -9,6 +9,11 @@ const sha = (s: string) => createHash("sha256").update(Buffer.from(s, "utf8")).d
 const L = Number(LAUNCH_BLOCK);
 const files: Record<string, string> = {};
 const put = (o: unknown) => { const t = JSON.stringify(o); const h = sha(t); files[h] = t; return h; };
+// Binary files (the logo), base64, served as bytes by the mock.
+const bin: Record<string, string> = {};
+const LOGO_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+const logoHash = createHash("sha256").update(Buffer.from(LOGO_B64, "base64")).digest("hex");
+bin[logoHash] = LOGO_B64;
 const page1 = put({ subject: { name: "Old" }, lines: [{ id: "L1", section: "what_it_does", text: "Old one", kind: "claim" }, { id: "L2", section: "what_it_does", text: "Old two", kind: "claim" }, { id: "L3", section: "on_chain", text: "Old three", kind: "proof" }, { id: "L4", section: "history", text: "Old four", kind: "claim" }] });
 const src1 = put({ sources: [{ id: "S1", url: "https://news.example/a", publisher: "news", could_open: true, about_subject: true }], lines: [{ id: "E1", source: "S1", section: "history", text: "Old source one", kind: "claim" }, { id: "E2", source: "S1", section: "history", text: "Old source two lost", kind: "claim" }] });
 const prior = { files: [artifactUrl(page1), artifactUrl(src1)], answers: [{ title: "The docs price a job at 0.5 IMD", answer: "true", agreed: 5, size: 5, url: "https://explorer.imd.fun/jobs/job-6" }] };
@@ -26,9 +31,15 @@ const page2 = put({
   ],
   lines: [
     { id: "L1", section: "what_it_does", text: "IMD is a swarm of agents.", kind: "statement", by: "imd.fun", sources: ["R1"], quote: "a swarm", from: ["F1:L1", "F1:L2"] },
-    { id: "L2", section: "money", text: "The seat collection has 2,000 tokens.", kind: "proof", sources: ["R2"], rerun: "Call totalSupply against the database index on Ethereum at block 0x1938720.", fact: { name: "Seat supply", value: "2,000", unit: "seats" }, from: ["F1:L3"], links: [{ type: "confirms", target: "A1" }] },
+    { id: "L2", section: "money", text: "The seat collection has 2,000 tokens.", kind: "proof", sources: ["R2"], rerun: "Call totalSupply against the database index on Ethereum at block 0x1938720.", fact: { name: "Seat supply", value: "2,000", unit: "seats" }, from: ["F1:L3"], links: [{ type: "confirms", target: "A1" }], history: [{ block: "26400000", value: "1,500" }] },
     { id: "L3", section: "money", text: "A post says a job costs 5 IMD.", kind: "claim", by: "someone", sources: ["R3"], quote: "5 IMD", from: ["F2:E1"], links: [{ type: "confirms", target: "L2" }, { type: "contradicts", target: "A1" }] },
+    { id: "L4", section: "history", text: "imd is a swarm of agents", kind: "claim", by: "a forum", sources: ["R3"], quote: "a swarm" },
   ],
+  related: [
+    { name: "Ethereum Name Service", id: "ens.domains", relation: "names its agents", lines: ["L1"] },
+    { name: "IMD itself", id: "imd.fun", relation: "a test of a link to a page on this site", lines: [] },
+  ],
+  logo: { url: "https://imd.fun/apple-touch-icon.png", fetched_at: "2026-11-20T10:00:00Z" },
   dropped: [{ id: "F2:E1x", why: "not about the subject" }, { id: "F1:L4", why: "duplicate of L1" }],
   sources: [{ id: "R1", ref: "https://imd.fun/" }, { id: "R2", ref: "https://etherscan.io/" }, { id: "R3", ref: "https://x.com/someone/status/1" }],
   open_questions: ["Who runs the seats?"],
@@ -48,26 +59,31 @@ const reqs = [
   { n: 1, action: "job.open@job-1", body: researchBody(), file: ["page", page1], cb: 100 },
   { n: 2, action: "job.open@job-1", body: sourceBody(["https://news.example/a"], [], "", IMD), file: ["lines", src1], cb: 101 },
   { n: 6, action: "oracle.request@oracle-1", body: oracleBody(Q_P1, "panel"), file: null, cb: 102 },
-  { n: 3, action: "job.open@job-1", body: rebuildBody(prior, IMD), file: ["page", page2], cb: 103 },
+  { n: 3, action: "job.open@job-1", body: rebuildBody(prior, IMD), file: ["page", page2], cb: 103, logo: logoHash },
   { n: 4, action: "job.open@job-1", body: sourceBody(["https://blog.example/b"], [], "", IMD), file: ["lines", src2], cb: 104 },
   { n: 5, action: "job.open@job-1", body: editBody("x", prior, [], IMD), file: ["edit", edit], cb: 105 },
 ];
 const hx = (n: number) => toHex(n) as Hex;
 const oracleId = "11111111-2222-4333-8444-555555555555";
-const out = { head: L + 200, requests: [] as unknown[], completions: [] as unknown[], intake: {} as Record<string, unknown>, results: {} as Record<string, unknown>, files, page2, src2, edit, oracleId, variants: {} as Record<string, unknown> };
-function fill(out: { requests: unknown[]; completions: unknown[]; intake: Record<string, unknown>; results: Record<string, unknown> }, reqs: { n: number; action: string; body: Parameters<typeof encodeBody>[0]; file: [string, string] | null; cb: number }[]) {
+const out = { head: L + 200, requests: [] as unknown[], completions: [] as unknown[], intake: {} as Record<string, unknown>, results: {} as Record<string, unknown>, files, bin, page2, src2, edit, oracleId, variants: {} as Record<string, unknown> };
+function fill(out: { requests: unknown[]; completions: unknown[]; intake: Record<string, unknown>; results: Record<string, unknown> }, reqs: { n: number; action: string; body: Parameters<typeof encodeBody>[0]; file: [string, string] | null; cb: number | null; logo?: string }[]) {
 for (const r of reqs) {
   const id = pad(toHex(r.n));
   const tx = pad(toHex(1000 + r.n));
   out.requests.push({ topics: [TOPIC_REQUESTED, id, pad("0x00856bd495941f3b95da5b7e374c76d822c9059e"), pad(stringToHex(r.action), { dir: "right" })], data: encodeAbiParameters([{ type: "bytes" }, { type: "address" }, { type: "bytes4" }, { type: "address" }, { type: "uint256" }], [stringToHex(encodeBody(r.body)), "0x0000000000000000000000000000000000000000", "0x00000000", "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7", 500000000000000000n]), blockNumber: hx(L + r.n), transactionHash: tx, logIndex: "0x0" });
+  if (r.cb === null) {
+    // Still pending: no Completed event and no result.
+    out.intake[tx] = { entries: [{ requestId: id, state: "pending", admission: { result: { kind: "job", jobId: `job-${r.n}` } } }] };
+    continue;
+  }
   out.completions.push({ topics: [TOPIC_COMPLETED, id], data: encodeAbiParameters([{ type: "uint8" }, { type: "bytes32" }, { type: "string" }, { type: "bool" }], [0, pad("0x01"), "", true]), blockNumber: hx(L + r.cb), transactionHash: pad(toHex(2000 + r.n)), logIndex: "0x0" });
   out.intake[tx] = { entries: [{ requestId: id, state: "completed", admission: { result: r.file ? { kind: "job", jobId: `job-${r.n}` } : { kind: "oracle", requestId: oracleId } } }] };
-  if (r.file) out.results[`job-${r.n}`] = { jobId: `job-${r.n}`, files: [{ name: r.file[0], hash: r.file[1] }] };
+  if (r.file) out.results[`job-${r.n}`] = { jobId: `job-${r.n}`, files: [{ name: r.file[0], hash: r.file[1] }, ...(r.logo ? [{ name: "logo", hash: r.logo }] : [])] };
 }
 }
 fill(out, reqs as Parameters<typeof fill>[1]);
 const variant = (rs: Parameters<typeof fill>[1]) => {
-  const v = { head: out.head, requests: [] as unknown[], completions: [] as unknown[], intake: {} as Record<string, unknown>, results: {} as Record<string, unknown>, files, oracleId };
+  const v = { head: out.head, requests: [] as unknown[], completions: [] as unknown[], intake: {} as Record<string, unknown>, results: {} as Record<string, unknown>, files, bin, oracleId };
   fill(v, rs);
   return v;
 };
@@ -75,6 +91,10 @@ const variant = (rs: Parameters<typeof fill>[1]) => {
 out.variants.oracleOnly = variant(reqs.filter((r) => r.n === 6) as Parameters<typeof fill>[1]);
 // A rebuild for person.example whose page says found: false.
 const rejected = put({ found: false, subject: { type: "person", name: "Sample Person" }, lines: [], notes: "The domain identifies a person, not a project." });
-out.variants.person = variant([{ n: 3, action: "job.open@job-1", body: rebuildBody({ files: [], answers: [] }, refFromId("person.example")), file: ["page", rejected], cb: 103 }]);
+// ...and a first page for pending.example still under way.
+out.variants.person = variant([
+  { n: 3, action: "job.open@job-1", body: rebuildBody({ files: [], answers: [] }, refFromId("person.example")), file: ["page", rejected], cb: 103 },
+  { n: 7, action: "job.open@job-1", body: rebuildBody({ files: [], answers: [] }, refFromId("pending.example")), file: null, cb: null },
+]);
 writeFileSync(process.argv[2] ?? "test/scratch/fx.json", JSON.stringify(out));
 console.log("fixture", Object.keys(files).length, "files");

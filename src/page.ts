@@ -44,6 +44,25 @@ export interface Line {
   from: string[];
   /** Proof lines or panel answers (A1...) that settle this line. */
   links: LineLink[];
+  /** Older readings of the same check, as block and value; the line itself holds the newest. */
+  history?: Reading[];
+}
+export interface Reading {
+  block: string;
+  value: string;
+}
+/** A project this one depends on or is built on: a name, its domain or chain:contract id, the relation in a few words. */
+export interface Related {
+  name: string;
+  /** A domain, a chain:address id, or "" when the job gave neither. */
+  id: string;
+  relation: string;
+  lines: string[];
+}
+/** Where the logo file came from: a URL on the subject's own domain and when it was fetched. Shown as text only. */
+export interface LogoSource {
+  url: string;
+  fetchedAt: string;
 }
 export interface LineLink {
   type: "confirms" | "contradicts";
@@ -107,6 +126,8 @@ export interface Page {
   dropped: Dropped[];
   openQuestions: string[];
   sources: Source[];
+  related: Related[];
+  logo: LogoSource | null;
 }
 
 const str = (v: unknown, max = 2000): string => (typeof v === "string" ? v.slice(0, max) : typeof v === "number" ? String(v) : "");
@@ -157,6 +178,42 @@ function parseLinks(v: unknown): LineLink[] {
       const target = str(o.target, 64).trim();
       return (t === "confirms" || t === "contradicts") && target ? [{ type: t as LineLink["type"], target }] : [];
     });
+}
+
+export function parseHistory(v: unknown): Reading[] {
+  return arr(v)
+    .slice(0, 50)
+    .map((x) => {
+      const o = obj(x);
+      return { block: blockNumber(str(o.block, 64)) || str(o.block, 64).trim(), value: str(o.value, 200).trim() };
+    })
+    .filter((r) => r.value);
+}
+
+/** A related project's id from what the job wrote: a domain (normalised), "chain:0x…", or "" when neither. */
+export function relatedId(v: string): string {
+  const s = v.trim();
+  const m = /^(\d+)\s*:\s*(0x[0-9a-fA-F]{40})$/.exec(s);
+  if (m) return `${m[1]}:${m[2]!.toLowerCase()}`;
+  if (/^0x[0-9a-fA-F]{40}$/.test(s)) return s.toLowerCase();
+  const host = hostOf(s).toLowerCase();
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : "";
+}
+
+export function parseRelated(v: unknown): Related[] {
+  return arr(v)
+    .slice(0, 20)
+    .map((x) => {
+      const o = obj(x);
+      return { name: str(o.name, 120).trim(), id: relatedId(str(o.id, 200)), relation: str(o.relation, 200).trim(), lines: arr(o.lines).map((l) => str(l, 64)).filter(Boolean) };
+    })
+    .filter((r) => r.name);
+}
+
+function parseLogo(v: unknown): LogoSource | null {
+  const o = obj(v);
+  const url = str(o.url, 400).trim();
+  return url ? { url, fetchedAt: str(o.fetched_at ?? o.time ?? o.at, 64).trim() } : null;
 }
 
 function parseDropped(v: unknown): Dropped[] {
@@ -279,6 +336,8 @@ export const STATUS_HELP: Record<ChannelStatus, string> = {
   verified: "Verified on chain: a contract, ENS record or deployer wallet points to it.",
   unverified: "Not verified: neither.",
 };
+/** The legend under the channels on Sources. */
+export const STATUS_LEGEND = "Lines published on Own domain or Verified on chain channels show as statements; everything else is a claim.";
 export const statusWord = (c: Pick<Channel, "url" | "tie">, domain: string) => STATUS_WORDS[channelStatus(c, domain)];
 
 /** True when url is the channel's URL or a page under it. */
@@ -386,6 +445,7 @@ export function parsePage(text: string, domain = ""): Page {
         fact: marked === "proof" ? parseFact(o.fact, lineText, rerun) : null,
         from: arr(o.from).map((x) => str(x, 64).trim()).filter(Boolean).slice(0, 40),
         links: parseLinks(o.links),
+        history: parseHistory(o.history),
       };
       return applyLabel(line, channels, line.by, ids.map((s) => refOf.get(s) ?? ""), domain);
     })
@@ -411,6 +471,8 @@ export function parsePage(text: string, domain = ""): Page {
     dropped: parseDropped(j.dropped),
     openQuestions: arr(j.open_questions).map((q) => str(q, 600)).filter(Boolean),
     sources,
+    related: parseRelated(j.related),
+    logo: parseLogo(j.logo),
   };
 }
 

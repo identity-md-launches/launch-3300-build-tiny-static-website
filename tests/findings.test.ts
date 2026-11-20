@@ -70,12 +70,13 @@ describe("the record has no line limit in the parsers (52acaff0)", () => {
   });
 });
 
-describe("the rebuild objective merges only exact duplicates (dc28a9b3)", () => {
-  it("keeps separate lines for different speakers or quotations", () => {
-    expect(REBUILD_TEMPLATE).not.toContain("Merge lines that say the same thing");
-    expect(REBUILD_TEMPLATE).toContain("Merge only exact duplicates of the same attributed line. Keep separate lines for different speakers or quotations, even if they report the same fact. Name the kept line in the dropped entry for an exact duplicate.");
-    expect(REBUILD_TEMPLATE).toContain("Carry every earlier line forward unless it is an exact duplicate of a line you kept,");
-    expect(REBUILD_TEMPLATE).toContain("The only reasons to drop are: exact duplicate of a line you kept (name it), not about the subject, or replaced by a newer statement from the same speaker.");
+// dc28a9b3 asked to merge only exact duplicates; this job's brief (MERGING IS NOT DROPPING) replaces that rule.
+describe("the rebuild objective merges lines that say the same thing (replaces dc28a9b3)", () => {
+  it("merges across files, speakers and dates; a merged line is carried, not dropped", () => {
+    expect(REBUILD_TEMPLATE).toContain("Merge lines that say the same thing into ONE line, even when they come from different files, speakers or dates.");
+    expect(REBUILD_TEMPLATE).not.toContain("Merge only exact duplicates of the same attributed line.");
+    expect(REBUILD_TEMPLATE).toContain("Carry every earlier line forward unless a reason to drop applies.");
+    expect(REBUILD_TEMPLATE).toContain("The only reasons to drop are: not about the subject, or replaced by a newer statement from the same speaker.");
     expect(readFileSync("templates/rebuild.txt", "utf8").trim()).toBe(REBUILD_TEMPLATE);
   });
 });
@@ -250,7 +251,8 @@ describe("an Official accounts row labels each account (2ba970b7)", () => {
     const [row] = keyFacts(p, (id) => p.lines.find((l) => l.id === id), p.lines).rows;
     expect(row!.accounts.map((a) => [a.name, a.status?.text])).toEqual([["@imd", "Verified on chain"], ["@news", "Not verified"]]);
     expect(row!.status).toBeNull();
-    expect(row!.badge?.text).toBe("Stated by @imd");
+    // One badge per row: the accounts show their own labels, so the row shows no evidence badge beside them.
+    expect(row!.badge).toBeNull();
     expect(accountsOf(p.channels, "@imd and x.com/news; @other", "imd.fun").map((a) => a.channel?.label ?? null)).toEqual(["@imd", "@news", null]);
   });
 });
@@ -346,7 +348,7 @@ describe("a lone Official accounts handle keeps its tie (d1dd68f7)", () => {
     const [row] = keyFacts(alone, (id) => alone.lines.find((l) => l.id === id), alone.lines).rows;
     expect(row!.status?.text).toBe("Verified on chain");
     expect(row!.channel?.url).toBe("https://x.com/imd");
-    expect(row!.badge?.text).toBe("Stated by IMD on X");
+    expect(row!.badge).toBeNull();
     const both = make("@imd, @news", [{ label: "@news", url: "https://x.com/news", tie: "weak" }]);
     const [row2] = keyFacts(both, (id) => both.lines.find((l) => l.id === id), both.lines).rows;
     expect(row2!.accounts[0]!.status?.text).toBe("Verified on chain");
