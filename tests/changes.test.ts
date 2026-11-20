@@ -88,8 +88,8 @@ describe("the changes body", () => {
 
 describe("one change", () => {
   it("needs a note for wrong, context, new line and reword, a link for back this up and links", () => {
-    expect(validateChange("wrong", "", [])).toEqual({ note: "Say what you know, in a few words." });
-    expect(validateChange("reword", " ", [])).toEqual({ note: "Write the new sentence." });
+    expect(validateChange("wrong", "", [])).toEqual({ note: "Write at least 10 characters." });
+    expect(validateChange("reword", " ", [])).toEqual({ note: "Write the new sentence, at least 10 characters." });
     expect(validateChange("backing", "", [])).toEqual({ links: "Back this up needs a link." });
     expect(validateChange("backing", "", ["https://a.com"])).toEqual({});
     expect(validateChange("context", "x".repeat(301), [])).toEqual({ note: "Keep it to 300 characters." });

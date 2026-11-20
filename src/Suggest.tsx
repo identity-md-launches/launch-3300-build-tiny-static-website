@@ -1,5 +1,5 @@
 /** Suggest changes where you read: the pencil, the inline panel, the tray bar at the bottom and its review. */
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ACTIONS } from "./config";
 import { artifactUrl, MAX_OBJECTIVE } from "./bodies";
 import {
@@ -17,7 +17,12 @@ import {
   cleanNote,
   fitChangesPrior,
   hasSource,
+  idsOf,
   makeRefOf,
+  NOTE_MIN,
+  addReady,
+  noSourceSummary,
+  wordDiff,
   newChangeId,
   noTarget,
   planLinks,
@@ -25,12 +30,15 @@ import {
   setConfirmSeed,
   useTray,
   validateChange,
+  needsNote,
   type Change,
   type ChangeTarget,
   type ChangeType,
 } from "./changes";
 import { holdFocus } from "./modal";
 import { lineAnchor } from "./format";
+import { formatNumbers } from "./numbers";
+import { proofIdsOf, settleOf, speakerText } from "./settle";
 import { to } from "./route";
 import { lineInFile, originOfLine } from "./changeResult";
 import type { Prior } from "./bodies";
@@ -75,14 +83,17 @@ const Ctx = createContext<SuggestState | null>(null);
  */
 export function liveTarget(rec: Pick<RecordModel, "scope" | "resolve">, t: ChangeTarget): ChangeTarget | null {
   if (t.kind === "sentence" || t.kind === "none") return t;
-  if (t.kind === "keyfact" && !t.lineId && !t.file) return t;
+  if (t.kind === "keyfact" && !idsOf(t).length && !t.file) return t;
   const has = (x: string) => !!rec.resolve(x);
   let id: string | null = null;
   if (t.file && t.fileLine) id = lineInFile(t.file, t.fileLine, rec.scope, has);
   // A draft saved before files were kept with it: only while that id still names the same sentence.
   else if (t.lineId && has(t.lineId) && (t.kind === "keyfact" || rec.resolve(t.lineId)!.text === t.text)) id = t.lineId;
   if (!id) return null;
-  return t.kind === "line" ? { ...t, lineId: id, key: `line:${id}` } : { ...t, lineId: id };
+  if (t.kind === "line") return { ...t, lineId: id, key: `line:${id}` };
+  // The row's other lines: those still on the record, after the one found again.
+  const rest = idsOf(t).filter((x) => x !== t.lineId && x !== id && has(x));
+  return { ...t, lineId: id, lineIds: [id, ...rest] };
 }
 
 export function SuggestProvider({ subject, rec, children }: { subject: string; rec: Pick<RecordModel, "scope" | "resolve" | "sections">; children: React.ReactNode }) {
@@ -146,12 +157,105 @@ const CHOICES: Record<PanelMode, (ChangeType | "panel")[]> = {
 const noteLabel = (t: ChangeType) =>
   t === "reword" ? "The new sentence" : t === "wrong" ? "What is wrong, and what is right" : t === "context" ? "What more there is to know" : t === "new_line" ? "The missing line" : "A note (optional)";
 
+/** One supporting line as the panel lists it: its marker, who said it, its text and quote. */
+export interface Evidence {
+  id: string;
+  text: string;
+  mark: "Proven" | "Contradicted" | "Statement" | "Claim";
+  tone: "proven" | "contradicted" | "statement" | "claim";
+  who: string;
+  quote: string;
+}
+
+/** The marker and speaker of each line, by the record's own rule: settled lines and proofs read Proven. */
+export function evidenceOf(lines: Line[], all: Line[] = lines): Evidence[] {
+  const proofs = proofIdsOf(all);
+  return lines.map((l) => {
+    const st = settleOf(l, proofs).state;
+    const mark: Evidence["mark"] = st === "contradicted" ? "Contradicted" : l.kind === "proof" || st === "proven" ? "Proven" : l.kind === "statement" ? "Statement" : "Claim";
+    const who = l.kind === "proof" ? l.by || "Re-runnable check" : speakerText(l);
+    return { id: l.id, text: l.text, mark, tone: mark.toLowerCase() as Evidence["tone"], who, quote: l.quote };
+  });
+}
+
+/** How many supporting lines the panel lists before "and N more". */
+export const EVIDENCE_MAX = 4;
+
+function EvidenceMark({ e }: { e: Evidence }) {
+  return (
+    <span className={`kind kind-${e.tone}`}>
+      <span className="dot" aria-hidden="true" />
+      {e.mark}
+    </span>
+  );
+}
+
 /**
- * Opens under the row or sentence. A choice, one short line under each, a note of up to 300 characters and up to 3
- * https links (20 for "Add links to read"), the no-source warning while there is no link, then Add to my changes
- * and Cancel. "Ask a panel to check it" opens Confirm a fact instead: a panel question is sent on its own.
+ * The top of the panel. A sentence or key facts row: "This rests on", one line per row (marker, who, text, and on a
+ * key facts row the quote), each opening that line; at most 4, then "and N more". A Record line: its own marker,
+ * speaker and quote.
  */
-export function ChangePanel({ target, mode, rests = [], sourceUrl = "", onClose }: { target: ChangeTarget; mode: PanelMode; rests?: Line[]; sourceUrl?: string; onClose?: () => void }) {
+function EvidenceList({ mode, target, evidence, onOpenLines }: { mode: PanelMode; target: ChangeTarget; evidence: Evidence[]; onOpenLines?: (ids: string[]) => void }) {
+  if (mode === "new_line" || mode === "links") return null;
+  if (mode === "line" && target.kind === "line") {
+    const e = evidence[0];
+    if (!e) return null;
+    return (
+      <div className="ev ev-own">
+        <p className="ev-meta">
+          <EvidenceMark e={e} />
+          {e.who && <span className="ev-who">{e.who}</span>}
+        </p>
+        {e.quote ? <p className="ev-quote">“{formatNumbers(e.quote)}”</p> : <p className="ev-quote small">No quote: this line is a re-runnable check.</p>}
+      </div>
+    );
+  }
+  const shown = evidence.slice(0, EVIDENCE_MAX);
+  const more = evidence.length - shown.length;
+  const open = (ids: string[]) => (e: React.MouseEvent) => {
+    if (!onOpenLines) return;
+    e.preventDefault();
+    onOpenLines(ids);
+  };
+  return (
+    <div className="ev">
+      <p className="ev-h">This rests on</p>
+      {shown.length ? (
+        <ul className="ev-list">
+          {shown.map((e) => (
+            <li key={e.id}>
+              <a className="ev-row" href={to(lineAnchor(e.id))} onClick={open([e.id])}>
+                <span className="ev-meta">
+                  <EvidenceMark e={e} />
+                  {e.who && <span className="ev-who">{e.who}</span>}
+                </span>
+                <span className="ev-text" title={target.kind === "keyfact" && e.quote ? e.quote : e.text}>{target.kind === "keyfact" && e.quote ? `“${formatNumbers(e.quote)}”` : formatNumbers(e.text)}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="small">{target.kind === "keyfact" ? "This row names no lines of the record yet." : "This sentence names no lines of the record."}</p>
+      )}
+      {more > 0 && (
+        <p className="small">
+          <a href={to(lineAnchor(evidence[EVIDENCE_MAX]!.id))} onClick={open(evidence.map((e) => e.id))}>
+            and {more} more
+          </a>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Opens under the row or sentence, never wider than its column. First what the target rests on, then a choice
+ * with one short line under each, a note of 10 to 300 characters and up to 3 https links (20 for "Add links to
+ * read"), the no-source warning while there is no link, then Add to my changes and Cancel. Add to my changes stays
+ * disabled until the change is complete. "Ask a panel to check it" opens Confirm a fact instead: a panel question
+ * is sent on its own.
+ */
+export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", onClose, onOpenLines }: { target: ChangeTarget; mode: PanelMode; evidence?: Evidence[]; sourceUrl?: string; onClose?: () => void; onOpenLines?: (ids: string[]) => void }) {
   const s = useSuggest();
   const existing = pendingFor(s, target.key);
   const choices = CHOICES[mode];
@@ -163,6 +267,8 @@ export function ChangePanel({ target, mode, rests = [], sourceUrl = "", onClose 
   const ref = useRef<HTMLDivElement>(null);
   const max = type === "links" ? READ_MAX_LINKS : CHANGE_MAX_LINKS;
   const plan = useMemo(() => planLinks(links, max), [links, max]);
+  const current = type === "reword" ? target.text : "";
+  const ready = addReady(type, note, plan.links, plan.rejected.length, current);
   // The pencil, sentence, Edit or add button that opened the panel: focus goes back there when it closes.
   const opener = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);
   const close = () => {
@@ -190,7 +296,7 @@ export function ChangePanel({ target, mode, rests = [], sourceUrl = "", onClose 
   };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const found = validateChange(type, note, plan.links);
+    const found = validateChange(type, note, plan.links, current);
     if (plan.rejected.length && !found.links) found.links = `Fix or remove: ${plan.rejected[0]!.line.slice(0, 60)} (${plan.rejected[0]!.why}).`;
     setErrs(found);
     if (found.note) return document.getElementById(`${id}-note`)?.focus();
@@ -204,11 +310,13 @@ export function ChangePanel({ target, mode, rests = [], sourceUrl = "", onClose 
     close();
   };
   const count = cleanNote(note).length;
+  const rejectedNow = plan.rejected[0];
   return (
     <div ref={ref} className="cpanel" role="group" aria-labelledby={`${id}-h`} onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), close())}>
       <p id={`${id}-h`} className="cpanel-h">
         {mode === "new_line" ? "Add a line that is missing" : mode === "links" ? "Add links to read" : existing ? "Edit your change" : "Suggest a change"}
       </p>
+      <EvidenceList mode={mode} target={target} evidence={evidence} onOpenLines={onOpenLines} />
       <form className="form" onSubmit={submit} noValidate>
         {choices.length > 1 && (
           <fieldset className="opts">
@@ -222,40 +330,27 @@ export function ChangePanel({ target, mode, rests = [], sourceUrl = "", onClose 
             ))}
           </fieldset>
         )}
-        {mode === "sentence" && (
-          <div className="rests small">
-            {rests.length ? (
-              <>
-                <span>Rests on: </span>
-                {rests.map((l, i) => (
-                  <span key={l.id}>
-                    {i > 0 && ", "}
-                    <a href={to(lineAnchor(l.id))}>{l.text.length > 70 ? `${l.text.slice(0, 69)}…` : l.text}</a>
-                  </span>
-                ))}
-                <span className="block">{KEPT_RULE}</span>
-              </>
-            ) : (
-              <span>This sentence names no lines. {KEPT_RULE.replace("those lines, or a link you add,", "a link you add")}</span>
-            )}
-          </div>
-        )}
         {type !== "links" && (
           <>
             <label htmlFor={`${id}-note`}>{noteLabel(type)}</label>
+            {type === "reword" && <p className="small">{evidence.length ? KEPT_RULE : KEPT_RULE.replace("those lines, or a link you add, support it", "a link you add supports it")}</p>}
             <textarea id={`${id}-note`} rows={type === "reword" ? 3 : 2} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!errs.note} aria-describedby={`${id}-count${errs.note ? ` ${id}-note-err` : ""}`} />
             <p id={`${id}-count`} className={count > NOTE_MAX ? "error" : "small"}>
-              {count} of {NOTE_MAX} characters
+              {count} of {NOTE_MAX} characters{needsNote(type) && count < NOTE_MIN ? `, at least ${NOTE_MIN}` : ""}
             </p>
             {errs.note && <p id={`${id}-note-err`} className="error">{errs.note}</p>}
           </>
         )}
         <label htmlFor={`${id}-links`}>{type === "links" ? `Links to read, one per line (up to ${READ_MAX_LINKS})` : type === "backing" ? `Your source: up to ${CHANGE_MAX_LINKS} https links, one per line` : `Links, one per line (up to ${CHANGE_MAX_LINKS}, optional)`}</label>
-        <textarea id={`${id}-links`} rows={type === "links" ? 5 : 2} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/article" value={links} onChange={(e) => setLinks(e.target.value)} aria-invalid={!!errs.links} aria-describedby={errs.links ? `${id}-links-err` : undefined} />
-        {errs.links && <p id={`${id}-links-err`} className="error">{errs.links}</p>}
-        {plan.links.length === 0 && type !== "links" && <p className="nosource">{NO_SOURCE}</p>}
+        <textarea id={`${id}-links`} rows={type === "links" ? 5 : 2} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/article" value={links} onChange={(e) => setLinks(e.target.value)} aria-invalid={!!errs.links || !!rejectedNow} aria-describedby={errs.links || rejectedNow ? `${id}-links-err` : undefined} />
+        {(errs.links || rejectedNow) && (
+          <p id={`${id}-links-err`} className="error">
+            {errs.links ?? `Cannot use ${rejectedNow!.line.slice(0, 60)}: ${rejectedNow!.why}.`}
+          </p>
+        )}
+        {plan.links.length === 0 && type !== "links" && type !== "backing" && <p className="nosource">{NO_SOURCE}</p>}
         <div className="row-actions">
-          <button className="btn btn-ink" type="submit">
+          <button className="btn btn-ink" type="submit" disabled={!ready.ok} aria-describedby={ready.ok ? undefined : `${id}-need`}>
             Add to my changes
           </button>
           <button className="btn" type="button" onClick={close}>
@@ -267,6 +362,11 @@ export function ChangePanel({ target, mode, rests = [], sourceUrl = "", onClose 
             </button>
           )}
         </div>
+        {!ready.ok && (
+          <p id={`${id}-need`} className="small" aria-live="polite">
+            {ready.need}
+          </p>
+        )}
       </form>
     </div>
   );
@@ -274,11 +374,28 @@ export function ChangePanel({ target, mode, rests = [], sourceUrl = "", onClose 
 
 /* ---------- "Add a line that is missing" and "Add links to read" ---------- */
 
-export function AddButtons({ where }: { where: string }) {
+/** "Add a line that is missing" and "Add links to read": buttons, or (variant "links") two text links for the Overview footer. */
+export function AddButtons({ where, variant = "buttons", children }: { where: string; variant?: "buttons" | "links"; children?: React.ReactNode }) {
   const s = useSuggest();
   const newKey = `${where}:new_line`;
   const linksKey = `${where}:links`;
   const target = (key: string): ChangeTarget => ({ ...noTarget(), key });
+  if (variant === "links")
+    return (
+      <>
+        <p className="foot-links">
+          <button type="button" className="linklike" aria-expanded={s.open === newKey} onClick={() => s.setOpen(s.open === newKey ? null : newKey)}>
+            Add a missing line
+          </button>
+          <button type="button" className="linklike" aria-expanded={s.open === linksKey} onClick={() => s.setOpen(s.open === linksKey ? null : linksKey)}>
+            Add links to read
+          </button>
+          {children}
+        </p>
+        {s.open === newKey && <ChangePanel key={newKey} target={target(newKey)} mode="new_line" />}
+        {s.open === linksKey && <ChangePanel key={linksKey} target={target(linksKey)} mode="links" />}
+      </>
+    );
   return (
     <>
       <div className="row-actions">
@@ -310,16 +427,20 @@ export function planChanges(rec: Pick<RecordModel, "pageHash" | "after" | "scope
   const gone = new Set(list.filter((c) => live.get(c.id) === null).map((c) => c.id));
   const pageUrl = rec.pageHash ? artifactUrl(rec.pageHash) : null;
   const jobFiles = new Map(rec.after.filter((a) => a.fileHash).map((a) => [a.req.requestId, artifactUrl(a.fileHash!)] as const));
-  const targeted = changes.filter((c) => !gone.has(c.id) && (c.target.kind === "line" || c.target.kind === "keyfact") && c.target.lineId);
-  const required = targeted.flatMap((c) => {
-    const o = originOfLine(c.target.lineId, rec.scope);
-    return o ? [artifactUrl(o.file)] : [];
-  });
+  const targeted = changes.filter((c) => !gone.has(c.id) && (c.target.kind === "line" || c.target.kind === "keyfact") && idsOf(c.target).length > 0);
+  const required = targeted.flatMap((c) =>
+    idsOf(c.target).flatMap((lineId) => {
+      const o = originOfLine(lineId, rec.scope);
+      return o ? [artifactUrl(o.file)] : [];
+    }),
+  );
   const measure = (p: Prior) => changesObjective(changes, p, rec.channels, rec.subject, makeRefOf(p, pageUrl, jobFiles)).length;
   const fit = fitChangesPrior(pageUrl, rec.results, rec.answers, required, measure);
   const refOf = makeRefOf(fit.prior, pageUrl, jobFiles);
   const body = changesBody(changes, fit.prior, rec.channels, rec.subject, refOf);
-  const unplaced = new Set(targeted.filter((c) => !refOf(c.target.lineId)).map((c) => c.id));
+  const unplaced = new Set(targeted.filter((c) => idsOf(c.target).some((x) => !refOf(x))).map((c) => c.id));
+  // Never sent with an empty target: a line or key facts row with neither a line reference nor its text.
+  for (const c of changes) if ((c.target.kind === "line" || c.target.kind === "keyfact") && !c.target.text.trim() && !idsOf(c.target).some((x) => refOf(x))) unplaced.add(c.id);
   return { body, refOf, gone, unplaced, room: roomLeft(body.objective.length, changes, refOf), over: body.objective.length >= MAX_OBJECTIVE };
 }
 
@@ -435,6 +556,21 @@ function LinkEditor({ change }: { change: Change }) {
   );
 }
 
+/** A change's note in Review. A rewording shows only the new sentence, with the words that changed in bold. */
+function ReviewNote({ change: c }: { change: Change }) {
+  if (c.type !== "reword") return <p className="review-note">{c.note}</p>;
+  return (
+    <p className="review-note">
+      {wordDiff(c.target.text, c.note).map((p, i) => (
+        <Fragment key={i}>
+          {i > 0 && " "}
+          {p.changed ? <strong>{p.text}</strong> : p.text}
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
 function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote; onClose: () => void; onAsk: (a: ChangesAsk) => void }) {
   const s = useSuggest();
   const list = s.tray.list;
@@ -453,6 +589,8 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
   const ready = rec.snapshot.ok;
   const held = plan.gone.size + plan.unplaced.size;
   const n = list.length;
+  const noSource = list.filter((c) => !hasSource(c)).length;
+  const [showBody, setShowBody] = useState(false);
   const submit = () => {
     if (!ready || plan.over || held) return;
     const clear = s.tray.clear;
@@ -469,8 +607,15 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
         <ol className="review">
           {list.map((c) => (
             <li key={c.id} className="review-item">
-              <p className="review-type">{CHANGE_WORDS[c.type]}</p>
-              {c.target.text && <p className="review-about">“{c.target.text}”</p>}
+              <p className="review-tags">
+                <span className={`ctag ctag-${c.type}`}>{CHANGE_WORDS[c.type]}</span>
+                {!hasSource(c) && <span className="ctag ctag-nosource">No source</span>}
+              </p>
+              {c.target.text && (
+                <p className="review-about" title={c.target.text}>
+                  {formatNumbers(c.target.text)}
+                </p>
+              )}
               {plan.gone.has(c.id) && (
                 <p className="warn">
                   This row is no longer on the record as it was: a rebuild changed or removed it. Remove this change and choose the row again on the{" "}
@@ -479,16 +624,15 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
               )}
               {plan.unplaced.has(c.id) && <p className="warn">The file this row comes from does not fit in one request with the others. Remove some changes and send this one on its own.</p>}
               {c.retry && <p className="small">Not kept last time: {c.retry}</p>}
-              {c.note && <p>{c.type === "reword" ? "New sentence: " : ""}{c.note}</p>}
+              {c.note && <ReviewNote change={c} />}
               {c.links.length > 0 && (
-                <ul className="plain small">
+                <ul className="review-links small">
                   {c.links.map((u) => (
                     <li key={u} className="mono break">{u}</li>
                   ))}
                 </ul>
               )}
-              {!hasSource(c) && <p className="nosource">{NO_SOURCE}</p>}
-              <span className="row-actions">
+              <span className="row-actions review-actions">
                 <LinkEditor key={`${c.id}:${c.links.join(" ")}`} change={c} />
                 <button type="button" className="linklike small" onClick={() => s.tray.remove(c.id)}>
                   Remove
@@ -497,32 +641,36 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
             </li>
           ))}
         </ol>
-        <dl className="facts">
-          <dt>Total</dt>
-          <dd className="mono">
-            {quote.text}, one research job
-            {quote.failed && (
-              <>
-                {" "}
-                <button type="button" className="linklike small" onClick={quote.refresh}>
-                  Retry price
-                </button>
-              </>
-            )}
-          </dd>
-        </dl>
-        <details>
-          <summary>Read the full request</summary>
-          <pre className="body mono" tabIndex={0} aria-label="Request body">{JSON.stringify(plan.body, null, 2)}</pre>
-        </details>
+        {noSource > 0 && <p className="nosource">{noSourceSummary(noSource)}</p>}
+        {showBody && (
+          <pre id="review-body" className="body mono" tabIndex={0} aria-label="Request body">
+            {JSON.stringify(plan.body, null, 2)}
+          </pre>
+        )}
         {!ready && <p className="warn">{rec.snapshot.why}</p>}
         {plan.over && <p className="warn">The request is {plan.body.objective.length.toLocaleString("en-US")} characters, over the 7,500 the Intake takes. Remove a change or shorten a note.</p>}
         {held > 0 && <p className="warn">{plural(held, "change")} above need{held === 1 ? "s" : ""} your attention before you submit.</p>}
-        <div className="row-actions">
-          <button type="button" className="btn btn-primary" onClick={submit} disabled={!ready || plan.over || held > 0}>
-            Submit {plural(n, "change")}
+        <div className="review-foot">
+          <p className="review-price">
+            {quote.failed ? (
+              <>
+                {quote.text}{" "}
+                <button type="button" className="linklike" onClick={quote.refresh}>
+                  Retry price
+                </button>
+              </>
+            ) : /IMD$/.test(quote.text) ? (
+              `${quote.text} for all ${n}`
+            ) : (
+              quote.text
+            )}
+          </p>
+          <button type="button" className="linklike review-read" aria-expanded={showBody} aria-controls="review-body" onClick={() => setShowBody((v) => !v)}>
+            {showBody ? "Hide the full request" : "Read the full request"}
           </button>
-          <span className="small">One request, one payment.</span>
+          <button type="button" className="btn btn-primary review-submit" onClick={submit} disabled={!ready || plan.over || held > 0}>
+            Submit
+          </button>
         </div>
       </div>
     </div>

@@ -387,6 +387,46 @@ page file. The site:
 - otherwise, or if the image still fails to load, shows a tile with the first letter of the name. It never loads
   an image from the project's server or any other site.
 
+## Suggesting a change (job 10: the panel, Review, numbers, header)
+
+- **The panel** opens under the row or sentence and is never wider than that column (the summary's text column,
+  a Record row, a Key facts row) at any width; long text inside it wraps. At its top, **This rests on** lists the
+  supporting lines, one per row with its marker (Proven, Statement, Claim; Contradicted when a proof contradicts
+  it) and who said it; each row opens that line in Record. At most 4, then "and N more", which opens them all. On
+  a Record line the panel shows that line's own marker, speaker and quote instead; on a Key facts row each of its
+  lines with its quote. "Your wording is kept if those lines, or a link you add, support it." appears only under
+  Reword it.
+- **Add to my changes** stays disabled until the note has at least 10 characters (Back this up and Add links to
+  read need a usable https link instead), and for Reword it until the new sentence differs from the current one.
+  The reason is written under the buttons.
+- **Key facts targets.** A change on a Key facts row carries every line id the row rests on, as
+  `F1:L2,F1:L5 key fact "Supply: 1,000,000,000 IMD"`; a fallback row with no lines sends its label and value as
+  text, `key fact "Website: imd.fun"`. A line or key fact change with neither is held in Review and never sent.
+  The template (`templates/changes.txt`) is unchanged.
+- **Kept rewordings** show dots for the lines their own result lists (`items[].lines`, read in that job's
+  scope: `F2:L4` in its `<PRIOR>`, or its own new line ids), not the old sentence's lines. No lines listed, no dots.
+- **Review** shows each change as one compact block: a coloured type tag, an amber "No source" tag when it has no
+  link, the text it is about in small grey type cut to two lines, then the note. A rewording shows only the new
+  sentence with the changed words in bold. Each block has "Add a link" (or "Edit links") next to "Remove". One
+  warning, only when some change has no link: "N of your changes have no source. They only reach the page if the
+  swarm finds one." (singular for one). The footer is one line: "0.5 IMD for all N", "Read the full request" (a
+  link-style toggle) and Submit at the right.
+- **Overview footer**: one small quiet block with no card: "Something wrong or missing? Hover any row or click a
+  sentence to suggest a change." and four text links, "Add a missing line", "Add links to read", "Ask a panel to
+  check a fact", "Rebuild the page" (without a page: "Ask a panel to check a fact" and "Create the page").
+- **Header**: the header row uses the page's own maximum width and side padding (`--page-max`, `--page-pad`), so
+  the site name and the wallet sit on the content's edges at every width. Connected, the wallet is a chip (the
+  Connect button's 44px height) with the ENS name or short address; it opens a small menu with "Copy address" and
+  "Disconnect". The connection code (connectors, EIP-6963, Open in links, chain switch) is unchanged.
+- **Numbers** (`src/numbers.ts`, `formatNumbers`): numbers from result files in Key facts values, summary
+  sentences and line text show with thousands separators, at most 2 decimal places, and at most 4 significant
+  digits below 1: "59822.623566003452582778 imdUSD" shows "59,822.62 imdUSD", "0.000123456" shows "0.0001235".
+  The arithmetic is on digit strings, so long integers keep every digit. Not reformatted: 0x addresses and
+  hashes, anything inside a word (L12, F1:L3), dotted versions, dates and times, numbers after "block", "#",
+  "id", "nonce" or "chain", and four-digit years 1800 to 2199. The exact text and value stay in the line's
+  details ("Exact text", "Exact value") and in the facts table cell's tooltip. What is sent to the swarm (targets,
+  rewordings, the full request) always uses the exact text.
+
 ## Free request check
 
 ### Suggest changes body (2026-11-20, this revision)
@@ -437,21 +477,33 @@ pins the site's bodies to them.
 
 ## Validation results
 
-Details, the Better Interface review and its limits are in `artifacts/validation.md`.
+Run on this machine after the last source change (job 10). Details, the Better Interface review and its limits
+are in `artifacts/validation.md`.
 
 - `npm run typecheck`: exit 0.
-- `npm test`: 89 of 89 pass in 5 files (`tests/findings.test.ts` holds one block per review finding: 2,001 lines
-  and dropped entries, the merge rule, room for files to reconsider, bare dropped ids (an ambiguous one reconsiders
-  every candidate file), the statement rule in every objective, token-only fallback rows (only the subject's own
-  token), the key facts CSS, this README, per-account labels and a lone account's label).
-- `npm run build`: exit 0. `dist/` holds `index.html`, `agents.md`, `favicon.svg`, `og.png` and `assets/`, and
-  `index.html` uses only `./` URLs.
-- Modal Escape routing (wallet sheet over the pay dialog closes alone, focus back on Connect): 1 of 1 pass in a
-  jsdom scratch test.
-- **Not run this round:** `node tests/e2e.mjs` and the design probe `taste.mjs`. Chromium cannot start on this
-  machine (20 missing system libraries; no package source to fetch them). The last browser run (124 of 124 e2e
-  checks, 16 of 16 probe checks) was on an earlier source.
-- **Not tested here:** paying, approving and connecting (no wallet on this machine).
+- `npm test`: 175 of 175 pass in 12 files under `tests/`, including 17 new in `tests/polish.test.ts` (number
+  formatting and what it leaves alone, the panel's markup rendered with `react-dom/server`: evidence first, at most
+  4 rows then "and 2 more", no "Rests on:", the kept rule absent outside Reword it, Add disabled; the 10-character
+  and reword-differs rules; Key facts targets with all line ids and the fallback text, read back by `parseItems`;
+  reword dots from `items[].lines`; the word diff; and CSS/source checks for the panel width, header/main width,
+  footer and account menu). (`npx vitest run` with no path also picks up the scratch test below.)
+- Interaction checks in jsdom (`test/scratch/interact.test.tsx`, jsdom installed under `$TMPDIR`, not a project
+  dependency; the folder is not submitted): 4 of 4 pass. Reword it: Add disabled, kept rule shown only after
+  choosing it, the prefilled same sentence keeps Add disabled with "Change the sentence first", a new sentence
+  enables it and the change joins the tray. Back this up: disabled until a link is typed. Review with three
+  changes: two "No source" tags, exactly one warning "2 of your changes have no source…", the about text shows
+  "Supply: 59,822.62 imdUSD" while the request body keeps `59822.623566`, only "three founders." bold, footer
+  "0.5 IMD for all 3", Read the full request toggles the body, Submit calls the pay dialog. Account chip: shows the
+  ENS name, no Disconnect until opened, the menu lists Copy address and Disconnect, Escape closes it, Disconnect
+  calls disconnect.
+- `npm run build`: exit 0. `dist/index.html` uses only `./` URLs and has the title, favicon, description,
+  og:title and og:image; `dist/` is 1.6 MB.
+- **Not run:** `node tests/e2e.mjs` and the design probe `taste.mjs`. The probe ran and stopped at `render`:
+  Playwright cannot start Chromium on this machine (the cached headless shell is missing `libnss3`, `libnspr4`,
+  `libatk-1.0` and other system libraries). No screenshot, rendered width, overflow measurement or contrast figure
+  is claimed for this job; the panel and page width rules are checked in CSS only.
+- **Not tested here:** paying, approving and connecting a real wallet (no wallet on this machine), and the ENS
+  lookup against mainnet (mocked in the jsdom check).
 
 ## Limits
 

@@ -25,7 +25,8 @@ import {
 import { firstPageStatus, statusText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { StillReading } from "./Home";
-import { AddButtons, ChangePanel, Pencil, PendingTag, useSuggest } from "./Suggest";
+import { AddButtons, ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest } from "./Suggest";
+import { formatNumbers } from "./numbers";
 import { keyFactTarget, lineTarget, sentenceTarget } from "./changes";
 import { originOfLine } from "./changeResult";
 
@@ -106,7 +107,7 @@ function KeyValue({ row }: { row: KeyRow }) {
         {shortHex(p.text)}
       </span>
     ) : (
-      <Fragment key={i}>{p.text}</Fragment>
+      <Fragment key={i}>{formatNumbers(p.text)}</Fragment>
     ),
   );
   return (
@@ -130,7 +131,7 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
       <table>
         <tbody>
           {rows.map((r, i) => {
-            const target = keyFactTarget(r.label, r.value || r.accounts.map((a) => a.name).join(", "), r.lines[0]?.id ?? "", r.lines[0]?.id ? originOfLine(r.lines[0].id, m.scope) : null);
+            const target = keyFactTarget(r.label, r.value || r.accounts.map((a) => a.name).join(", "), r.lines.map((l) => l.id), r.lines[0]?.id ? originOfLine(r.lines[0].id, m.scope) : null);
             const src = r.lines[0]?.srcKeys[0];
             const url = src ? m.sourceList.find((x) => x.key === src)?.url ?? "" : r.url;
             return (
@@ -151,7 +152,7 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                 {s.open === target.key && (
                   <tr className="kf-panel">
                     <td colSpan={4}>
-                      <ChangePanel target={target} mode="line" sourceUrl={url} />
+                      <ChangePanel target={target} mode="line" sourceUrl={url} evidence={evidenceOf(r.lines, allLines(m))} onOpenLines={ui.openLines} />
                     </td>
                   </tr>
                 )}
@@ -190,6 +191,9 @@ function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
     </a>
   );
 }
+
+/** Every line the record shows, for the settle rule (a proof elsewhere can settle a line). */
+const allLines = (m: Pick<RecordModel, "sections">) => m.sections.flatMap((s) => s.rows.map((r) => r.line));
 
 export function useKeyFacts(m: RecordModel) {
   const all = m.sections.flatMap((s) => s.rows.map((r) => r.line));
@@ -242,7 +246,7 @@ function Sentence({ text, active, onOpen }: { text: string; active: boolean; onO
         }
       }}
     >
-      {text}
+      {formatNumbers(text)}
     </span>
   );
 }
@@ -270,7 +274,7 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
                 );
               })}
             </p>
-            {openHere && <ChangePanel key={openHere.text} target={sentenceTarget(openHere.text)} mode="sentence" rests={openHere.refs} />}
+            {openHere && <ChangePanel key={openHere.text} target={sentenceTarget(openHere.text)} mode="sentence" evidence={evidenceOf(openHere.refs, allLines(m))} onOpenLines={ui.openLines} />}
           </Fragment>
         );
       })}
@@ -423,16 +427,21 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       )}
 
       {page ? (
-        <div className="card quiet" id="suggest">
-          <h2>Something wrong or missing?</h2>
-          <p>Hover any row or click a sentence to suggest a change. Changes are checked by the swarm before they appear.</p>
-          <AddButtons where="overview" />
+        <div className="ov-foot" id="suggest">
+          <p>Something wrong or missing? Hover any row or click a sentence to suggest a change.</p>
+          <AddButtons where="overview" variant="links">
+            <a href={to("confirm")}>Ask a panel to check a fact</a>
+            <a href={to("rebuild")}>Rebuild the page</a>
+          </AddButtons>
         </div>
-      ) : null}
-      <p className="more-links small">
-        <a href={to("confirm")}>Ask a panel to check a fact</a>
-        <a href={to("rebuild")}>{page ? "Rebuild the page" : "Create the page"}</a>
-      </p>
+      ) : (
+        <div className="ov-foot">
+          <p className="foot-links">
+            <a href={to("confirm")}>Ask a panel to check a fact</a>
+            <a href={to("rebuild")}>Create the page</a>
+          </p>
+        </div>
+      )}
     </section>
   );
 }
@@ -488,6 +497,21 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
           <>
             <dt>Line</dt>
             <dd>{line.text}</dd>
+          </>
+        )}
+        {!withText && formatNumbers(line.text) !== line.text && (
+          <>
+            <dt>Exact text</dt>
+            <dd>{line.text}</dd>
+          </>
+        )}
+        {line.fact && formatNumbers(line.fact.value) !== line.fact.value && (
+          <>
+            <dt>Exact value</dt>
+            <dd className="mono">
+              {line.fact.value}
+              {line.fact.unit ? ` ${line.fact.unit}` : ""}
+            </dd>
           </>
         )}
         {line.quote && (
@@ -617,7 +641,7 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
                 ctx.ui.openLines([target.id]);
               }}
             >
-              {target.text}
+              {formatNumbers(target.text)}
             </a>
           );
         else if (answer) body = answer.activity ? <a href={to(panelAnchor(answer.activity))}>{answer.text}</a> : <span>{answer.text}</span>;
@@ -699,19 +723,19 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
             <span className="row-text">
               <SettleMark s={settled} ctx={ctx} />
               <span className="block">
-                <span className="said-word">Said:</span> {line.text}
+                <span className="said-word">Said:</span> {formatNumbers(line.text)}
               </span>
               {settled.contradicts.map((t) => {
                 const b = shownBy(t, ctx);
                 return (
                   <span key={t} className="block shows">
-                    <span className="said-word">{b.who}:</span> {b.text}
+                    <span className="said-word">{b.who}:</span> {formatNumbers(b.text)}
                   </span>
                 );
               })}
             </span>
           ) : (
-            <span className="row-text">{line.text}</span>
+            <span className="row-text">{formatNumbers(line.text)}</span>
           )}
           <span className="row-meta">
             {settled ? (
@@ -734,7 +758,7 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
       <PendingTag targetKey={target.key} />
       <LinkNotes line={line} ctx={ctx} />
       {open && <Details row={row} ctx={ctx} id={`${anchor}-d`} />}
-      {sg.open === target.key && <ChangePanel target={target} mode="line" sourceUrl={srcUrl} />}
+      {sg.open === target.key && <ChangePanel target={target} mode="line" sourceUrl={srcUrl} evidence={evidenceOf([line], allLines(ctx.m))} onOpenLines={ctx.ui.openLines} />}
     </li>
   );
 }
@@ -770,8 +794,8 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                   {row.origin?.raised && <span className="by small block">raised by {row.origin.payer}</span>}
                   <PendingTag targetKey={target.key} />
                 </th>
-                <td data-label="Value" className="num">
-                  {f.value}
+                <td data-label="Value" className="num" title={formatNumbers(f.value) !== f.value ? `Exact: ${f.value}` : undefined}>
+                  {formatNumbers(f.value)}
                   {f.unit ? ` ${f.unit}` : ""}
                 </td>
                 <td data-label="Chain and block">
@@ -789,7 +813,7 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
               {sg.open === target.key && (
                 <tr className="fact-details">
                   <td colSpan={3}>
-                    <ChangePanel target={target} mode="line" sourceUrl={ctx.numbers.get(row.line.srcKeys[0] ?? "")?.url ?? ""} />
+                    <ChangePanel target={target} mode="line" sourceUrl={ctx.numbers.get(row.line.srcKeys[0] ?? "")?.url ?? ""} evidence={evidenceOf([row.line], allLines(ctx.m))} onOpenLines={ctx.ui.openLines} />
                   </td>
                 </tr>
               )}

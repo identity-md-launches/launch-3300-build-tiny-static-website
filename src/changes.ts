@@ -44,6 +44,8 @@ export interface ChangeTarget {
   key: string;
   /** The record line id the target is (or rests on); "" for a sentence or nothing. */
   lineId: string;
+  /** A key facts row: every record line id it rests on (lineId is the first). Empty for a fallback row with no lines. */
+  lineIds?: string[];
   /** The line's sentence, "Label: value" for a key fact, or the summary sentence. */
   text: string;
   /**
@@ -66,7 +68,17 @@ export interface Change {
 export type Origin = { file: string; id: string } | null;
 const withOrigin = (o: Origin) => (o ? { file: o.file, fileLine: o.id } : {});
 export const lineTarget = (id: string, text: string, origin: Origin = null): ChangeTarget => ({ kind: "line", key: `line:${id}`, lineId: id, text, ...withOrigin(origin) });
-export const keyFactTarget = (label: string, value: string, lineId: string, origin: Origin = null): ChangeTarget => ({ kind: "keyfact", key: `kf:${label}`, lineId, text: `${label}: ${value}`, ...withOrigin(origin) });
+/**
+ * A key facts row. It always carries a target: the line ids the row rests on and, as text, its label and value
+ * (all a fallback row with no lines has).
+ */
+export const keyFactTarget = (label: string, value: string, lineIds: string | string[], origin: Origin = null): ChangeTarget => {
+  const ids = (Array.isArray(lineIds) ? lineIds : [lineIds]).map((x) => x.trim()).filter((x, i, all) => x && all.indexOf(x) === i);
+  const text = value.trim() ? `${label.trim()}: ${value.trim()}` : label.trim();
+  return { kind: "keyfact", key: `kf:${label}`, lineId: ids[0] ?? "", lineIds: ids, text, ...withOrigin(origin) };
+};
+/** Every line id a target names: a key facts row's lineIds, else its one lineId. */
+export const idsOf = (t: Pick<ChangeTarget, "lineId" | "lineIds">) => (t.lineIds?.length ? t.lineIds : t.lineId ? [t.lineId] : []);
 export const sentenceTarget = (text: string): ChangeTarget => ({ kind: "sentence", key: `sent:${text.trim()}`, lineId: "", text: text.trim() });
 export const noTarget = (): ChangeTarget => ({ kind: "none", key: `new:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, lineId: "", text: "" });
 
@@ -92,16 +104,64 @@ export function planLinks(text: string, max: number): { links: string[]; rejecte
   return { links, rejected };
 }
 
-/** One message per field that needs a fix before the change can join the tray. */
-export function validateChange(type: ChangeType, note: string, links: string[]): { note?: string; links?: string } {
+/** The shortest note a change takes, except Back this up and Add links to read, which need a link instead. */
+export const NOTE_MIN = 10;
+/** Whether this type is held back until its note is long enough. */
+export const needsNote = (type: ChangeType) => type !== "backing" && type !== "links";
+
+/**
+ * One message per field that needs a fix before the change can join the tray. `current` is the sentence a
+ * rewording replaces: the new sentence must differ from it.
+ */
+export function validateChange(type: ChangeType, note: string, links: string[], current = ""): { note?: string; links?: string } {
   const n = cleanNote(note);
   const out: { note?: string; links?: string } = {};
   if (n.length > NOTE_MAX) out.note = `Keep it to ${NOTE_MAX} characters.`;
-  else if (type === "reword" && n.length < 3) out.note = "Write the new sentence.";
-  else if ((type === "wrong" || type === "context" || type === "new_line") && n.length < 3) out.note = "Say what you know, in a few words.";
+  else if (needsNote(type) && n.length < NOTE_MIN) out.note = type === "reword" ? `Write the new sentence, at least ${NOTE_MIN} characters.` : `Write at least ${NOTE_MIN} characters.`;
+  else if (type === "reword" && n === cleanNote(current)) out.note = "Change the sentence first: it is the same as the current one.";
   if ((type === "backing" || type === "links") && links.length === 0) out.links = type === "links" ? "Paste at least one https link." : "Back this up needs a link.";
   return out;
 }
+
+/**
+ * Whether "Add to my changes" is enabled, and if not, the one short reason shown beside it. Links that cannot be
+ * used (not https, repeated, past the limit) also hold it back.
+ */
+export function addReady(type: ChangeType, note: string, links: string[], rejected: number, current = ""): { ok: boolean; need: string } {
+  const e = validateChange(type, note, links, current);
+  const need = e.note ?? e.links ?? (rejected ? "Fix or remove the links that cannot be used." : "");
+  return { ok: !need, need };
+}
+
+/** The new sentence of a rewording, in words, each marked when it is not in the old sentence at that place (LCS). */
+export function wordDiff(before: string, after: string): { text: string; changed: boolean }[] {
+  const a = before.trim().split(/\s+/).filter(Boolean);
+  const b = after.trim().split(/\s+/).filter(Boolean);
+  const key = (w: string) => w.toLowerCase().replace(/[.,;:!?"“”()]+$/g, "").replace(/^["“(]+/, "");
+  const L = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) L[i]![j] = key(a[i]!) === key(b[j]!) ? L[i + 1]![j + 1]! + 1 : Math.max(L[i + 1]![j]!, L[i]![j + 1]!);
+  const out: { text: string; changed: boolean }[] = [];
+  const push = (w: string, changed: boolean) => {
+    const last = out.at(-1);
+    if (last && last.changed === changed) last.text += ` ${w}`;
+    else out.push({ text: w, changed });
+  };
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (key(a[i]!) === key(b[j]!) && L[i]![j] === L[i + 1]![j + 1]! + 1) {
+      push(b[j]!, false);
+      i++;
+      j++;
+    } else if (L[i + 1]![j]! >= L[i]![j + 1]!) i++;
+    else push(b[j++]!, true);
+  }
+  while (j < b.length) push(b[j++]!, true);
+  return out;
+}
+
+/** The one warning Review shows above the total when some changes have no link. */
+export const noSourceSummary = (n: number) => `${n} of your changes ${n === 1 ? "has" : "have"} no source. ${n === 1 ? "It only reaches" : "They only reach"} the page if the swarm finds one.`;
 
 export const cleanNote = (t: string) => t.replace(/\s+/g, " ").trim();
 export const hasSource = (c: Pick<Change, "links">) => c.links.length > 0;
@@ -117,8 +177,11 @@ const q = (s: string) => JSON.stringify(s);
 export function targetText(t: ChangeTarget, refOf: RefOf): string {
   if (t.kind === "none") return "none";
   if (t.kind === "sentence") return `summary sentence ${q(t.text)}`;
+  if (t.kind === "keyfact") {
+    const refs = idsOf(t).map(refOf).filter(Boolean);
+    return refs.length ? `${refs.join(",")} key fact ${q(t.text)}` : `key fact ${q(t.text)}`;
+  }
   const ref = t.lineId ? refOf(t.lineId) : "";
-  if (t.kind === "keyfact") return ref ? `${ref} key fact ${q(t.text)}` : `key fact ${q(t.text)}`;
   return ref ? `${ref} ${q(t.text)}` : `line ${q(t.text)}`;
 }
 

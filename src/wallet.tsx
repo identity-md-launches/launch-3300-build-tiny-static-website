@@ -1,6 +1,6 @@
 /** Wallets, the network's one way: EIP-6963 extensions, "Open in" links on phones, Coinbase Smart Wallet. No relay, no project ID. */
 import { useEffect, useRef, useState } from "react";
-import { createConfig, http, useAccount, useConnect, useDisconnect, useSwitchChain, type Connector } from "wagmi";
+import { createConfig, http, useAccount, useConnect, useDisconnect, useEnsName, useSwitchChain, type Connector } from "wagmi";
 import { coinbaseWallet, injected } from "wagmi/connectors";
 import { CHAIN, CHAIN_ID, RPCS, SITE_NAME } from "./config";
 import { WALLET_ICONS } from "./wallet-icons";
@@ -75,11 +75,7 @@ export function ConnectSheet() {
           {switching ? "Switching…" : "Switch to Ethereum"}
         </button>
       );
-    return (
-      <button className="btn" onClick={() => disconnect()} title="Disconnect this wallet">
-        <span className="mono">{short(address)}</span> · Disconnect
-      </button>
-    );
+    return <AccountChip address={address} onDisconnect={() => disconnect()} />;
   }
   return (
     <>
@@ -120,5 +116,66 @@ export function ConnectSheet() {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Connected: a chip with the ENS name or the short address, the Connect button's height. It opens a small menu
+ * with Copy address and Disconnect. Escape or a click outside closes it; focus returns to the chip.
+ */
+export function AccountChip({ address, onDisconnect }: { address: `0x${string}`; onDisconnect: () => void }) {
+  const { data: ens } = useEnsName({ address, chainId: CHAIN_ID });
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const chip = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      chip.current?.focus();
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    box.current?.querySelector<HTMLElement>(".acct-menu button")?.focus();
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const copy = () => {
+    void navigator.clipboard?.writeText(address).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  };
+  return (
+    <div className="acct" ref={box} onBlur={(e) => open && !box.current?.contains(e.relatedTarget as Node) && setOpen(false)}>
+      <button ref={chip} type="button" className="acct-chip" aria-expanded={open} aria-controls="acct-menu" title={address} onClick={() => setOpen((v) => !v)}>
+        <span className="acct-dot" aria-hidden="true" />
+        <span className={ens ? "acct-name" : "acct-name mono"}>{ens ?? short(address)}</span>
+        <span className="acct-chev" aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="acct-menu" id="acct-menu">
+          <button type="button" onClick={copy}>
+            {copied ? "Copied" : "Copy address"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onDisconnect();
+            }}
+          >
+            Disconnect
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

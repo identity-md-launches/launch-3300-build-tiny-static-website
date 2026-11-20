@@ -116,8 +116,13 @@ const unquote = (s: string) => {
   }
 };
 
-export function applyRewords<T extends SummarySentence>(summary: T[], after: Activity[]): (T & { rewordedBy?: string; original?: string })[] {
-  let out: (T & { rewordedBy?: string; original?: string })[] = summary;
+/**
+ * Kept rewordings replace their sentence. The sentence then rests on the lines its own verdict lists
+ * (items[].lines, in `rewordLines`, read in the scope of `rewordJob`), not on the old sentence's lines.
+ */
+export type Reworded<T> = T & { rewordedBy?: string; original?: string; rewordLines?: string[]; rewordJob?: Activity };
+export function applyRewords<T extends SummarySentence>(summary: T[], after: Activity[]): Reworded<T>[] {
+  let out: Reworded<T>[] = summary;
   for (const a of after) {
     if (!a.changes) continue;
     const sent = parseItems(a.req.bodyJson?.objective);
@@ -126,7 +131,7 @@ export function applyRewords<T extends SummarySentence>(summary: T[], after: Act
       const item = sent.find((x) => x.n === v.n && x.type === "reword");
       const was = norm(item?.text || unquote(v.target));
       if (!was) continue;
-      out = out.map((s) => (norm(s.text) === was || (s.original && norm(s.original) === was) ? { ...s, original: s.original ?? s.text, text: v.finalText.trim(), rewordedBy: payerName(a) } : s));
+      out = out.map((s) => (norm(s.text) === was || (s.original && norm(s.original) === was) ? { ...s, original: s.original ?? s.text, text: v.finalText.trim(), rewordedBy: payerName(a), rewordLines: v.lines, rewordJob: a } : s));
     }
   }
   return out;

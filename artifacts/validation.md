@@ -1,5 +1,65 @@
 # Validation
 
+## This build: suggest-a-change polish (job 10, 2026-11-20)
+
+Run on this machine after the last source change.
+
+| Command | Result |
+| --- | --- |
+| `npm ci` | exit 0 |
+| `npx vite-node scripts/agents-md.ts` | rewrote `public/agents.md` (49,361 characters, no change: bodies and templates untouched) |
+| `npm run typecheck` | exit 0 |
+| `npm test` (vitest, `tests/`) | 175 of 175 pass in 12 files; 17 new in `tests/polish.test.ts`, 1 updated in `tests/changes.test.ts` (the note rule is now 10 characters) |
+| `npx vitest run test/scratch` (jsdom 26 under `$TMPDIR`, not a dependency) | 4 of 4 pass: Reword it, Back this up, Review with three changes, account chip and menu (details in the README) |
+| `npm run build` | exit 0; `dist/index.html` uses only `./` URLs; title, favicon, description, og:title, og:image present; `dist/` 1.6 MB |
+| `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` | **Did not render.** Playwright loaded, but stopped at `render`: no Chromium starts here (the cached `chromium_headless_shell-1248` is missing `libnss3`, `libnspr4`, `libatk-1.0`, `libXcomposite` and more; Playwright's own build wants revision 1255, which is not cached). No screenshot, measured width or contrast ratio is claimed |
+| `node tests/e2e.mjs` | Not run, for the same reason |
+
+A bug the interaction check found and that is fixed: with no supporting lines, the Reword it hint read "Your wording
+is kept if a link you add support it." It now reads "…if a link you add supports it." (`src/Suggest.tsx`, the
+`KEPT_RULE` replacement).
+
+### Better Interface review of this job
+
+Guide: `.imd/reads/skills/better-interface/REFERENCE.md`. All six domains were checked without a browser, on the
+source of the changed parts: the change panel, Review, the Overview footer, the header and account chip, and number
+formatting. The checks that need a browser were not performed (see above).
+
+- **Accessibility.** The evidence rows are real links (`<a href>` to the line's anchor) that open the line, so
+  Cmd/Ctrl-click works (`src/Suggest.tsx`, `EvidenceList`). The account control is a disclosure button with
+  `aria-expanded`/`aria-controls`, not `role="menu"`, because it has no arrow-key behaviour; Escape closes it and
+  focus goes back to the chip, and focus leaving or a click outside also closes it (`src/wallet.tsx`,
+  `AccountChip`). "Read the full request" is a button with `aria-expanded`/`aria-controls="review-body"`.
+  *Finding:* the guide's forms table says not to disable Submit until the form is valid
+  (REFERENCE.md:253, :916). The brief explicitly requires Add to my changes to stay disabled, so the brief wins.
+  The guide's fallback is applied: the reason is visible text under the buttons, linked by `aria-describedby`,
+  and announced politely (`src/Suggest.tsx`, the `${id}-need` paragraph). Markers keep their word beside the
+  colour dot; the "No source" tag is text, not just amber.
+- **Layout.** *Finding:* `.rests { white-space: nowrap }` (old `src/styles.css:277`) let the "Rests on" sentence
+  widen the panel and the page. Fixed by removing it together with the sentence. `.opts` used `minmax(9.5rem, 1fr)`,
+  wider than a panel on a 320px phone; now `minmax(min(9.5rem, 100%), 1fr)`. `.cpanel` is `width/max-width: 100%;
+  min-width: 0`, with one `minmax(0, 1fr)` track and `overflow-wrap: anywhere`. `main` and the one-column grids get
+  `minmax(0, 1fr)` tracks. *Finding:* `.more-links` used `margin-top: -24px` to pull the links under the footer
+  card, so they overlapped it; removed with the card. *Finding:* the header row was 60rem wide inside 16px padding
+  while `main` was 60rem including its padding, so the brand and wallet sat 16px outside the content's edges;
+  both now use `--page-max` and `--page-pad`.
+- **Writing.** The new copy is the brief's words. Review's warning is singular for one change ("1 of your changes
+  has no source. It only reaches…") and the brief's plural otherwise. Disabled reasons say what to do: "Write at
+  least 10 characters.", "Back this up needs a link.", "Change the sentence first: it is the same as the current one."
+- **Typography.** No new sizes: the panel, Review and footer use the existing 16px and 13px steps (six sizes in
+  all). *Finding:* clamped text (Review's "about" line, the evidence row text) needs its full content reachable
+  (guide, Truncate without losing content); each clamped element has the full text in `title`, the evidence row
+  opens the full line, and the full request holds the exact text. Numbers use `tabular-nums` in the facts table.
+- **Colours.** The change tags reuse the existing label pairs (red/blue/green/violet/orange-800 on their 50 tint);
+  the "No source" tag is orange-800 on orange-50, the same pair as the existing no-source note. No new colours.
+- **UI.** The account chip is the Connect button's height (44px). The menu uses one shadow token
+  (`--shadow-menu`) and the control radius. The Overview footer has no card or button, so it reads as a quiet
+  end of the page.
+
+Remaining limitations: nothing was rendered, so the panel at 320/390 wide, the one-line Review footer, the header
+edge alignment and the 390 first screen are not confirmed by screenshot; paying and real wallets were not tested.
+
+
 ## This build: fourth revision of the no-size-limit change (2026-11-19)
 
 Run on this machine after the last source change. Answers to each review finding are in `.imd-responses.json`.

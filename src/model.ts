@@ -36,7 +36,7 @@ import {
 } from "./page";
 import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
-import { applyChangeLinks, applyRewords, carriedOf, type LineScope } from "./changeResult";
+import { applyChangeLinks, applyRewords, carriedOf, type LineScope, type Reworded } from "./changeResult";
 import type { KnownContract } from "./lookup";
 
 export interface Accounting {
@@ -57,6 +57,14 @@ export interface ShownSentence extends SummarySentence {
   /** Set when a kept reword from a changes job replaced this sentence. */
   rewordedBy?: string;
   original?: string;
+}
+
+/**
+ * A kept rewording rests on the lines its own verdict lists (items[].lines), resolved in that job's scope; no
+ * dots when it lists none. Other sentences keep their refs.
+ */
+export function withRewordRefs(summary: Reworded<ShownSentence>[], refsOf: (a: Activity, ids: string[]) => Line[]): ShownSentence[] {
+  return summary.map(({ rewordLines, rewordJob, ...s }) => (rewordJob ? { ...s, refs: refsOf(rewordJob, rewordLines ?? []) } : s));
 }
 
 /** Whether every input of <PRIOR> was read: the chain, the page shown, each result not folded in and each panel answer. */
@@ -456,7 +464,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
    */
   const editRefs = (a: Activity, ids: string[], verdict: Verdict | null): Line[] => {
     const key = a.req.requestId;
-    const own = new Set((a.edit?.data.lines ?? []).map((l) => l.id));
+    const own = new Set((a.edit?.data.lines ?? a.changes?.data.lines ?? []).map((l) => l.id));
     const files = parsePrior(a.req.bodyJson?.objective).files;
     const inFile = (n: number, id: string): Line | undefined => {
       const f = files.find((x) => x.n === n);
@@ -482,7 +490,8 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
         return { ...s, refs: editRefs(edit.activity, s.lines, v ? v.verdict : null) };
       })
     : (page?.summary ?? []).map((s) => ({ ...s, refs: s.lines.flatMap((id) => (byId.has(id.trim()) ? [byId.get(id.trim())!] : [])) }));
-  const summary: ShownSentence[] = applyRewords(written, after);
+  // A kept rewording rests on the lines its own result lists (items[].lines), each in that job's scope.
+  const summary: ShownSentence[] = withRewordRefs(applyRewords(written, after), (a, ids) => editRefs(a, ids, null));
 
   const answerRef = (target: string) => {
     const m = /^A(\d+)$/i.exec(target.trim());

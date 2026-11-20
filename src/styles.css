@@ -51,6 +51,10 @@
   --space-6: 24px;
   --space-8: 32px;
   --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 32px rgb(0 0 0 / 0.16);
+  --shadow-menu: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 20px rgb(0 0 0 / 0.12);
+  /* The one content column: the header row and main share its width and side padding at every width. */
+  --page-max: 60rem;
+  --page-pad: max(var(--space-4), env(safe-area-inset-left), env(safe-area-inset-right));
 }
 
 * { box-sizing: border-box; }
@@ -84,11 +88,10 @@ a { color: inherit; text-underline-offset: 0.15em; text-decoration-thickness: fr
 /* Header: name and wallet on one row, the five tabs under them. */
 .top {
   position: sticky; top: 0; z-index: 10;
-  padding: 0 max(var(--space-4), env(safe-area-inset-left));
   background: rgb(255 255 255 / 0.96);
   border-bottom: 1px solid var(--color-border);
 }
-.top-row { max-width: 60rem; margin: 0 auto; display: flex; align-items: center; gap: var(--space-4); padding-top: var(--space-2); }
+.top-row { max-width: var(--page-max); margin: 0 auto; padding: var(--space-2) var(--page-pad); display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
 .brand { font-weight: 600; text-decoration: none; margin-inline-end: auto; min-height: 44px; display: inline-flex; align-items: center; }
 /* The tabs wrap to a second row when the five labels cannot fit (320 wide), so no label is ever clipped. */
 .tabs { max-width: 60rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 0 var(--space-1); }
@@ -104,7 +107,7 @@ a { color: inherit; text-underline-offset: 0.15em; text-decoration-thickness: fr
   .tabs a { padding: 0 1px; font-size: var(--text-nav); }
 }
 
-main { max-width: 60rem; margin: 0 auto; padding: var(--space-6) var(--space-4) var(--space-8); display: grid; gap: var(--space-8); }
+main { max-width: var(--page-max); margin: 0 auto; padding: var(--space-6) var(--page-pad) var(--space-8); display: grid; gap: var(--space-8); grid-template-columns: minmax(0, 1fr); }
 main:focus { outline: none; }
 section { display: grid; gap: var(--space-4); min-width: 0; }
 .lead { color: var(--color-text-secondary); max-width: 60ch; margin-top: calc(-1 * var(--space-2)); }
@@ -274,7 +277,6 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .choice-item input { margin: 0; accent-color: var(--color-accent-solid); }
 select { font: inherit; min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg); color: var(--color-text); }
 
-.rests { color: var(--color-text-secondary); white-space: nowrap; }
 .summary { display: grid; gap: var(--space-3); min-width: 0; }
 .summary h2 { font-size: var(--text-title); }
 .prose { max-width: 68ch; line-height: 1.6; }
@@ -526,18 +528,36 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .tag-pending { display: inline-block; font-size: var(--text-small); font-weight: 600; line-height: 1.4; padding: 1px var(--space-2); border-radius: 999px; background: var(--color-accent-subtle); color: var(--violet-800); white-space: nowrap; }
 
 /* The panel, under the row or sentence. */
-.cpanel { border: 1px solid var(--color-border); background: var(--color-bg); border-radius: var(--radius-control); padding: var(--space-3) var(--space-4) var(--space-4); margin-block: var(--space-2); display: grid; gap: var(--space-2); text-align: start; cursor: auto; }
+/* Never wider than its column: it fills it, its grid tracks may shrink to zero, and long words wrap. */
+.cpanel { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; overflow-wrap: anywhere; border: 1px solid var(--color-border); background: var(--color-bg); border-radius: var(--radius-control); padding: var(--space-3) var(--space-4) var(--space-4); margin-block: var(--space-2); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); text-align: start; cursor: auto; white-space: normal; font-weight: 400; }
+.cpanel .form { grid-template-columns: minmax(0, 1fr); }
+.cpanel .form > * { min-width: 0; }
+.summary .cpanel { max-width: 68ch; }
+@media (max-width: 24rem) { .cpanel { padding: var(--space-3); } }
+/* What the target rests on: a short stacked list, each row a link to its line. */
+.ev { display: grid; gap: var(--space-1); min-width: 0; }
+.ev-h { font-size: var(--text-small); font-weight: 600; color: var(--color-text-secondary); }
+.ev-list { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; }
+.ev-list li + li { border-top: 1px solid var(--color-border); }
+.ev-row { display: grid; gap: 2px; padding: var(--space-2) var(--space-3); text-decoration: none; color: var(--color-text); min-width: 0; }
+@media (hover: hover) { .ev-row:hover { background: var(--color-bg-subtle); } }
+.ev-row:focus-visible { outline-offset: -2px; }
+.ev-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-2); min-width: 0; }
+.ev-who { font-size: var(--text-small); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.ev-text { font-size: var(--text-small); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.ev-row .ev-text { text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 0.15em; }
+.ev-own { background: var(--color-bg-subtle); border-radius: 8px; padding: var(--space-2) var(--space-3); }
+.ev-quote { font-size: var(--text-small); }
 .cpanel-h { font-weight: 600; }
 .cpanel .form { padding-top: 0; }
-.opts { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: var(--space-2); }
-.opt { position: relative; display: grid !important; gap: 2px; margin: 0 !important; padding: var(--space-2) var(--space-3); min-height: 44px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg); cursor: pointer; }
+.opts { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(9.5rem, 100%), 1fr)); gap: var(--space-2); }
+.opt { position: relative; min-width: 0; display: grid !important; gap: 2px; margin: 0 !important; padding: var(--space-2) var(--space-3); min-height: 44px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg); cursor: pointer; }
 .opt input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .opt:has(input:checked) { border-color: var(--color-text); box-shadow: inset 0 0 0 1px var(--color-text); }
 .opt:has(input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 @media (hover: hover) { .opt:hover { background: var(--color-bg-subtle); } }
 .opt-word { font-size: var(--text-body); font-weight: 600; color: var(--color-text); }
 .opt-hint { font-size: var(--text-small); font-weight: 400; color: var(--color-text-secondary); }
-.rests { display: block; }
 .nosource { font-size: var(--text-small); color: var(--orange-800); background: var(--orange-50); border-radius: 8px; padding: var(--space-2) var(--space-3); }
 .btn-ink { background: var(--color-text); border-color: var(--color-text); color: var(--color-bg); }
 @media (hover: hover) { .btn-ink:hover:not(:disabled) { background: #000; } }
@@ -554,10 +574,12 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .seg-item:has(input:checked) { background: var(--color-text); border-color: var(--color-text); color: var(--color-bg); }
 .seg-item:has(input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
-/* Overview footer: one quiet card and two small links. */
-.card.quiet { background: var(--color-bg); border: 1px solid var(--color-border); }
-.more-links { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); margin-top: calc(-1 * var(--space-6)); }
-.more-links a { color: var(--color-text-secondary); min-height: 24px; }
+/* Overview footer: one small quiet block, no border. The sentence, then four text links of one size and style. */
+.ov-foot { display: grid; gap: var(--space-1); min-width: 0; font-size: var(--text-small); color: var(--color-text-secondary); padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
+.foot-links { display: flex; flex-wrap: wrap; gap: 0 var(--space-4); }
+.foot-links a, .foot-links .linklike { font: inherit; font-size: var(--text-small); color: var(--color-text); text-decoration: underline; text-underline-offset: 0.15em; display: inline-flex; align-items: center; min-height: 32px; }
+@media (hover: hover) { .foot-links a:hover, .foot-links .linklike:hover { color: var(--color-accent-solid); } }
+.ov-foot .cpanel { color: var(--color-text); font-size: var(--text-body); }
 .add-row { display: grid; gap: var(--space-2); }
 
 /* The tray: a dark bar fixed at the bottom of every tab while there is a pending change. */
@@ -569,11 +591,27 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 @media (hover: hover) { .btn-tray:hover:not(:disabled) { background: var(--gray-100) !important; } }
 .tray .btn:focus-visible { outline-color: var(--gray-0); }
 body.has-tray main { padding-bottom: 9rem; }
-.review { margin: 0; padding-inline-start: 1.25rem; display: grid; gap: var(--space-3); }
-.review-item { display: grid; gap: var(--space-1); justify-items: start; }
-.review-item > p { margin: 0; }
-.review-type { font-weight: 600; }
-.review-about { color: var(--color-text-secondary); }
+/* Review: one compact block per change, then one warning, then the footer on one line. */
+.review { list-style: none; margin: 0; padding: 0; display: grid; }
+.review-item { display: grid; gap: var(--space-1); justify-items: start; padding: var(--space-3) 0; min-width: 0; }
+.review-item + .review-item { border-top: 1px solid var(--color-border); }
+.review-item > * { max-width: 100%; }
+.review-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.ctag { display: inline-block; font-size: var(--text-small); font-weight: 600; line-height: 1.4; padding: 0 var(--space-2); border-radius: 999px; background: var(--color-bg-hover); color: var(--color-text); white-space: nowrap; }
+.ctag-wrong { background: var(--red-50); color: var(--red-800); }
+.ctag-context, .ctag-links { background: var(--blue-50); color: var(--blue-800); }
+.ctag-backing { background: var(--green-50); color: var(--green-800); }
+.ctag-reword, .ctag-new_line { background: var(--violet-50); color: var(--violet-800); }
+.ctag-nosource { background: var(--orange-50); color: var(--orange-800); }
+.review-about { font-size: var(--text-small); color: var(--color-text-secondary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.review-note { overflow-wrap: anywhere; }
+.review-note strong { font-weight: 700; }
+.review-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.review-actions { gap: var(--space-4); }
+.review-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
+.review-price { font-variant-numeric: tabular-nums; }
+.review-read { font-size: var(--text-body); }
+.review-submit { margin-inline-start: auto; }
 .addlink { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-1); width: 100%; }
 .addlink input { flex: 1 1 14rem; min-width: 0; }
 /* Review's link editor: the label and the links box take the full width, the buttons sit under them. */
@@ -585,3 +623,23 @@ body.has-tray main { padding-bottom: 9rem; }
   .keyfacts tr.has-pencil th { padding-inline-end: 44px; }
   .keyfacts .kf-edit { position: absolute; top: 2px; inset-inline-end: 0; width: auto; padding: 0 !important; }
 }
+
+/* The connected wallet: a chip as tall as Connect, with a small menu. */
+.acct { position: relative; flex: none; }
+.acct-chip {
+  display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; max-width: 14rem; padding: 0 var(--space-3);
+  border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg); color: var(--color-text);
+  font: 600 var(--text-small) / 1.2 var(--font-sans); cursor: pointer;
+}
+@media (hover: hover) { .acct-chip:hover { background: var(--color-bg-hover); } }
+.acct-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.acct-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-800); flex: none; }
+.acct-chev { width: 6px; height: 6px; border-inline-end: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; rotate: 45deg; margin-top: -3px; flex: none; }
+.acct-chip[aria-expanded="true"] .acct-chev { rotate: -135deg; margin-top: 3px; }
+.acct-menu { position: absolute; inset-inline-end: 0; top: calc(100% + var(--space-1)); z-index: 15; min-width: 11rem; display: grid; padding: var(--space-1); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-control); box-shadow: var(--shadow-menu); }
+.acct-menu button { min-height: 40px; padding: 0 var(--space-3); border: 0; border-radius: 6px; background: none; color: var(--color-text); font: 400 var(--text-body) / 1.2 var(--font-sans); text-align: start; cursor: pointer; }
+@media (hover: hover) { .acct-menu button:hover { background: var(--color-bg-hover); } }
+.acct-menu button:focus-visible { outline-offset: -2px; }
+
+/* Single-column grids take the column's width, never their content's: nothing inside widens the page. */
+.tab, .overview, .facts-col, .summary, .lines, .row, .details, .review-item { grid-template-columns: minmax(0, 1fr); }
