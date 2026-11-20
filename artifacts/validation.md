@@ -49,7 +49,7 @@ Run on this machine after the last source change. Answers to each review finding
 | `npx vite-node scripts/agents-md.ts` | rewrote `public/agents.md` (36,075 characters) from the site's own bodies |
 | Focus-hold check in jsdom (`test/scratch/focus.test.ts`, jsdom installed under `/tmp`, not a project dependency) | 1 of 1 pass: skip link, header and main inert while the dialog is open; Tab from the last control goes to Close, Shift+Tab from the heading or Close goes to the last; a nested sheet holds focus and gives it back; release restores the opener; a node outside the app root stays usable |
 | `node tests/e2e.mjs …` and `node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste` | **Not run this round.** Playwright 1.49 installed under `/tmp` and downloaded chromium-headless-shell 1148, but the browser cannot start: 21 system libraries (`libglib-2.0`, `libnss3`, `libX11`, …) are missing, and this sandbox now refuses the Ubuntu package downloads (`apt-get download` finds no source; `archive.ubuntu.com/ubuntu/pool/…` answers 403). The previous round's 124-check e2e run and 16 of 16 probe result are for the earlier source |
-| `POST https://api.imd.fun/requests/check` | Not re-run this round; the templates' wording changed (statement rule, merge rule) but no field or key did |
+| `POST https://api.imd.fun/requests/check` | Rebuild, sources and edit bodies not re-run that round (wording changed, no field or key). The Suggest changes body (`changesBody`, `tag.kind` `changes`) was run on 2026-11-20 for 3 bodies (2,737, 2,815 and 2,681 chars, all 6 change types): all 200, `judged: true`, `blockers: []`, `suggestions: []` (table in README) |
 
 What the new unit tests pin (each reproduces the finding's own case):
 
