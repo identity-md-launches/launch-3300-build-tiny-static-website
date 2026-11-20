@@ -48,11 +48,16 @@ No tracked capitals, no eyebrows above headings.
   the ENS name or the short `0x1234…abcd` address (mono, ellipsis past 14rem) and a small chevron. It opens a
   disclosure (`.acct-menu`, white, 1px border, 10px radius, `--shadow-menu`) under its right edge with "Copy
   address" (then "Copied" for 1.5s) and "Disconnect", 40px rows. Escape closes it and returns focus to the chip;
-  a click outside or focus leaving closes it. The header itself never shows "Disconnect".
+  a click outside or focus leaving closes it. The header itself never shows "Disconnect". On another chain the chip
+  and its menu stay, with the primary "Switch to Ethereum" (`.btn-switch`, 13px text below 416px) beside it in
+  `.acct-wrap`; only then may the header row wrap (`.top-row:has(.acct-wrap)`), putting both at its right edge on a
+  second line where they do not fit beside the name.
 - **Numbers** (`src/numbers.ts`): every number in Key facts values, summary sentences and line text shows with
   thousands separators, at most 2 decimals, and at most 4 significant digits below 1 ("59822.623566003452582778
-  imdUSD" shows "59,822.62 imdUSD"). Addresses, hashes, block numbers, ids, versions, dates and four-digit years
-  are left as written. The exact value stays in the line's details ("Exact value" / "Exact text") and in the
+  imdUSD" shows "59,822.62 imdUSD"; "2000 tokens" shows "2,000 tokens"). Addresses, hashes, hyphen-joined ids
+  (UUIDs), numbers after "block", "id", "chain" or "#" (also after a colon: "Block: 26445600"), versions, dates,
+  and years where a date is meant ("in 2024", "March 2024", "(2021)") are left as written. The facts table shows a
+  block number as supplied. The exact value stays in the line's details ("Exact value" / "Exact text") and in the
   facts table cell's `title`.
 - **Home lookup** (`#/`, first screen): h1 "Look up any crypto project.", one lead line, and a 56px bar: an input
   with the hint "A domain or a 0x address" on a grey fill and a primary "Look it up" button. How it works has
@@ -86,9 +91,10 @@ No tracked capitals, no eyebrows above headings.
   are the lines its own changes result lists (`items[].lines`). Under the summary one small quiet block
   (`.ov-foot`, no card, no border box; a 1px top rule and 16px above it; 13px secondary text): "Something wrong or
   missing? Hover any row or click a sentence to suggest a change." and, on the next line, four 13px underlined text
-  links of one style (`.foot-links`, 32px tall, 16px apart): "Add a missing line", "Add links to read" (these two
-  are link-styled buttons that open the panel under the block), "Ask a panel to check a fact" and "Rebuild the
-  page". No buttons and no negative margins, so nothing overlaps it. With no page, a "No page yet" card; when the research said `found: false`, a "Not a project
+  links of one style (`.foot-links`, 32px tall, 16px apart), all four real links: "Add a missing line"
+  (`#/s/<subject>/add-line`) and "Add links to read" (`…/add-links`) open their panel under the block in place,
+  and the same address opened in a new tab opens the page with that panel; "Ask a panel to check a fact" and
+  "Rebuild the page". No buttons and no negative margins, so nothing overlaps it. With no page, a "No page yet" card; when the research said `found: false`, a "Not a project
   record" card with the job's notes and a link to Activity instead. There is no panel box on Overview.
 - **Record**: the accounting warning (orange left rule on orange-50), a closed `details` "Dropped in the last
   rebuild", the kind filter (All, Proof, Statement, Claim with counts; pressed state is dark fill), then one card
@@ -114,7 +120,11 @@ No tracked capitals, no eyebrows above headings.
   line per row with its marker (Proven green, Statement blue, Claim orange, Contradicted red; dot and word) and
   who said it in 13px grey, and the line's text in 13px clamped to two lines; each row is a link that opens that
   line in Record. At most 4 rows, then an "and N more" link that opens them all. On a Key facts row each row shows
-  the line's quote; on a Record line a grey-50 block (`.ev-own`) shows that line's own marker, speaker and quote.
+  the line's whole quote (`.ev-quote-full`, never clamped, wrapping anywhere), or in grey italics "No quote: this
+  line is a re-runnable check." (a proof) / "No quote given." before its text; on a Record line a grey-50 block (`.ev-own`) shows that line's own marker, speaker and quote.
+  Opening a panel scrolls only as needed to show it between the sticky header and the tray bar; when it is taller
+  than that room, its heading and "This rests on" start 8px under the header (`revealPanel`). "Ask a panel to
+  check it" is a tile-styled button (`.opt-action`) beside the radios, not one of them, so arrow keys stay in the form.
   Then the choices as tiles (`.opt`, 44px, bold word and one short hint line, checked = 1px inset dark ring, no
   radio circle; the grid's minimum is `min(9.5rem, 100%)`, so one tile per row on the narrowest phones), the note
   (count of 300, "at least 10" while short), the links box (3, or 20 for Add links to read), the orange no-source
@@ -130,14 +140,16 @@ No tracked capitals, no eyebrows above headings.
   a failed read shows "Price unavailable" and Retry. `main` gets 9rem bottom padding so nothing hides under it.
 - **Review** (wide sheet): one compact block per change, 12px padding, 1px rules between: a small coloured
   tag for its type (`.ctag`, 13px, pill) and, when it has no link, an amber "No source" tag beside it; the text it
-  is about in 13px secondary grey clamped to two lines (full text in `title`); then the note. A rewording shows only
-  the new sentence, with the words that differ from the old one in bold (word LCS, `wordDiff`). Links in 13px mono,
+  is about in 13px secondary grey clamped to two lines (full text in `title`; not shown for a rewording); then the
+  note. A rewording shows only the new sentence, with the words that differ from the old one in bold (word LCS, `wordDiff`). Links in 13px mono,
   then "Add a link" (or "Edit links") next to "Remove". A change put back from Activity opens its link editor with
-  the old links. A change whose row a rebuild removed, or whose file does not fit, shows an alert and holds Submit.
+  the old links. Opening the link editor focuses its box; saving or cancelling returns focus to its button. A change whose row a rebuild removed, or whose file does not fit, shows an alert and holds Submit.
   Above the total, once and only when some change has no link, the orange note "N of your changes have no source.
-  They only reach the page if the swarm finds one." The footer is one line (`.review-foot`, wraps only when it
-  must): the price in body text ("0.5 IMD for all 3"), "Read the full request" as an underlined link-style toggle
-  that shows the body above the footer, and the primary "Submit" at the right (`margin-inline-start: auto`).
+  They only reach the page if the swarm finds one." The footer is one row at every width (`.review-foot`, a grid of
+  three tracks `minmax(0, auto) minmax(0, 1fr) auto`, 16px gaps): the price in normal-weight body text ("0.5 IMD
+  for all 3"), "Read the full request", an underlined link (`#review-body`) that shows and focuses the request in
+  place, and the primary "Submit" at the right. A change Activity put back whose cited lines are all gone is held
+  with the "choose the row again" alert.
 - **Contribute**: three full-width cards in a `.stack`: Suggest changes (three numbered steps and the two add
   buttons), Ask a panel to check a fact ("What to check" as three equal 44px segment buttons, label on one line,
   selected = dark fill; the contract template's chain picker lists only chains the oracle accepts), and Rebuild the
@@ -161,8 +173,9 @@ No tracked capitals, no eyebrows above headings.
   track, so no content (a change panel, a long URL) can widen the page.
 - The change panel's choice tiles: as many 9.5rem columns as fit, one per row below about 20rem of panel width;
   below 384px the panel's padding drops to 12px.
-- Review's footer is one flex row (price, Read the full request, Submit); on a sheet too narrow for all three, Submit wraps to its own
-  line, still right-aligned.
+- Review's footer stays one row (price, Read the full request, Submit). Below 480px the price and the link share
+  two equal tracks (13px, 8px gaps), each wrapping by words inside its own track; Submit keeps its width at the
+  right (measured: 57px tall at 390, 76px at 320).
 - Home: one column below 832px (list, then the Add form, with an "Add a project" button beside search on the
   first screen); from 832px the list and a 20rem Add form side by side, and the jump button is hidden.
 - The subject tab bar wraps instead of scrolling: below 512px the tabs use 14px and spread across the width;

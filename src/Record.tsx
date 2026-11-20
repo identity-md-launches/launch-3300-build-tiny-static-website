@@ -43,6 +43,8 @@ export interface Ui {
   openLines: (ids: string[]) => void;
   /** The element the current link points at, inside the current tab. */
   target: string | null;
+  /** Counts link changes, so following the same link again acts again. */
+  routeN?: number;
 }
 
 export function KindMark({ kind }: { kind: string }) {
@@ -429,7 +431,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       {page ? (
         <div className="ov-foot" id="suggest">
           <p>Something wrong or missing? Hover any row or click a sentence to suggest a change.</p>
-          <AddButtons where="overview" variant="links">
+          <AddButtons where="overview" variant="links" routeTarget={ui.target} routeN={ui.routeN}>
             <a href={to("confirm")}>Ask a panel to check a fact</a>
             <a href={to("rebuild")}>Rebuild the page</a>
           </AddButtons>
@@ -802,7 +804,7 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                   {f.chain || "Chain not given"}
                   {f.block ? (
                     <>
-                      , block <span className="num">{blockNumber(f.block) ? BigInt(blockNumber(f.block)).toLocaleString("en-US") : f.block}</span>
+                      , block <span className="num">{f.block}</span>
                     </>
                   ) : (
                     ", block not given"

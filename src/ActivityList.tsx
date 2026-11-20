@@ -26,6 +26,31 @@ type Shown = Pick<RecordModel, "standing" | "after" | "editRefs" | "resolve" | "
 /** A change not kept because nothing backed it: no link was given, or the job says no source supported it. */
 export const lackedSource = (item: Pick<SentItem, "links">, why: string) => item.links.length === 0 || /\b(source|sources|link|links|evidence)\b/i.test(why);
 
+/** The file and line pairs a sent change cited: "F1:L2,F1:L3" is two, "L4" one, "" none. */
+export const retryRefs = (ref: string) => ref.split(",").map((x) => x.trim()).filter(Boolean);
+
+/**
+ * The target of a change Activity puts back in the tray. A key facts row may cite several lines ("F1:L2,F1:L3"):
+ * each file and line pair is found on the record on its own, and all are kept. When it cited lines and none is on
+ * the record now, the target is marked lost: Review holds it until the visitor chooses the row again.
+ */
+export function retryTarget(item: SentItem, a: Activity, shown: Pick<Shown, "scope" | "resolve">): ChangeTarget {
+  if (item.targetKind === "sentence") return sentenceTarget(item.text);
+  if (item.targetKind === "none") return noTarget();
+  const refs = retryRefs(item.ref);
+  const ids = refs.flatMap((r) => {
+    const id = resolveChangeTarget(r, a, shown.scope, (x) => !!shown.resolve(x));
+    return id ? [id] : [];
+  });
+  const id = ids[0] ?? null;
+  let target: ChangeTarget;
+  if (item.targetKind === "keyfact") {
+    const i = item.text.indexOf(": ");
+    target = keyFactTarget(i > 0 ? item.text.slice(0, i) : item.text, i > 0 ? item.text.slice(i + 2) : "", ids, id ? originOfLine(id, shown.scope) : null);
+  } else target = id ? lineTarget(id, item.text, originOfLine(id, shown.scope)) : { kind: "line", key: `old:${item.text}`, lineId: "", text: item.text };
+  return refs.length > 0 && !ids.length ? { ...target, lost: true } : target;
+}
+
 /** Every change of a changes job, with "Kept" or "Not kept: <why>"; one not kept for lack of a source can go back in the tray. */
 function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
   const s = useSuggest();
@@ -33,15 +58,7 @@ function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
   const sent = parseItems(a.req.bodyJson?.objective);
   if (!sent.length) return null;
   const putBack = (item: SentItem, v: { why: string } | undefined) => {
-    let target: ChangeTarget = noTarget();
-    if (item.targetKind === "sentence") target = sentenceTarget(item.text);
-    else if (item.targetKind !== "none") {
-      const id = item.ref ? resolveChangeTarget(item.ref, a, shown.scope, (x) => !!shown.resolve(x)) : null;
-      if (item.targetKind === "keyfact") {
-        const i = item.text.indexOf(": ");
-        target = keyFactTarget(i > 0 ? item.text.slice(0, i) : item.text, i > 0 ? item.text.slice(i + 2) : "", id ?? "", id ? originOfLine(id, shown.scope) : null);
-      } else target = id ? lineTarget(id, item.text, originOfLine(id, shown.scope)) : { kind: "line", key: `old:${item.text}`, lineId: "", text: item.text };
-    }
+    const target = retryTarget(item, a, shown);
     s.tray.put({ id: newChangeId(), type: item.type, target, note: item.note, links: item.links, retry: v?.why || "no source supported it" });
     setBack((b) => new Set([...b, item.n]));
   };

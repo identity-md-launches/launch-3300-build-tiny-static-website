@@ -486,7 +486,7 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, re
     if (location.hash === h) dispatchEvent(new HashChangeEvent("hashchange"));
     else location.hash = h;
   }, []);
-  const ui: Ui = { filter, setFilter, openSet, toggle, openLines, target: route.target };
+  const ui: Ui = { filter, setFilter, openSet, toggle, openLines, target: route.target, routeN: route.n };
 
   // After a link: scroll to its target once it exists, else to the top of the tab; move focus there.
   const lines = rec.sections.length;

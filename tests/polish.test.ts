@@ -167,7 +167,8 @@ describe("Review", () => {
     expect(src).toContain("Read the full request");
     expect(src).not.toContain('{!hasSource(c) && <p className="nosource">{NO_SOURCE}</p>}');
     const css = readFileSync("src/styles.css", "utf8");
-    expect(css).toMatch(/\.review-foot \{ display: flex; flex-wrap: wrap; align-items: center;/);
+    // One row: the price, the request link and Submit (measured at 320 and 390 wide in the browser check).
+    expect(css).toMatch(/\.review-foot \{ display: grid; grid-template-columns: minmax\(0, auto\) minmax\(0, 1fr\) auto;/);
     expect(css).toMatch(/\.review-about \{[^}]*-webkit-line-clamp: 2/);
   });
 });

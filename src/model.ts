@@ -36,7 +36,7 @@ import {
 } from "./page";
 import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
-import { applyChangeLinks, applyRewords, carriedOf, type LineScope, type Reworded } from "./changeResult";
+import { applyChangeLinks, applyRewords, carriedOf, lineInFile, type LineScope, type Reworded } from "./changeResult";
 import type { KnownContract } from "./lookup";
 
 export interface Accounting {
@@ -63,6 +63,17 @@ export interface ShownSentence extends SummarySentence {
  * A kept rewording rests on the lines its own verdict lists (items[].lines), resolved in that job's scope; no
  * dots when it lists none. Other sentences keep their refs.
  */
+/**
+ * Line `id` of file F<n> of a job's <PRIOR>, as the record shows it now: in the page shown, in a job not folded in,
+ * or the line a rebuild carried it into through its from origins (its id may have changed).
+ */
+export function lineOfFileRef(files: { n: number; hash: string | null }[], n: number, id: string, scope: LineScope, byId: Map<string, Line>): Line | undefined {
+  const f = files.find((x) => x.n === n);
+  if (!f?.hash) return undefined;
+  const found = lineInFile(f.hash, id, scope, (x) => byId.has(x));
+  return found ? byId.get(found) : undefined;
+}
+
 export function withRewordRefs(summary: Reworded<ShownSentence>[], refsOf: (a: Activity, ids: string[]) => Line[]): ShownSentence[] {
   return summary.map(({ rewordLines, rewordJob, ...s }) => (rewordJob ? { ...s, refs: refsOf(rewordJob, rewordLines ?? []) } : s));
 }
@@ -466,13 +477,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     const key = a.req.requestId;
     const own = new Set((a.edit?.data.lines ?? a.changes?.data.lines ?? []).map((l) => l.id));
     const files = parsePrior(a.req.bodyJson?.objective).files;
-    const inFile = (n: number, id: string): Line | undefined => {
-      const f = files.find((x) => x.n === n);
-      if (!f?.hash) return undefined;
-      if (f.hash === pageHash) return byId.get(id);
-      const job = after.find((x) => x.fileHash === f.hash);
-      return job ? byId.get(`${job.req.requestId}:${id}`) : undefined;
-    };
+    const inFile = (n: number, id: string): Line | undefined => lineOfFileRef(files, n, id, scope, byId);
     return ids.flatMap((raw) => {
       const id = raw.trim();
       const q = /^F(\d+):(.+)$/i.exec(id);

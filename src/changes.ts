@@ -54,6 +54,11 @@ export interface ChangeTarget {
    */
   file?: string;
   fileLine?: string;
+  /**
+   * Set when Activity put a change back whose cited lines can no longer be found on the record: it is held in
+   * Review until the visitor removes it and chooses the row again, never sent with only its text.
+   */
+  lost?: boolean;
 }
 export interface Change {
   id: string;
@@ -113,12 +118,22 @@ export const needsNote = (type: ChangeType) => type !== "backing" && type !== "l
  * One message per field that needs a fix before the change can join the tray. `current` is the sentence a
  * rewording replaces: the new sentence must differ from it.
  */
-export function validateChange(type: ChangeType, note: string, links: string[], current = ""): { note?: string; links?: string } {
+/**
+ * Whether a new sentence is the current one: the exact text of the result, or the sentence as the page shows it
+ * (numbers formatted). Spaces and letter case alone do not make a change.
+ */
+export function sameSentence(note: string, current: string | string[]): boolean {
+  const norm = (x: string) => cleanNote(x).replace(/\s+/g, " ").toLowerCase();
+  const n = norm(note);
+  return (Array.isArray(current) ? current : [current]).some((c) => c.trim() !== "" && norm(c) === n);
+}
+
+export function validateChange(type: ChangeType, note: string, links: string[], current: string | string[] = ""): { note?: string; links?: string } {
   const n = cleanNote(note);
   const out: { note?: string; links?: string } = {};
   if (n.length > NOTE_MAX) out.note = `Keep it to ${NOTE_MAX} characters.`;
   else if (needsNote(type) && n.length < NOTE_MIN) out.note = type === "reword" ? `Write the new sentence, at least ${NOTE_MIN} characters.` : `Write at least ${NOTE_MIN} characters.`;
-  else if (type === "reword" && n === cleanNote(current)) out.note = "Change the sentence first: it is the same as the current one.";
+  else if (type === "reword" && sameSentence(n, current)) out.note = "Change the sentence first: it is the same as the current one.";
   if ((type === "backing" || type === "links") && links.length === 0) out.links = type === "links" ? "Paste at least one https link." : "Back this up needs a link.";
   return out;
 }
@@ -127,7 +142,7 @@ export function validateChange(type: ChangeType, note: string, links: string[], 
  * Whether "Add to my changes" is enabled, and if not, the one short reason shown beside it. Links that cannot be
  * used (not https, repeated, past the limit) also hold it back.
  */
-export function addReady(type: ChangeType, note: string, links: string[], rejected: number, current = ""): { ok: boolean; need: string } {
+export function addReady(type: ChangeType, note: string, links: string[], rejected: number, current: string | string[] = ""): { ok: boolean; need: string } {
   const e = validateChange(type, note, links, current);
   const need = e.note ?? e.links ?? (rejected ? "Fix or remove the links that cannot be used." : "");
   return { ok: !need, need };

@@ -91,7 +91,9 @@ a { color: inherit; text-underline-offset: 0.15em; text-decoration-thickness: fr
   background: rgb(255 255 255 / 0.96);
   border-bottom: 1px solid var(--color-border);
 }
-.top-row { max-width: var(--page-max); margin: 0 auto; padding: var(--space-2) var(--page-pad); display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
+.top-row { max-width: var(--page-max); margin: 0 auto; padding: var(--space-2) var(--page-pad); display: flex; align-items: center; gap: var(--space-4); row-gap: var(--space-1); min-width: 0; }
+/* Only on another chain (Switch beside the chip) may the wallet controls take a second line. */
+.top-row:has(.acct-wrap) { flex-wrap: wrap; }
 .brand { font-weight: 600; text-decoration: none; margin-inline-end: auto; min-height: 44px; display: inline-flex; align-items: center; }
 /* The tabs wrap to a second row when the five labels cannot fit (320 wide), so no label is ever clipped. */
 .tabs { max-width: 60rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 0 var(--space-1); }
@@ -548,10 +550,16 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .ev-row .ev-text { text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 0.15em; }
 .ev-own { background: var(--color-bg-subtle); border-radius: 8px; padding: var(--space-2) var(--space-3); }
 .ev-quote { font-size: var(--text-small); }
+/* A key facts row's quote: whole, wrapped inside the panel, never clamped. */
+.ev-quote-full { display: block; overflow-wrap: anywhere; min-width: 0; }
+.ev-row .ev-quote-full { text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 0.15em; }
+.ev-noquote { color: var(--color-text-secondary); font-style: italic; }
 .cpanel-h { font-weight: 600; }
 .cpanel .form { padding-top: 0; }
 .opts { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(9.5rem, 100%), 1fr)); gap: var(--space-2); }
 .opt { position: relative; min-width: 0; display: grid !important; gap: 2px; margin: 0 !important; padding: var(--space-2) var(--space-3); min-height: 44px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg); cursor: pointer; }
+.opt-action { font: inherit; text-align: start; color: inherit; width: 100%; }
+.opt-action:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .opt input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .opt:has(input:checked) { border-color: var(--color-text); box-shadow: inset 0 0 0 1px var(--color-text); }
 .opt:has(input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
@@ -608,10 +616,17 @@ body.has-tray main { padding-bottom: 9rem; }
 .review-note strong { font-weight: 700; }
 .review-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .review-actions { gap: var(--space-4); }
-.review-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
-.review-price { font-variant-numeric: tabular-nums; }
-.review-read { font-size: var(--text-body); }
-.review-submit { margin-inline-start: auto; }
+/* One row at every width: the price, the request link and Submit at the right. The first two wrap inside their own tracks. */
+.review-foot { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
+.review-price { font-weight: 400; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: break-word; }
+.review-read { font-size: var(--text-body); color: var(--color-text); text-decoration: underline; text-underline-offset: 0.15em; min-width: 0; overflow-wrap: break-word; justify-self: start; }
+.review-submit { justify-self: end; margin: 0; }
+@media (max-width: 30rem) {
+  /* Phones: the price and the link share what Submit leaves, each wrapping by words inside its own half. */
+  .review-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--space-2); }
+  .review-foot .review-price, .review-foot .review-read { font-size: var(--text-small); }
+  .review-submit { padding-inline: var(--space-3); }
+}
 .addlink { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-1); width: 100%; }
 .addlink input { flex: 1 1 14rem; min-width: 0; }
 /* Review's link editor: the label and the links box take the full width, the buttons sit under them. */
@@ -626,6 +641,13 @@ body.has-tray main { padding-bottom: 9rem; }
 
 /* The connected wallet: a chip as tall as Connect, with a small menu. */
 .acct { position: relative; flex: none; }
+/* On another chain: Switch to Ethereum beside the chip. Where both do not fit beside the name, they take the
+   header's second line, still at its right edge. */
+.acct-wrap { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-width: 0; margin-inline-start: auto; }
+@media (max-width: 26rem) {
+  .acct-wrap .btn-switch { padding-inline: var(--space-3); font-size: var(--text-small); }
+  .acct-wrap .acct-chip { padding-inline: var(--space-2); }
+}
 .acct-chip {
   display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; max-width: 14rem; padding: 0 var(--space-3);
   border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg); color: var(--color-text);

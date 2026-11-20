@@ -69,13 +69,18 @@ export function ConnectSheet() {
   const icon = (c: Connector) => c.icon ?? WALLET_ICONS[c.id];
 
   if (isConnected && address) {
+    const chip = <AccountChip address={address} onDisconnect={() => disconnect()} />;
+    // On another chain the chip and its menu stay (who is connected, Copy address, Disconnect); Switch sits beside it.
     if (chainId !== CHAIN_ID)
       return (
-        <button className="btn btn-primary" onClick={() => switchChain({ chainId: CHAIN_ID })} disabled={switching}>
-          {switching ? "Switching…" : "Switch to Ethereum"}
-        </button>
+        <div className="acct-wrap">
+          <button className="btn btn-primary btn-switch" onClick={() => switchChain({ chainId: CHAIN_ID })} disabled={switching}>
+            {switching ? "Switching…" : "Switch to Ethereum"}
+          </button>
+          {chip}
+        </div>
       );
-    return <AccountChip address={address} onDisconnect={() => disconnect()} />;
+    return chip;
   }
   return (
     <>

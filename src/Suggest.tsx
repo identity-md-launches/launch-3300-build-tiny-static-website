@@ -83,6 +83,7 @@ const Ctx = createContext<SuggestState | null>(null);
  */
 export function liveTarget(rec: Pick<RecordModel, "scope" | "resolve">, t: ChangeTarget): ChangeTarget | null {
   if (t.kind === "sentence" || t.kind === "none") return t;
+  if (t.lost) return null;
   if (t.kind === "keyfact" && !idsOf(t).length && !t.file) return t;
   const has = (x: string) => !!rec.resolve(x);
   let id: string | null = null;
@@ -165,6 +166,8 @@ export interface Evidence {
   tone: "proven" | "contradicted" | "statement" | "claim";
   who: string;
   quote: string;
+  /** A re-runnable check: it has no quote of its own. */
+  proof: boolean;
 }
 
 /** The marker and speaker of each line, by the record's own rule: settled lines and proofs read Proven. */
@@ -174,12 +177,28 @@ export function evidenceOf(lines: Line[], all: Line[] = lines): Evidence[] {
     const st = settleOf(l, proofs).state;
     const mark: Evidence["mark"] = st === "contradicted" ? "Contradicted" : l.kind === "proof" || st === "proven" ? "Proven" : l.kind === "statement" ? "Statement" : "Claim";
     const who = l.kind === "proof" ? l.by || "Re-runnable check" : speakerText(l);
-    return { id: l.id, text: l.text, mark, tone: mark.toLowerCase() as Evidence["tone"], who, quote: l.quote };
+    return { id: l.id, text: l.text, mark, tone: mark.toLowerCase() as Evidence["tone"], who, quote: l.quote, proof: l.kind === "proof" };
   });
 }
 
 /** How many supporting lines the panel lists before "and N more". */
 export const EVIDENCE_MAX = 4;
+
+/**
+ * Brings an opened panel into view below the sticky header (and above the tray bar): when it fits, as little
+ * scrolling as needed; when it is taller than the room left, its heading and evidence start just under the header.
+ */
+export function revealPanel(el: HTMLElement) {
+  const head = document.querySelector<HTMLElement>(".top");
+  const tray = document.querySelector<HTMLElement>(".tray");
+  const top = (head ? Math.max(0, head.getBoundingClientRect().bottom) : 0) + 8;
+  const bottom = (tray ? Math.min(innerHeight, tray.getBoundingClientRect().top) : innerHeight) - 8;
+  const r = el.getBoundingClientRect();
+  let dy = 0;
+  if (r.top < top) dy = r.top - top;
+  else if (r.bottom > bottom) dy = Math.min(r.bottom - bottom, r.top - top);
+  if (dy) window.scrollBy({ top: dy, behavior: "instant" as ScrollBehavior });
+}
 
 function EvidenceMark({ e }: { e: Evidence }) {
   return (
@@ -229,7 +248,18 @@ function EvidenceList({ mode, target, evidence, onOpenLines }: { mode: PanelMode
                   <EvidenceMark e={e} />
                   {e.who && <span className="ev-who">{e.who}</span>}
                 </span>
-                <span className="ev-text" title={target.kind === "keyfact" && e.quote ? e.quote : e.text}>{target.kind === "keyfact" && e.quote ? `“${formatNumbers(e.quote)}”` : formatNumbers(e.text)}</span>
+                {target.kind === "keyfact" ? (
+                  // A key facts row: the line's own quote, whole and wrapped; a line with none says so.
+                  e.quote ? (
+                    <span className="ev-quote ev-quote-full">“{formatNumbers(e.quote)}”</span>
+                  ) : (
+                    <span className="ev-quote ev-quote-full">
+                      <span className="ev-noquote">{e.proof ? "No quote: this line is a re-runnable check." : "No quote given."}</span> {formatNumbers(e.text)}
+                    </span>
+                  )
+                ) : (
+                  <span className="ev-text" title={e.text}>{formatNumbers(e.text)}</span>
+                )}
               </a>
             </li>
           ))}
@@ -267,7 +297,8 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", onClo
   const ref = useRef<HTMLDivElement>(null);
   const max = type === "links" ? READ_MAX_LINKS : CHANGE_MAX_LINKS;
   const plan = useMemo(() => planLinks(links, max), [links, max]);
-  const current = type === "reword" ? target.text : "";
+  // The exact sentence of the result and the sentence as the page shows it: neither counts as a rewording.
+  const current = type === "reword" ? [target.text, formatNumbers(target.text)] : "";
   const ready = addReady(type, note, plan.links, plan.rejected.length, current);
   // The pencil, sentence, Edit or add button that opened the panel: focus goes back there when it closes.
   const opener = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);
@@ -281,7 +312,7 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", onClo
   };
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>("input:checked, textarea")?.focus({ preventScroll: true });
-    ref.current?.scrollIntoView?.({ block: "nearest" });
+    if (ref.current) revealPanel(ref.current);
   }, []);
   const pick = (t: ChangeType | "panel") => {
     if (t === "panel") {
@@ -321,13 +352,21 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", onClo
         {choices.length > 1 && (
           <fieldset className="opts">
             <legend className="sr-only">What kind of change</legend>
-            {choices.map((c) => (
-              <label key={c} className="opt">
-                <input type="radio" name={`${id}-type`} value={c} checked={c === type} onChange={() => pick(c)} />
-                <span className="opt-word">{c === "panel" ? PANEL_WORDS : CHANGE_WORDS[c]}</span>
-                <span className="opt-hint">{c === "panel" ? PANEL_HINT : CHANGE_HINTS[c]}</span>
-              </label>
-            ))}
+            {choices.map((c) =>
+              c === "panel" ? (
+                // Not one of the radios: arrowing through the choices never leaves the form. It opens Confirm a fact when activated.
+                <button key={c} type="button" className="opt opt-action" onClick={() => pick(c)}>
+                  <span className="opt-word">{PANEL_WORDS}</span>
+                  <span className="opt-hint">{PANEL_HINT}</span>
+                </button>
+              ) : (
+                <label key={c} className="opt">
+                  <input type="radio" name={`${id}-type`} value={c} checked={c === type} onChange={() => pick(c)} />
+                  <span className="opt-word">{CHANGE_WORDS[c]}</span>
+                  <span className="opt-hint">{CHANGE_HINTS[c]}</span>
+                </label>
+              ),
+            )}
           </fieldset>
         )}
         {type !== "links" && (
@@ -374,22 +413,39 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", onClo
 
 /* ---------- "Add a line that is missing" and "Add links to read" ---------- */
 
+/** The addresses of the Overview footer's first two links. */
+export const ADD_LINE = "add-line";
+export const ADD_LINKS = "add-links";
+
 /** "Add a line that is missing" and "Add links to read": buttons, or (variant "links") two text links for the Overview footer. */
-export function AddButtons({ where, variant = "buttons", children }: { where: string; variant?: "buttons" | "links"; children?: React.ReactNode }) {
+export function AddButtons({ where, variant = "buttons", routeTarget = null, routeN = 0, children }: { where: string; variant?: "buttons" | "links"; routeTarget?: string | null; routeN?: number; children?: React.ReactNode }) {
   const s = useSuggest();
   const newKey = `${where}:new_line`;
   const linksKey = `${where}:links`;
   const target = (key: string): ChangeTarget => ({ ...noTarget(), key });
+  const { setOpen } = s;
+  // The footer links have their own addresses (#/s/<subject>/add-line, /add-links): opened from a copied link or a
+  // new tab, the page opens the form under the row.
+  useEffect(() => {
+    if (variant !== "links") return;
+    if (routeTarget === ADD_LINE) setOpen(newKey);
+    else if (routeTarget === ADD_LINKS) setOpen(linksKey);
+  }, [variant, routeTarget, routeN, newKey, linksKey, setOpen]);
+  const follow = (key: string) => (e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; // a new tab or window follows the address
+    e.preventDefault();
+    s.setOpen(s.open === key ? null : key);
+  };
   if (variant === "links")
     return (
       <>
         <p className="foot-links">
-          <button type="button" className="linklike" aria-expanded={s.open === newKey} onClick={() => s.setOpen(s.open === newKey ? null : newKey)}>
+          <a href={to(ADD_LINE)} aria-expanded={s.open === newKey} onClick={follow(newKey)}>
             Add a missing line
-          </button>
-          <button type="button" className="linklike" aria-expanded={s.open === linksKey} onClick={() => s.setOpen(s.open === linksKey ? null : linksKey)}>
+          </a>
+          <a href={to(ADD_LINKS)} aria-expanded={s.open === linksKey} onClick={follow(linksKey)}>
             Add links to read
-          </button>
+          </a>
           {children}
         </p>
         {s.open === newKey && <ChangePanel key={newKey} target={target(newKey)} mode="new_line" />}
@@ -519,9 +575,22 @@ function LinkEditor({ change }: { change: Change }) {
   const [v, setV] = useState(change.links.join("\n"));
   const [err, setErr] = useState("");
   const id = useId();
+  const btn = useRef<HTMLButtonElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+  const opened = useRef(false);
+  // Focus goes into the links box when the editor opens, and back to Add a link or Edit links when it closes.
+  // Saving re-mounts this editor (its key holds the links), so the new one takes focus back from refocusLinks.
+  useEffect(() => {
+    if (open) box.current?.focus();
+    else if (opened.current || refocusLinks === change.id) {
+      refocusLinks = null;
+      btn.current?.focus();
+    }
+    opened.current = open;
+  }, [open, change.id]);
   if (!open)
     return (
-      <button type="button" className="linklike small" onClick={() => setOpen(true)}>
+      <button ref={btn} type="button" className="linklike small" onClick={() => setOpen(true)}>
         {change.links.length ? "Edit links" : "Add a link"}
       </button>
     );
@@ -529,6 +598,7 @@ function LinkEditor({ change }: { change: Change }) {
     const p = planLinks(v, max);
     if (p.rejected.length) return setErr(`Fix or remove: ${p.rejected[0]!.line.slice(0, 60)} (${p.rejected[0]!.why}).`);
     if (!p.links.length && (change.type === "backing" || change.type === "links")) return setErr("Paste at least one https link.");
+    refocusLinks = change.id;
     s.tray.put({ ...change, links: p.links, retry: undefined });
     setErr("");
     setOpen(false);
@@ -538,7 +608,7 @@ function LinkEditor({ change }: { change: Change }) {
       <label htmlFor={id} className="small block">
         {change.retry ? "Replace or remove the links it was sent with" : "Links"}, one per line (up to {max})
       </label>
-      <textarea id={id} rows={Math.min(Math.max(change.links.length, 2), 6)} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/article" value={v} onChange={(e) => setV(e.target.value)} aria-invalid={!!err} aria-describedby={err ? `${id}-err` : undefined} />
+      <textarea ref={box} id={id} rows={Math.min(Math.max(change.links.length, 2), 6)} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/article" value={v} onChange={(e) => setV(e.target.value)} aria-invalid={!!err} aria-describedby={err ? `${id}-err` : undefined} />
       <span className="row-actions">
         <button type="button" className="btn btn-small" onClick={save}>
           Save links
@@ -555,6 +625,9 @@ function LinkEditor({ change }: { change: Change }) {
     </span>
   );
 }
+
+/** The change whose links were just saved: its re-mounted editor puts focus back on its button. */
+let refocusLinks: string | null = null;
 
 /** A change's note in Review. A rewording shows only the new sentence, with the words that changed in bold. */
 function ReviewNote({ change: c }: { change: Change }) {
@@ -591,6 +664,10 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
   const n = list.length;
   const noSource = list.filter((c) => !hasSource(c)).length;
   const [showBody, setShowBody] = useState(false);
+  // Read the full request goes to it: the request is shown, focused and scrolled into view inside the dialog.
+  useEffect(() => {
+    if (showBody) document.getElementById("review-body")?.focus();
+  }, [showBody]);
   const submit = () => {
     if (!ready || plan.over || held) return;
     const clear = s.tray.clear;
@@ -611,7 +688,7 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
                 <span className={`ctag ctag-${c.type}`}>{CHANGE_WORDS[c.type]}</span>
                 {!hasSource(c) && <span className="ctag ctag-nosource">No source</span>}
               </p>
-              {c.target.text && (
+              {c.target.text && c.type !== "reword" && (
                 <p className="review-about" title={c.target.text}>
                   {formatNumbers(c.target.text)}
                 </p>
@@ -665,9 +742,19 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
               quote.text
             )}
           </p>
-          <button type="button" className="linklike review-read" aria-expanded={showBody} aria-controls="review-body" onClick={() => setShowBody((v) => !v)}>
+          <a
+            className="review-read"
+            href="#review-body"
+            aria-expanded={showBody}
+            aria-controls="review-body"
+            onClick={(e) => {
+              // The request shows in place: the address of the page stays as it is.
+              e.preventDefault();
+              setShowBody((v) => !v);
+            }}
+          >
             {showBody ? "Hide the full request" : "Read the full request"}
-          </button>
+          </a>
           <button type="button" className="btn btn-primary review-submit" onClick={submit} disabled={!ready || plan.over || held > 0}>
             Submit
           </button>
