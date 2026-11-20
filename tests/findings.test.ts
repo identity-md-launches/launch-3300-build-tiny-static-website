@@ -219,7 +219,11 @@ describe("the README documents the current rules (9f1d8237)", () => {
   it("names the three drop reasons, reconsidered files, Supply and Seats, badge precedence, the fallback and the labels", () => {
     const r = readFileSync("README.md", "utf8");
     for (const s of [
-      "exact duplicate of a line it kept",
+      "earlier line for exactly two reasons",
+      "**Merging is not dropping**",
+      "every origin in `from` and every speaker in `by`",
+      "Look it up",
+      "1 by 1 transparent placeholder PNG",
       "(reconsider dropped lines)",
       "Supply and Seats are separate rows",
       '"Proven on chain" if any is a proof',
@@ -237,8 +241,8 @@ describe("the README documents the current rules (9f1d8237)", () => {
   });
 });
 
-describe("an Official accounts row labels each account (2ba970b7)", () => {
-  it("@imd, @news: Verified on chain and Not verified, with one evidence badge", () => {
+describe("an Official accounts row shows one badge (2ba970b7, revised by 44e42685)", () => {
+  it("@imd, @news: one conservative channel label for the row, no evidence badge", () => {
     const p = parsePage(
       JSON.stringify({
         subject: { name: "IMD", channels: [{ label: "@imd", url: "https://x.com/imd", tie: "strong" }, { label: "@news", url: "https://x.com/news", tie: "weak" }] },
@@ -249,9 +253,9 @@ describe("an Official accounts row labels each account (2ba970b7)", () => {
       "imd.fun",
     );
     const [row] = keyFacts(p, (id) => p.lines.find((l) => l.id === id), p.lines).rows;
+    // The individual labels stay with each account (and on Sources); the row shows only the most cautious one.
     expect(row!.accounts.map((a) => [a.name, a.status?.text])).toEqual([["@imd", "Verified on chain"], ["@news", "Not verified"]]);
-    expect(row!.status).toBeNull();
-    // One badge per row: the accounts show their own labels, so the row shows no evidence badge beside them.
+    expect(row!.status).toEqual({ text: "Not verified", tone: "unverified" });
     expect(row!.badge).toBeNull();
     expect(accountsOf(p.channels, "@imd and x.com/news; @other", "imd.fun").map((a) => a.channel?.label ?? null)).toEqual(["@imd", "@news", null]);
   });

@@ -164,18 +164,38 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
   background: var(--color-bg-hover); border: 1px solid transparent; border-radius: var(--radius-bar);
   font-size: var(--text-heading);
 }
+/* The prompt is the bar's only instruction: full-opacity secondary text, 4.97:1 on the grey fill (#5f6673 on #eceef2). */
+.lookup input::placeholder { color: var(--color-text-secondary); opacity: 1; }
 .lookup input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; background: var(--color-bg); border-color: var(--color-border); }
 .lookup input[aria-invalid="true"] { border-color: var(--color-error); }
 .btn-lookup { flex: none; height: 56px; border-radius: var(--radius-bar); padding: 0 var(--space-6); font-size: var(--text-heading); }
-@media (max-width: 24rem) { .btn-lookup { padding: 0 var(--space-4); } }
+/*
+ * Phones up to 384px: the bar uses half of main's 16px gutter (8px each side), a 4px gap and 12px padding, and the
+ * button label is 16px, so "A domain or a 0x address" fits whole at 17px from 368px up (about 203px of text needs
+ * 349px). Below 368px (320px phones) that is arithmetically impossible beside a readable "Look it up", so the
+ * placeholder alone drops to 14px (about 167px, with 173px of room at 320); typed text stays 17px.
+ */
+@media (max-width: 24rem) {
+  .lookup { gap: var(--space-1); width: calc(100% + 2 * var(--space-2)); margin-inline: calc(-1 * var(--space-2)); }
+  .lookup input { padding: 0 var(--space-3); }
+  .btn-lookup { padding: 0 var(--space-3); font-size: var(--text-body); }
+}
+@media (max-width: 22.99rem) { .lookup input::placeholder { font-size: var(--text-nav); } }
 .lookup-msg { width: 100%; text-align: start; }
 .lookup-note { margin-top: calc(-1 * var(--space-1)); }
 .offer { width: 100%; display: grid; gap: var(--space-3); text-align: start; background: var(--color-bg-subtle); border-radius: var(--radius-card); padding: var(--space-4); }
 .offer-chain { display: grid; gap: var(--space-2); }
 .offer-chain label { font-size: var(--text-small); font-weight: 600; }
 .nowrap { white-space: nowrap; }
-.label-cards { list-style: none; margin: 0 auto; padding: 0; display: grid; gap: var(--space-3); width: 100%; max-width: 60rem; }
-@media (min-width: 44rem) { .label-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* The three labels stay one row of three at every width; on phones the copy wraps inside narrower cards. */
+.label-cards { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); width: 100%; max-width: 60rem; }
+@media (max-width: 43.99rem) {
+  .label-cards { gap: var(--space-2); }
+  .label-card { padding: var(--space-2); overflow-wrap: break-word; hyphens: auto; }
+  .label-card .kind { display: inline; white-space: normal; }
+  .label-card .kind .dot { display: inline-block; margin-inline-end: 4px; vertical-align: 1px; }
+}
+@media (max-width: 24rem) { .label-cards { width: calc(100% + 2 * var(--space-2)); margin-inline: calc(-1 * var(--space-2)); } }
 .label-card { border-radius: var(--radius-control); padding: var(--space-3) var(--space-4); font-size: var(--text-small); line-height: 1.45; color: var(--color-text); }
 .label-card .kind { margin-inline-end: 2px; }
 .label-proof { background: var(--green-50); }

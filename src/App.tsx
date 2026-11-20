@@ -168,7 +168,7 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
       <h3>{rec.page ? "Rebuild the page" : "Create the page"}</h3>
       <p className="break">
         One page job starts from the page shown now and every page, sources and edit result it has not folded in yet, carries each line forward or says why it dropped
-        it, merges only exact duplicates, and then looks for what is new. It researches {describeSubject(rec.subject)}.
+        it, merges lines that say the same thing into one (keeping every origin and speaker), and then looks for what is new. It researches {describeSubject(rec.subject)}.
       </p>
       {ready ? (
         <>
@@ -651,7 +651,7 @@ export default function App() {
   const subject = route.subject;
   if (subject) setLinkSubject(subject);
   const items = useMemo(() => (activity.items === null || !subject ? activity.items : activity.items.filter((a) => a.req.subject === subject)), [activity.items, subject]);
-  const subjects = useMemo<Findable[]>(() => subjectSummaries(activity.items ?? []).map((s) => ({ id: s.id, main: s.main })), [activity.items]);
+  const subjects = useMemo<Findable[]>(() => subjectSummaries(activity.items ?? []).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts })), [activity.items]);
   useEffect(() => {
     if (!subject) document.title = "On the record (test)";
   }, [subject]);

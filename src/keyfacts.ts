@@ -16,11 +16,14 @@ export interface KeyRow {
   channel: Channel | null;
   /** From the kinds of the lines the row rests on only (badgeOf); null on a row that shows its channel's label instead. */
   badge: Badge | null;
-  /** The channel's label (Own domain, Verified on chain, Not verified), on the Website and Official accounts rows only. */
+  /**
+   * The row's one channel label (Own domain, Verified on chain, Not verified), on the Website and Official accounts
+   * rows only, and always set there. A list of accounts takes the most cautious label among them.
+   */
   status: Badge | null;
   /**
-   * An Official accounts row that lists several accounts: each account with the channel it matches and that
-   * channel's own label, so a verified account is told apart from an unverified one in the same list.
+   * An Official accounts row that lists several accounts: each account with the channel it matches, so its name
+   * can link there. Their individual labels are listed on Sources; the row shows only its one status badge.
    */
   accounts: Account[];
 }
@@ -57,10 +60,34 @@ export function badgeOf(lines: Line[]): Badge | null {
   return null;
 }
 /** A channel's label as a badge: Own domain, Verified on chain or Not verified. */
-export const statusBadge = (c: Channel, domain: string): Badge => {
-  const s = channelStatus(c, domain);
-  return { text: STATUS_WORDS[s], tone: s };
-};
+export const statusBadge = (c: Channel, domain: string): Badge => toBadge(channelStatus(c, domain));
+const toBadge = (s: ChannelStatus): Badge => ({ text: STATUS_WORDS[s], tone: s });
+
+/** From most to least cautious: a row listing accounts takes the first label any of them has. */
+const CAUTION: ChannelStatus[] = ["unverified", "verified", "own"];
+
+/**
+ * The label of a URL or account name with no matching channel, or with one: on the subject's domain (or a
+ * subdomain) is Own domain whatever the channel list says; else the channel's label; else Not verified.
+ */
+function statusOf(target: string, channel: Channel | null, domain: string): ChannelStatus {
+  const url = /^https?:\/\//i.test(target) ? target : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(target) ? `https://${target}` : "";
+  if (url && onDomain(url, domain)) return "own";
+  return channel ? channelStatus(channel, domain) : "unverified";
+}
+
+/**
+ * The one badge of a Website or Official accounts row. Website: from its URL (or value) and the subject's domain,
+ * even when that URL is not in the channel list. Official accounts: each listed account's label, and the row shows
+ * the most cautious of them (one Not verified account makes the row Not verified).
+ */
+export function rowStatus(row: { label: string; value: string; url: string }, channel: Channel | null, accounts: Account[], domain: string): Badge {
+  if (accounts.length) {
+    const each = accounts.map((a) => statusOf(a.name, a.channel, domain));
+    return toBadge(CAUTION.find((s) => each.includes(s)) ?? "unverified");
+  }
+  return toBadge(statusOf(row.url || row.value, channel, domain));
+}
 
 /** The channel a row names by its URL, or by its value being the channel's label or URL. */
 export function channelOfRow(channels: Channel[], row: { label: string; value: string; url: string }): Channel | null {
@@ -103,18 +130,19 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       const named = channelOfRow(page.channels, r);
       if (named) used.add(named);
       const tied = TIE_ROWS.test(r.label.trim());
-      // An Official accounts row naming several accounts shows each account's own label, not one for the row.
+      // An Official accounts row naming several accounts links each account to its channel.
       const listed = tied && /^official accounts?$/i.test(r.label.trim()) ? accountsOf(page.channels, r.value, domain) : [];
-      const accounts = listed.length > 1 && listed.some((a) => a.channel) ? listed : [];
+      const accounts = listed.length > 1 ? listed : [];
       for (const a of accounts) if (a.channel) used.add(a.channel);
       // A lone account takes the channel its handle resolves to, with the row's URL or value as the fallback.
       const lone = listed.length === 1 ? listed[0]!.channel : null;
       const channel = tied && !accounts.length ? lone ?? named : null;
       if (channel) used.add(channel);
-      // One badge per row: Website and Official accounts show only their channel's label (each listed account its
-      // own); every other row shows only Proven on chain, Stated by or Reported by.
-      const status = channel ? statusBadge(channel, domain) : null;
-      const badge = tied && (status || accounts.length) ? null : badgeOf(lines);
+      // Exactly one badge per row: Website and Official accounts show only their channel label (worked out from
+      // the URL and the subject's domain when no channel matches); every other row shows only Proven on chain,
+      // Stated by or Reported by.
+      const status = tied ? rowStatus(r, channel, accounts, domain) : null;
+      const badge = tied ? null : badgeOf(lines);
       return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge, status, accounts };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };

@@ -209,7 +209,7 @@ describe("add sources", () => {
     expect(money.map((r) => r.line.id)).toEqual(["l1", "l4", "l3", "l5", "r1:a", "r1:b", "r1:c"]);
     expect(money[5]!.differsWith).toBe("r1:a");
     expect(money.slice(4).map((r) => r.line.kind)).toEqual(["statement", "claim", "claim"]);
-    expect(money[5]!.line.labelNote).toContain("is not one of the record's channels");
+    expect(money[5]!.line.labelNote).toContain("is not on the subject's domain or one of the record's verified channels");
     expect(money[4]!.origin).toEqual({ payer: "alice.eth", jobHref: "https://explorer.imd.fun/jobs/x" });
     expect(merged.find((s) => s.section === "history")).toBeUndefined();
     expect(mergeRecord(null, [{ key: "r1", data, payer: "p", jobHref: "h" }]).map((s) => s.section)).toEqual(["money"]);

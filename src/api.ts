@@ -77,11 +77,89 @@ async function fetchVerified(file: ResultFile): Promise<string> {
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 export const MAX_LOGO_BYTES = 512 * 1024;
 
-/** True when the bytes are a PNG: its signature, then an IHDR chunk. Any other format is refused. */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(b: Uint8Array): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < b.length; i++) c = CRC_TABLE[(c ^ b[i]!) & 0xff]! ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/** A PNG's chunks, or null when the file is not a whole PNG: bad signature, a cut-off chunk or a wrong CRC. */
+export function pngChunks(b: Uint8Array): { type: string; data: Uint8Array }[] | null {
+  if (b.length < 8 + 25 + 12 || b.length > MAX_LOGO_BYTES) return null;
+  if (!PNG_SIGNATURE.every((x, i) => b[i] === x)) return null;
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const out: { type: string; data: Uint8Array }[] = [];
+  let at = 8;
+  while (at < b.length) {
+    if (at + 12 > b.length) return null;
+    const len = v.getUint32(at);
+    if (at + 12 + len > b.length) return null;
+    const type = String.fromCharCode(...b.subarray(at + 4, at + 8));
+    if (crc32(b.subarray(at + 4, at + 8 + len)) !== v.getUint32(at + 8 + len)) return null;
+    out.push({ type, data: b.subarray(at + 8, at + 8 + len) });
+    at += 12 + len;
+    if (type === "IEND") break;
+  }
+  return out;
+}
+
+/**
+ * True when the bytes are a whole PNG: its signature, IHDR first (13 bytes, non-zero size, a valid colour type and
+ * depth), at least one IDAT, every chunk's CRC right, and IEND last with nothing after it. A truncated file, or
+ * any other format, is refused. Whether the pixel data inflates is checked by pngDecodes.
+ */
 export function isPng(b: Uint8Array): boolean {
-  if (b.length < 24 || b.length > MAX_LOGO_BYTES) return false;
-  if (!PNG_SIGNATURE.every((x, i) => b[i] === x)) return false;
-  return String.fromCharCode(b[12]!, b[13]!, b[14]!, b[15]!) === "IHDR";
+  const chunks = pngChunks(b);
+  if (!chunks || chunks[0]?.type !== "IHDR" || chunks[0].data.length !== 13 || chunks.at(-1)?.type !== "IEND") return false;
+  const end = chunks.reduce((n, c) => n + 12 + c.data.length, 8);
+  if (end !== b.length || !chunks.some((c) => c.type === "IDAT")) return false;
+  const { width, height } = pngSize(b);
+  const h = chunks[0].data;
+  const depths: Record<number, number[]> = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] };
+  return width > 0 && height > 0 && width <= 4096 && height <= 4096 && (depths[h[9]!] ?? []).includes(h[8]!) && h[10] === 0 && h[11] === 0 && h[12]! <= 1;
+}
+
+const CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+
+/**
+ * True when a PNG that passed isPng also decodes: in a browser, createImageBitmap must succeed with a non-zero
+ * size; elsewhere its IDAT data must inflate (zlib) to exactly the bytes its size and format call for.
+ */
+export async function pngDecodes(b: Uint8Array): Promise<boolean> {
+  if (!isPng(b)) return false;
+  try {
+    if (typeof createImageBitmap === "function") {
+      const bmp = await createImageBitmap(new Blob([b as Uint8Array<ArrayBuffer>], { type: "image/png" }));
+      const ok = bmp.width > 0 && bmp.height > 0;
+      bmp.close();
+      return ok;
+    }
+    const chunks = pngChunks(b)!;
+    const idat = chunks.filter((c) => c.type === "IDAT");
+    const joined = new Uint8Array(idat.reduce((n, c) => n + c.data.length, 0));
+    let at = 0;
+    for (const c of idat) {
+      joined.set(c.data, at);
+      at += c.data.length;
+    }
+    const inflated = new Uint8Array(await new Response(new Blob([joined]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer());
+    const h = chunks[0]!.data;
+    if (h[12] === 1) return inflated.length > 0; // interlaced: the size check below is for one pass only
+    const { width, height } = pngSize(b);
+    const rowBytes = Math.ceil((width * h[8]! * CHANNELS[h[9]!]!) / 8);
+    return inflated.length === height * (1 + rowBytes);
+  } catch {
+    return false;
+  }
 }
 
 /** Width and height from a PNG's IHDR chunk. */
@@ -153,7 +231,8 @@ export async function fetchLogo(r: TaggedRequest, c: Completion, jobIdHint: stri
     const buf = await res.arrayBuffer();
     if ((await sha256Hex(buf)) !== file.hash) throw new Error("The logo's bytes do not match the listed hash");
     const bytes = new Uint8Array(buf);
-    if (!isPng(bytes)) throw new Error("The logo is not a PNG file");
+    if (!isPng(bytes)) throw new Error("The logo is not a whole PNG file");
+    if (!(await pngDecodes(bytes))) throw new Error("The logo's PNG data does not decode");
     url = pngDataUrl(bytes);
   }
   cacheSet(key, { url });

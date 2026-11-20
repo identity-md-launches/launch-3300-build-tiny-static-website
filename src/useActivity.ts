@@ -139,7 +139,9 @@ async function follow(req: TaggedRequest, completion: Completion | undefined): P
       } else if (name === "page") {
         page = parsePage(f.text, domainOfId(req.subject));
         via = { jobId: f.jobId, path: f.path };
-        try {
+        // The logo file is shown only when the page says where it came from (page.logo). A job that found no
+        // icon still writes a placeholder PNG to satisfy the declared output, and leaves page.logo out.
+        if (page.logo) try {
           logo = await fetchLogo(req, completion, f.jobId ?? jobId);
         } catch (e) {
           logoError = e instanceof Error ? e.message : "The logo could not be read";

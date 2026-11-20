@@ -16,7 +16,8 @@ describe("the home bar", () => {
     expect(parseLookup("https://www.example.com/docs?x=1")).toEqual({ kind: "domain", domain: "example.com" });
     expect(parseLookup(A.toUpperCase().replace("0X", "0x"))).toEqual({ kind: "address", address: A, chainId: null });
     expect(parseLookup(`8453:${A}`)).toEqual({ kind: "address", address: A, chainId: 8453 });
-    expect(parseLookup(`https://etherscan.io/address/${A}#code`)).toEqual({ kind: "address", address: A, chainId: null });
+    // A pasted link always resolves to its host, even when its path names an address.
+    expect(parseLookup(`https://etherscan.io/address/${A}#code`)).toEqual({ kind: "domain", domain: "etherscan.io" });
     expect(parseLookup("not a domain")).toEqual({ kind: "invalid" });
     expect(parseLookup("0x123")).toEqual({ kind: "invalid" });
   });
@@ -106,7 +107,7 @@ describe("record: search, settled filter, repeat check", () => {
   const line = (id: string, text: string, by = "", links: { type: "confirms"; target: string }[] = []) =>
     ({ id, text, by, links, kind: "claim" }) as unknown as Parameters<typeof repeatsOf>[0][number];
   it("finds repeats ignoring case and punctuation, and counts the lines after the first of each group", () => {
-    const ls = [line("L1", "Seats cost 5 IMD."), line("L2", "seats cost 5 imd"), line("L3", "Seats cost 5 IMD!!"), line("L4", "Jobs cost 0.5 IMD."), line("L5", "jobs cost 0 5 imd")];
+    const ls = [line("L1", "Seats cost 5 IMD."), line("L2", "seats cost 5 imd"), line("L3", "Seats cost 5 IMD!!"), line("L4", "Jobs cost 0.5 IMD."), line("L5", "JOBS COST 0.5 imd")];
     const g = repeatsOf(ls);
     expect(g.map((x) => x.map((l) => l.id))).toEqual([["L1", "L2", "L3"], ["L4", "L5"]]);
     expect(repeatCount(g)).toBe(3);

@@ -21,7 +21,7 @@ import {
   type Channel,
   type ChannelStatus,
   type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
-import type { RecordModel } from "./model";
+import { firstPageStatus, statusText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 
 export type Filter = Kind | "all";
@@ -91,13 +91,6 @@ function KeyValue({ row }: { row: KeyRow }) {
         {row.accounts.map((a, i) => (
           <li key={i}>
             {a.channel && safeHref(a.channel.url) ? <ExtLink url={a.channel.url} className="break">{a.name}</ExtLink> : <span className="break">{a.name}</span>}
-            {a.status ? (
-              <span className={`badge badge-${a.status.tone}`} title={STATUS_HELP[a.status.tone as ChannelStatus]}>
-                {a.status.text}
-              </span>
-            ) : (
-              <span className="small"> not one of the record's channels</span>
-            )}
           </li>
         ))}
       </ul>
@@ -311,6 +304,9 @@ function Related({ m, ui, subjects }: { m: RecordModel; ui: Ui; subjects: Findab
 export function OverviewTab({ m, ui, items, price, subjects }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[] }) {
   const { page, latest, error } = m;
   const name = page?.name || m.subject.id;
+  // The same first-page status Home shows for this subject: in progress, refused, failed or no project found.
+  const first: FirstPageStatus | null = !page && items !== null ? firstPageStatus(items) : null;
+  const rejectedCard = !page && !!m.rejected && items !== null && !(latest && !error) && first?.kind !== "pending";
   return (
     <section className="tab" aria-labelledby="record-title">
       <div className="title-row">
@@ -318,20 +314,44 @@ export function OverviewTab({ m, ui, items, price, subjects }: { m: RecordModel;
         <h1 id="record-title" tabIndex={-1}>{name}</h1>
       </div>
       <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
-      {!page && m.rejected && items !== null && !(latest && !error) && (
+      {rejectedCard && (
         <div className="card empty" id="rejected">
-          <h2>Not a project record</h2>
-          <p>The research job for {m.subject.id} found no single real project, so this site shows no page for it. Its notes:</p>
-          <p className="why">{m.rejected.rejected}</p>
+          <h2>No project found</h2>
+          <p className="why">{first?.kind === "not-found" ? statusText(first) : `No project found: ${m.rejected!.rejected}`}</p>
+          <p>The research job for {m.subject.id} found no single real project, so this site shows no page for it.</p>
           <p className="small">
             See <a href={to("activity")}>Activity</a> for the job. A rebuild with a clearer description can still create the page.
           </p>
         </div>
       )}
-      {!page && !(m.rejected && items !== null && !(latest && !error)) && (
-        <div className="card empty">
-          <h2>{items === null ? "Reading the record…" : latest && !error ? "Downloading the record…" : "No page yet"}</h2>
-          <p>{latest && !error ? "The page job finished. Downloading and checking its file…" : `Run a rebuild to publish the first record of ${m.subject.id}.`}</p>
+      {!page && !rejectedCard && (
+        <div className="card empty" id="first-page">
+          {items === null ? (
+            <h2>Reading the record…</h2>
+          ) : latest && !error ? (
+            <>
+              <h2>Downloading the record…</h2>
+              <p>The page job finished. Downloading and checking its file…</p>
+            </>
+          ) : first?.kind === "pending" ? (
+            <>
+              <h2>First page in progress</h2>
+              <p>A research job is writing the first page of {m.subject.id}. It appears here when the job completes; there is no need to pay for another. Follow it in <a href={to("activity")}>Activity</a>.</p>
+            </>
+          ) : first && first.kind !== "none" ? (
+            <>
+              <h2>{first.kind === "not-found" ? "No project found" : first.kind === "refused" ? "First page refused" : "First page failed"}</h2>
+              <p className="why">{statusText(first)}</p>
+              <p>
+                See <a href={to("activity")}>Activity</a> for the request. You can try again with <a href={to("rebuild")}>a rebuild</a>.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2>No page yet</h2>
+              <p>Run a rebuild to publish the first record of {m.subject.id}.</p>
+            </>
+          )}
           {error && <p className="error">Unable to read the page: {error}</p>}
         </div>
       )}
@@ -697,10 +717,15 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   // Sections start closed. A section the visitor opened or closed keeps that; one holding an opened line, or
   // any section while a search or the settled filter is on, shows open so its matches are visible.
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({});
+  // While a search or the settled filter is on, every section with matches opens; what the visitor toggles then
+  // is kept apart and forgotten when the controls change, so clearing them restores the manual state above.
+  const [narrowOpen, setNarrowOpen] = useState<{ key: string; open: Record<string, boolean> }>({ key: "", open: {} });
   const all = sections.flatMap((s) => s.rows);
   const factRows = all.filter((r) => r.line.kind === "proof" && r.line.fact && !r.origin);
   const facts = new Set(factRows.map((r) => r.line.id));
   const narrowing = query.trim() !== "" || settledOnly;
+  const narrowKey = narrowing ? `${query.trim().toLowerCase()}|${settledOnly}|${filter}` : "";
+  const narrowState = narrowOpen.key === narrowKey ? narrowOpen.open : {};
   const keep = (r: RecordRow) => (filter === "all" || r.line.kind === filter) && (!settledOnly || isSettled(r.line)) && lineMatches(r.line, query);
   const shownFacts = factRows.filter(keep);
   const named = new Set(sections.map((s) => s.section));
@@ -713,7 +738,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
       const table = section === "on_chain" ? shownFacts : [];
       const inSection = [...rows, ...table].map((r) => r.line);
       const hasOpen = inSection.some((l) => ui.openSet.has(l.id));
-      const open = sectionOpen[section] ?? (hasOpen || narrowing);
+      const open = narrowing ? narrowState[section] ?? true : sectionOpen[section] ?? hasOpen;
       return { section, rows, table, counts: kindCounts(inSection), open };
     })
     .filter((s) => s.rows.length > 0 || s.table.length > 0);
@@ -803,7 +828,11 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
                   className="section-toggle"
                   aria-expanded={open}
                   aria-controls={`sec-${section}`}
-                  onClick={() => setSectionOpen((s) => ({ ...s, [section]: !open }))}
+                  onClick={() =>
+                    narrowing
+                      ? setNarrowOpen({ key: narrowKey, open: { ...narrowState, [section]: !open } })
+                      : setSectionOpen((s) => ({ ...s, [section]: !open }))
+                  }
                 >
                   <span className="chev" aria-hidden="true" />
                   <span className="section-name">{SECTION_TITLES[section] ?? section}</span>

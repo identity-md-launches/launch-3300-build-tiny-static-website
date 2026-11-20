@@ -325,14 +325,14 @@ describe("panel answers never push a result file out of <PRIOR> (aa9250dc)", () 
     const src = { id: "s", url: artifactUrl(h("a")) };
     const answers = Array.from({ length: 20 }, (_, i) => ({ title: "A".repeat(88), answer: "true", agreed: 5, size: 5, url: `https://explorer.imd.fun/jobs/${String(i).padStart(36, "0")}` }));
     const measure = (p: Parameters<typeof rebuildObjective>[0]) => rebuildObjective(p, ref).length;
-    expect(measure({ files: [f1, src.url], answers })).toBe(10730);
+    expect(measure({ files: [f1, src.url], answers })).toBe(10779);
     const fit = fitPrior(f1, [src], answers, measure);
     expect(fit.prior.files).toEqual([f1, src.url]);
     expect(fit.included.has("s")).toBe(true);
     expect(fit.leftOut).toBe(0);
     expect(fit.prior.answers).toEqual(answers.slice(19));
     expect(fit.answersLeftOut).toBe(19);
-    expect(measure(fit.prior)).toBe(7337);
+    expect(measure(fit.prior)).toBe(7386);
   });
 });
 

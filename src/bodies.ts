@@ -348,8 +348,10 @@ export const MAX_OBJECTIVE = 7500;
 export const rebuildObjective = (p: Prior, subject: SubjectRef) => fillTemplate(REBUILD_TEMPLATE, { SUBJECT: describeSubject(subject), PRIOR: priorText(p) });
 
 /**
- * A rebuild's two named outputs: the page file, and the subject's logo when its own domain serves one. IMD's
- * free request check (POST /requests/check) accepted a job body with both on 2026-11-20 (see the README).
+ * A rebuild's two named outputs, both always written: the page file, and artifacts/logo.png. When the subject's own
+ * domain serves no icon the job writes a 1 by 1 transparent placeholder PNG there and leaves page.logo out; the site
+ * shows the logo file only when page.logo is present, else the letter tile. IMD's free request check
+ * (POST /requests/check) accepted a job body with both outputs on 2026-11-20 (see the README).
  */
 export const REBUILD_OUTPUTS = [
   { name: "page", path: "artifacts/page.json", mediaType: "application/json" },

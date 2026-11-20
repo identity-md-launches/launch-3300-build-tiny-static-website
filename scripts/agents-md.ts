@@ -33,13 +33,25 @@ A subject is one project, never a person and never a name:
 
 - by its **domain**: the lowercase host without \`www.\`, such as \`imd.fun\`;
 - or, when it has no domain, by **chain id and contract address**: \`<chain id>:<address in lowercase>\`,
-  such as \`1:0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7\`. Any chain id: the home page's "Add a project" form
-  names six chains and takes any other as a number under "Other chain ID" (such as \`137:0x…\`).
+  such as \`1:0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7\`. Any chain id: when an address has no page yet, the
+  home bar's chain picker names six chains and takes any other as a number under "Other chain ID" (such as \`137:0x…\`).
+
+**The home bar** is one input, "A domain or a 0x address", with one button, "Look it up". Typing filters the list
+of projects. On submit it opens the subject whose id is that domain, or whose id or listed contracts include that
+address (on the chain given as \`<chain id>:0x…\`, or on any chain when none is given; an address recorded on
+another chain never matches). A pasted link is reduced to its host, even an explorer link with an address in its
+path. With no match it shows "No page yet for <input>. Adding one costs <price> and starts one research job.", a
+chain picker when the input is an address, and "Add this project", which opens the first-rebuild dialog. There is
+no separate search box or add form. A subject's **Related** entries link to its page when one exists (matched the
+same way), else "Add this project" opens the home bar filled in with the related id.
+
+**First page.** A subject with no page shows, on Home and on its own Overview alike: "First page in progress" while
+its first rebuild is pending, "First page refused: <reason>" (or "First page failed: <reason>") when IMD refused
+or failed it, and "No project found: <notes>" when the job's file said \`found: false\`.
 
 A result file (page, lines or edit) whose top-level \`found\` is \`false\` did not identify one real project. The
-site never shows it as a page or as lines, never lists it in \`<PRIOR>\`, and does not list a subject on the
-home page when its research came back that way and it has no page; Activity shows the job with its \`notes\`,
-and the subject's link shows the notes.
+site never shows it as a page or as lines and never lists it in \`<PRIOR>\`. The subject stays on Home with
+"No project found: <notes>", Activity shows the job with its \`notes\`, and the subject's Overview shows the same.
 
 Routes: \`#/\` is the list of subjects; \`#/s/<subject id>\` is a subject's page, with the tabs
 \`#/s/<subject id>/record\`, \`/sources\`, \`/activity\` and \`/contribute\`. Older links (\`#record\`,
@@ -69,7 +81,7 @@ ${fence(describeSubject(EXAMPLE_REF))}
 
 | Action | Id |
 | --- | --- |
-| Rebuild the page | \`${ACTIONS.research}\` (tag kind \`add\`, output \`artifacts/page.json\`) |
+| Rebuild the page | \`${ACTIONS.research}\` (tag kind \`add\`, outputs \`artifacts/page.json\` and \`artifacts/logo.png\`) |
 | Add sources | \`${ACTIONS.research}\` (tag kind \`source\`, output \`artifacts/lines.json\`) |
 | Suggest an edit | \`${ACTIONS.research}\` (tag kind \`edit\`, output \`artifacts/edit.json\`) |
 | Confirm a fact | \`${ACTIONS.oracle}\` |
@@ -89,7 +101,7 @@ and send only when \`blockers\` is \`[]\`.
 
 ## Rebuild body (\`${ACTIONS.research}\`)
 
-"Rebuild the page" (or "Create the page" for a new subject, from the home page's "Add a project") sends
+"Rebuild the page" (or "Create the page" for a new subject, from "Add this project" under the home bar) sends
 \`templates/rebuild.txt\` with \`<SUBJECT>\` filled as above and \`<PRIOR>\` filled in as a numbered list:
 \`[F1]\` the artifact URL of the page result shown now, then \`[F2]\`... the artifact URL of every completed page,
 sources and edit result of the same subject that is **not folded in** (see below), oldest first, including
@@ -103,11 +115,21 @@ as \`question title = answer, N of M, request URL\`; all joined with \`; \`. Wit
 every file to reconsider first (room is reserved for them), then the newest result files that fit (the oldest
 are deferred first), then the newest panel answers that fit in the room left. If the files to reconsider alone do
 not fit, the site does not offer the rebuild. The record has no size limit, and the site reads every line and
-every dropped entry of a page, however many: a rebuild drops an earlier line only as an exact duplicate of a line
-it kept (named in the dropped entry), as not about the subject, or as replaced by a newer statement from the same
-speaker. It merges only exact duplicates of the same attributed line; lines by different speakers or with
-different quotes stay separate even when they report the same fact, and a line a proof or panel answer settles is
-kept with links to what confirms or contradicts it.
+every dropped entry, origin (\`from\`), speaker (\`by\`) and earlier reading (\`history\`) of a page, however many.
+A rebuild drops an earlier line only as not about the subject, or as replaced by a newer statement from the same
+speaker. Lines that say the same thing are **merged into one line**, even across files, speakers and dates: the
+merged line lists every origin in \`from\` and every speaker in \`by\`, counts as carried forward, and its origins
+are not also listed in \`dropped\`; the record never holds two lines with the same meaning. A check run at
+different blocks stays one proof line with the newest reading, older readings in \`history\` as \`{block,value}\`.
+A line a proof or panel answer settles is kept with links to what confirms or contradicts it.
+
+**Two outputs, both always written.** The body declares \`artifacts/page.json\` and \`artifacts/logo.png\`
+(\`image/png\`). The job takes the logo only from the subject's own domain (apple-touch-icon, favicon or
+og:image, converted to a PNG of at most 256 by 256) and sets \`logo{url,fetched_at}\` in the page file. When it
+finds no icon it still writes a 1 by 1 transparent placeholder PNG, so the declared file exists, and leaves
+\`logo\` out of the page file. The site shows the logo file only when the page's \`logo\` is present, after its
+bytes match the listed SHA-256 and decode as a whole PNG; otherwise it shows a tile with the name's first letter.
+It never loads an image from the project's server or any other site.
 
 **Folded in.** A result (page, sources or edit) is folded into the page shown only if its artifact URL
 (\`${API}/artifacts/<sha-256>\`) appears in the objective of the request that produced the page shown, read from
@@ -230,9 +252,11 @@ A source job writes \`artifacts/lines.json\`:
 \`sources[{id,url,type,publisher,published_at,read_at,could_open,read_via,about_subject,about_why,publisher_is_subject_channel}]\`,
 \`lines[{id,source,section,text,kind,by,quote}]\`, \`differs[{lines[],why,level}]\`, \`ignored_instructions[]\`, \`notes\`.
 
-The site applies one label rule to every result, old or new: a line shows as a **statement** only when its
-publisher (its \`by\`, or the URL of its source) is one of the record's channels labelled "Own domain" or
-"Verified on chain". Every channel is shown with one label: **Own domain** when its host is the subject's domain
+The site applies one label rule to every result, old or new: a line shows as a **statement** only when it was
+published on one of the record's channels labelled "Own domain" or "Verified on chain". When the line cites
+http(s) source URLs, every one of them must be on the subject's domain (or a subdomain) or at or under such a
+channel; a name match on \`by\` never makes an outside URL a statement. Only a line citing no URL is matched by
+its publisher's name or handle. Every channel is shown with one label: **Own domain** when its host is the subject's domain
 or a subdomain of it (never for a chain:address subject); else **Verified on chain** for tie \`strong\`; else
 **Not verified** (tie \`weak\` or \`none\` off the domain). A line marked statement whose channel is Not verified,
 or whose publisher is not a channel, shows as a **claim**. A source job's line is never a proof. Lines from a source with \`could_open: false\` or
@@ -242,10 +266,11 @@ line above"; \`"question"\` or no level as "Compare with the line above". Proof 
 of name, value, chain and block (read from the line's text and re-run steps), all in one table under On chain.
 The Overview's key facts table shows \`infobox\` rows, each with a badge the site works out only from the kinds
 of the lines the row rests on: "Proven on chain" if any is a proof, else "Stated by <channel name>" for a
-statement, else "Reported by <who>" for a claim. Only the Website and Official accounts rows also show their
-channel's label (Own domain, Verified on chain or Not verified); an Official accounts row that lists several
-accounts shows each account's own label, and one that lists a single account shows the label of the
-channel that account resolves to. Without \`infobox\`, the table shows at most: Website (the channel at
+statement, else "Reported by <who>" for a claim. Every row shows exactly one badge. The Website and Official
+accounts rows show only a channel label (Own domain, Verified on chain or Not verified) instead: Website from its
+URL and the subject's domain (Own domain for the domain or a subdomain, even when that URL is not a listed channel);
+Official accounts from the channel each listed account resolves to, the row taking the most cautious label among
+them (one Not verified account makes the row Not verified). Each account's own label is listed on Sources. Without \`infobox\`, the table shows at most: Website (the channel at
 the subject's domain), Main contract, and one token symbol proof and one token supply proof (a proof named for
 the token's symbol or supply, or re-run with \`symbol()\` or \`totalSupply()\`; never a seat count; and only a proof
 that names the subject's own token contract and whose re-run reads no other contract); it never

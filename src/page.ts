@@ -180,9 +180,9 @@ function parseLinks(v: unknown): LineLink[] {
     });
 }
 
+/** Every earlier reading of a proof, however many: none is dropped. */
 export function parseHistory(v: unknown): Reading[] {
   return arr(v)
-    .slice(0, 50)
     .map((x) => {
       const o = obj(x);
       return { block: blockNumber(str(o.block, 64)) || str(o.block, 64).trim(), value: str(o.value, 200).trim() };
@@ -368,14 +368,40 @@ export function channelFor(channels: Channel[], publisher: string, urls: string[
   return best;
 }
 
+/** The most specific listed channel a URL is at or under, or null. */
+function channelAtUrl(channels: Channel[], url: string): Channel | null {
+  let best: Channel | null = null;
+  for (const c of channels) if (underChannel(url, c) && (!best || c.url.length > best.url.length)) best = c;
+  return best;
+}
+
 /**
- * A line shows as a statement only when its publisher is one of the record's channels that is Own domain (on the
- * subject's domain or a subdomain) or Verified on chain (tie strong). Otherwise a marked statement is shown as a
+ * A line shows as a statement only when it was published on one of the record's channels that is Own domain (on
+ * the subject's domain or a subdomain) or Verified on chain (tie strong). Otherwise a marked statement is shown as a
  * claim. Proof and claim stay as marked.
+ *
+ * Where the line was published is read from its cited URLs first: when it cites any http(s) URL, every one of them
+ * must be on the subject's domain (or a subdomain) or at or under such a listed channel. A name match on `by` can
+ * never turn an outside URL into a statement. Only a line that cites no URL at all is matched by its publisher's
+ * name or handle.
  */
 export function applyLabel(line: Line, channels: Channel[], publisher: string, urls: string[], domain = ""): Line {
   if (line.marked !== "statement") return { ...line, kind: line.marked, labelNote: "", channel: null };
-  const ch = channelFor(channels, publisher, urls);
+  const published = urls.map((u) => u.trim()).filter((u) => /^https?:\/\/[^\s]+$/i.test(u));
+  if (published.length) {
+    const each = published.map((u) => {
+      const ch = channelAtUrl(channels, u);
+      return { u, ch, ok: onDomain(u, domain) || (!!ch && channelStatus(ch, domain) !== "unverified") };
+    });
+    const outside = each.find((e) => !e.ok);
+    const shown = each.find((e) => e.ch)?.ch ?? null;
+    if (!outside) return { ...line, kind: "statement", labelNote: "", channel: shown ?? channelFor(channels, publisher, []) };
+    const labelNote = outside.ch
+      ? `Marked a statement by the job. Shown as a claim because its source ${outside.u} is on the channel ${outside.ch.label || outside.ch.url}, which is not verified: it is not on the subject's domain and no contract, ENS record or deployer wallet points to it.`
+      : `Marked a statement by the job. Shown as a claim because its source ${outside.u} is not on the subject's domain or one of the record's verified channels.`;
+    return { ...line, kind: "claim", labelNote, channel: outside.ch };
+  }
+  const ch = channelFor(channels, publisher, []);
   if (ch && channelStatus(ch, domain) !== "unverified") return { ...line, kind: "statement", labelNote: "", channel: ch };
   const labelNote = ch
     ? `Marked a statement by the job. Shown as a claim because the channel ${ch.label || ch.url} is not verified: it is not on the subject's domain and no contract, ENS record or deployer wallet points to it.`
@@ -437,13 +463,16 @@ export function parsePage(text: string, domain = ""): Page {
         marked,
         labelNote: "",
         channel: null,
-        by: str(o.by, 200),
+        // A merged line names every speaker in by; the whole field is kept.
+        by: str(o.by, Number.MAX_SAFE_INTEGER),
         sources: ids,
         srcKeys: ids.map((s) => `r:${s}`),
         quote: str(o.quote, 400),
         rerun,
         fact: marked === "proof" ? parseFact(o.fact, lineText, rerun) : null,
-        from: arr(o.from).map((x) => str(x, 64).trim()).filter(Boolean).slice(0, 40),
+        // Every origin of a merged line is kept, however many: dropping one would also raise a false
+        // "unaccounted for" warning.
+        from: arr(o.from).map((x) => str(x, 64).trim()).filter(Boolean),
         links: parseLinks(o.links),
         history: parseHistory(o.history),
       };
@@ -612,7 +641,7 @@ export function parseLines(text: string): SourceLines {
         marked,
         labelNote: "",
         channel: null,
-        by: str(o.by, 200) || source?.publisher || "",
+        by: str(o.by, Number.MAX_SAFE_INTEGER) || source?.publisher || "",
         sources: sourceId ? [sourceId] : [],
         srcKeys: [],
         quote: str(o.quote, 400),

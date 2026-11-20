@@ -36,6 +36,7 @@ import {
 } from "./page";
 import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
 import { isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
+import type { KnownContract } from "./lookup";
 
 export interface Accounting {
   /** none: the shown page was not a rebuild from earlier files. */
@@ -222,6 +223,8 @@ export interface SubjectSummary {
   hasPage: boolean;
   /** The page's main contract, so the home bar finds a subject by it. */
   main: string;
+  /** Every contract the page lists with its chain id, so the home bar and Related find a subject by any of them. */
+  contracts: KnownContract[];
   /** The page job's checked PNG logo as a data: URL, or null: a letter tile is shown instead. */
   logo: string | null;
   /** For a subject with no page: why, in the words Home shows. Null when it has a page. */
@@ -282,6 +285,9 @@ export function subjectSummaries(items: Activity[]): SubjectSummary[] {
       pending: list.filter((a) => a.state === "pending").length,
       hasPage: !!core.page,
       main: core.page?.main ?? "",
+      contracts: (core.page?.contracts ?? [])
+        .filter((c) => /^0x[0-9a-fA-F]{40}$/.test(c.address))
+        .map((c) => ({ address: c.address.toLowerCase(), chainId: chainIdOf(c.chain) })),
       logo: core.latest?.logo ?? null,
       status: core.page ? null : firstPageStatus(list),
     };

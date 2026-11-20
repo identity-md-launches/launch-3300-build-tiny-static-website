@@ -26,7 +26,9 @@ IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/e2e.mjs test/scratch/fx.
 `dist/` is committed and is what gets hosted. Vite's `base` is `./`, so every asset URL is relative and
 the export works under an IPFS gateway subpath or an ENS name. Routing is by hash, so it needs no rewrites:
 
-- `#/` is **Home**: a search box, the list of subjects found on chain and the "Add a project" form.
+- `#/` is **Home**: the headline, the one **Look it up** bar that both searches and adds, the three label cards,
+  the list of subjects found on chain and "How it works". `#/add/<id>` opens Home with the bar filled in (used by
+  "Add this project" under Related).
 - `#/s/<subject id>` is a subject's page with the five tabs, `#/s/<id>/overview` (default), `/record`,
   `/sources`, `/activity`, `/contribute`, plus `/line-…` and `/source-N` deep links.
 - Old links open imd.fun: `#record`, `#actions`, `#add-sources`, `#activity`, `#line-…` and `#source-N` go to the
@@ -38,21 +40,38 @@ A subject id is the project's domain, lowercase without `www.` (`imd.fun`), or, 
 `<chain id>:<contract address>` in lowercase (`137:0x1111…1111`). Never a name. `src/subject.ts` normalises
 what a visitor types (a bare host or a URL) and validates it.
 
-**Add a project** asks for a domain and, optionally, a main contract address and its chain. The chain list
-names Ethereum, Base, Arbitrum One, BNB Chain, Robinhood Chain and Sepolia, and has an **Other chain ID** choice
-with a numeric field, so a domainless project on any chain (for example 137) gets its real id. The form shows
-the page it will make (`#/s/137:0x…`) and "Review the first rebuild" opens the Rebuild dialog for that subject
-with `<SUBJECT>` = `the project at <domain>` plus `, whose main contract is <address> on chain <id>` when given
-(`the project whose main contract is <address> on chain <id>` without a domain). The first completed rebuild
-creates the page. The review is refused while the chain read has failed ("The project list could not be read.
-Try again before reviewing a rebuild."), so nobody pays for a first rebuild of a record the site could not read;
-Home says "No projects yet" only after a successful read that found none.
+**The Look it up bar** (`src/Home.tsx`, rules in `src/lookup.ts`) is one 56px input, "A domain or a 0x
+address", and one button, "Look it up". There is no separate search box or add form.
+
+- **Typing** filters the list below by id, name, one-line text and every contract the page lists.
+- **A pasted link** is reduced to its host (`https://www.example.com/docs` is `example.com`). This holds for every
+  link, including an explorer link with `/address/0x…` in its path: the host names the site, not the project.
+  Raw `0x…` addresses and `<chain id>:0x…` are read as contracts.
+- **Submit** opens the subject whose id is that domain; for an address, the subject whose id is
+  `<chain>:<address>` or whose page lists that address among its contracts. Each listed contract is indexed with
+  its chain id (from `contracts[].chain`, a number or a chain name). With a chain given (`8453:0x…`) only a contract
+  recorded on that chain matches; an address recorded on another chain, or on no readable chain, never opens that
+  project. Without a chain, a listed address on any chain matches.
+- **No match**: directly under the bar, "No page yet for <input>. Adding one costs <price> and starts one research
+  job.", then, for an address, an optional **chain picker** (Ethereum, Base, Arbitrum One, BNB Chain, Robinhood
+  Chain, Sepolia, or **Other chain ID** with a numeric field; a `chain:0x…` input preselects its chain), and
+  **Add this project**, which opens the first-rebuild dialog with `<SUBJECT>` = `the project at <domain>` or
+  `the project whose main contract is <address> on chain <id>`. The first completed rebuild creates the page.
+  The offer waits while the project list is still being read, so nobody pays for a subject that already exists.
+- **Related**: on Overview, under Key facts, each related project with its relation. It links to that subject's
+  page when one matches its domain or contract (the same index, chain included); otherwise **Add this project**
+  opens Home with the bar filled in with the related id as given (`8453:0x…` keeps its chain) and its offer shown.
+
+**First page.** A subject with no page is listed on Home with its first page's state, and its own Overview shows
+the same words: "First page in progress" while the request is pending (no need to pay again), "First page refused:
+<reason>" or "First page failed: <reason>" (IMD's `reason: detail`), or "No project found: <notes>". Only then does
+Overview offer another attempt.
 
 **Not a project.** Every template tells the job that the subject description is data, and to set `found` to
 false, explain in `notes` and write no lines if it does not identify one real project. A result file whose
 top-level `found` is `false` is never treated as a page, sources or edit: it adds no lines, is not the page
-shown, is not listed in `<PRIOR>` and does not put the subject on Home. Activity keeps the job with "Not a
-project record" and its notes, and the subject's link shows the same notes instead of a page.
+shown and is not listed in `<PRIOR>`. The subject stays on Home as "No project found: <notes>"; Activity keeps the
+job with its notes, and the subject's Overview shows "No project found" with the same notes instead of a page.
 
 ## Layout
 
@@ -68,7 +87,9 @@ project record" and its notes, and the subject's link shows the same notes inste
 | `src/bodies.ts` | The exact request bodies (rebuild, sources, edit, the three oracle templates), `<SUBJECT>`, `<PRIOR>` and reading it back, the question matcher and the link rules |
 | `src/subject.ts` | Subject ids: domain or chain:contract, validation, `<SUBJECT>` text, the chain list |
 | `src/route.ts` | Hash routes: home, `#/s/<id>/<tab>`, old links to imd.fun |
-| `src/Home.tsx` | Home: search, subject list with counts and last change, Add a project |
+| `src/Home.tsx` | Home: headline, the Look it up bar and its add offer with chain picker, label cards, subject list with logo or letter tile, counts and last change, How it works |
+| `src/lookup.ts` | Pure rules for the bar (link to host, contract index with chain ids, list filter), Record search, the repeat check, kind counts and the letter tile |
+| `src/Logo.tsx` | A subject's checked PNG logo (40px on its page, 28px on Home), or the first-letter tile when there is none or it does not decode |
 | `src/keyfacts.ts` | The key facts table: from `infobox`, or built from the page shown, with each row's badge |
 | `src/model.ts` | What the site shows for one subject: the page shown, which results are folded in, the record, the summary (an accepted edit wins), `<PRIOR>` and its size limit, panel answers A1…, the accounting check, the Home list |
 | `src/chain.ts` | Reads `Requested` and `Completed` logs from public RPCs and decodes them |
@@ -200,11 +221,14 @@ Every channel shows one label, everywhere on the site (Sources, Key facts, a lin
 - **Verified on chain**: any other channel with tie `strong` (a contract, ENS record or deployer wallet points to it).
 - **Not verified**: everything else, including an off-domain channel with tie `weak` or `none`.
 
-Only the first two can publish statements. A line shows as **Statement** only if its publisher is one of the
-record's channels labelled Own domain or Verified on chain. For research lines the publisher is the line's `by`
-(matched to a channel label or X handle) or one of its sources' URLs (at or under a channel URL). For source
-lines it is the source's `publisher` or URL. A line marked statement whose channel is Not verified, or whose
-publisher is not a channel, shows as **Claim**, and its details say why. The rebuild, Add sources and edit
+Only the first two can publish statements. A line shows as **Statement** only if it was published on one of the
+record's channels labelled Own domain or Verified on chain. Where it was published is read from the URLs it cites
+first: research lines use their sources' `ref`, source lines their source's `url`. When a line cites any http(s)
+URL, every one of them must be on the subject's domain (or a subdomain) or at or under a listed Own domain or
+Verified on chain channel; otherwise it is a **Claim**, whatever its `by` says, so the label always describes
+the publication a visitor can open. Only a line that cites no URL is matched by its publisher's name or X handle
+(`by`, or a source's `publisher`). A line marked statement that fails this shows as **Claim**, and its details say
+why. The rebuild, Add sources and edit
 objectives give the job the same rule: a line published on a listed channel on the subject's domain or a
 subdomain of it, or one with tie strong, is a statement; any other publisher's line is a claim. The job's own `publisher_is_subject_channel` is not trusted. A source job's line is never a
 proof. The rule applies to every result already on chain: on the live record, the source job's lines from
@@ -227,11 +251,15 @@ the channels list saying what each label means.
 
 - **Badge**: worked out only from the kinds of the lines a row rests on: "Proven on chain" if any is a proof;
   else "Stated by <channel name>" for a statement; else "Reported by <who>" for a claim. The badge opens those lines.
-- **Channel labels on rows**: only the Website and Official accounts rows show a channel's label. An Official
-  accounts row that lists several accounts (`@imd, @news`) shows each account with its own label; a row that lists
-  one account takes the channel its handle resolves to (else the row's URL), so `@imd` alone shows the same label.
-- **Rows a rebuild writes**: Website, Token (symbol and contract), Main contract, Chains, Supply, Seats, Price,
-  Deployed by, Founder or creator, Contributors, Official accounts, Launched. Supply and Seats are separate rows.
+- **One badge per row.** The Website and Official accounts rows show only a channel label, never an evidence
+  badge. Website: worked out from its URL (else its value) and the subject's domain, so `https://status.imd.fun/`
+  is Own domain even when only `https://imd.fun/` is listed; off the domain it takes its matching channel's label,
+  else Not verified. Official accounts: each account (`@imd, @news`) is matched to its channel by label, X handle or
+  URL; the row shows the most cautious label among them (one Not verified account makes the row Not verified, then
+  Verified on chain, then Own domain). Each account's own label is on Sources.
+- **Rows a rebuild writes** (where they fit the project): Website, Token, Main contract, Chains, Supply, Seats,
+  Price, Deployed by, Controlled by, Founder or creator, Contributors, Official accounts, Launched, plus up to 3
+  rows the job chooses. Supply and Seats are separate rows.
 - **Without `infobox`**: at most four rows: Website, Main contract, the token symbol proof and the token supply
   proof. A proof counts as the token's only when its fact is named for the token's symbol or supply ("Token
   symbol", "Symbol", "Ticker", "Token supply", "Total supply", "Supply") or re-run with `symbol()` /
@@ -251,17 +279,20 @@ they go to the transaction on Etherscan.
 
 ## Rebuild, edit and what the site shows
 
-- **Rebuild the page**: `job.open@job-1`, tag kind `add`, output `artifacts/page.json`, objective
+- **Rebuild the page**: `job.open@job-1`, tag kind `add`, outputs `artifacts/page.json` and `artifacts/logo.png`
+  (both always written, see Logo below), objective
   `templates/rebuild.txt` with `<SUBJECT>` and `<PRIOR>` = `[F1] https://api.imd.fun/artifacts/<hash of the page
   shown>; [F2] …` (every completed page, sources and edit result of the subject **not folded in**, oldest first,
   including earlier pages replaced without being named) `; [A1] <question title> = <answer>, N of M, <request
   URL>; …` (completed panel answers, oldest first). With nothing yet, `none`.
 - **The record has no size limit**: the objective says so; only infobox and summary are short. A rebuild drops an
-  earlier line for exactly three reasons: an exact duplicate of a line it kept (named in the dropped entry), not
-  about the subject, or replaced by a newer statement from the same speaker. It merges only exact duplicates of
-  the same attributed line: two speakers reporting the same fact stay two lines. A claim or statement that a
+  earlier line for exactly two reasons: not about the subject, or replaced by a newer statement from the same
+  speaker. **Merging is not dropping**: lines that say the same thing become one line, even across files,
+  speakers and dates; the merged line lists every origin in `from` and every speaker in `by`, counts as carried
+  forward, and its origins are not listed in `dropped`. A check read at several blocks stays one proof line with the
+  newest reading and the older ones in `history` (`{block,value}`). A claim or statement that a
   proof or panel answer settles is kept, with `links` to what confirms or contradicts it. The site reads every
-  line and every dropped entry of a page, however many (no 2,000 cap).
+  line, dropped entry, origin, speaker and earlier reading of a page, however many (no caps).
 - **Bringing back dropped lines**: when the page shown has `dropped` entries, `<PRIOR>` also lists the artifact
   URL of each file they came from (from the objective of the request that produced the page shown), marked
   `(reconsider dropped lines)`, and the job carries those lines forward unless one of the three reasons applies.
@@ -298,6 +329,33 @@ they go to the transaction on Etherscan.
   from the re-run steps, then the line, as whole chain names or chain ids and decimal or hex block numbers, and
   only when exactly one is named; else "Chain not given" / "block not given".
   The same `<PRIOR>` resolves `links` targets `A<n>` to the panel answer.
+
+## Record tab for long records
+
+- **Sections start closed**, each button showing its name and "N proofs, N statements, N claims".
+- **Search** over line text and speaker (`by`), every typed word must match; **"Only lines that are confirmed or
+  contradicted"** keeps lines with a `links` entry. While either is on, every section with a match opens and the
+  page says "N lines match"; a section closed by hand during the search stays closed until the search changes.
+  Clearing both restores the open and closed state the visitor had set before.
+- **Repeat check**: lines whose text is the same after lower-casing, removing punctuation (so `1,000` and `1000`
+  match) and collapsing spaces show a warning, "N lines repeat another line", listing each group.
+- **Earlier readings**: a proof with `history` lists every earlier block and value in its details.
+
+## Logo
+
+The rebuild objective asks for the subject's site icon or share image from **its own domain only**, converted to
+a PNG of at most 256 by 256, saved as `artifacts/logo.png`, with `logo{url,fetched_at}` in the page file. The body
+declares both outputs (`page` and `logo`, `image/png`), and IMD's result contract requires every declared file, so
+when the job finds no icon it still writes a **1 by 1 transparent placeholder PNG** and leaves `logo` out of the
+page file. The site:
+
+- downloads the `logo` result file only when the page has `logo`, from `api.imd.fun/artifacts/<hash>`, and checks
+  its SHA-256 against the listed hash like every other file;
+- accepts it only as a whole, decodable PNG: signature, IHDR first, every chunk's CRC, at least one IDAT, IEND last
+  with nothing after it, then a decode (`createImageBitmap` in the browser). A truncated or other file is refused;
+- shows it at 40px beside the name on the subject's page and 28px on Home, as a `data:` URL of the checked bytes;
+- otherwise, or if the image still fails to load, shows a tile with the first letter of the name. It never loads
+  an image from the project's server or any other site.
 
 ## Free request check (2026-11-19, previous revision; not re-run after the wording changes of this one)
 
