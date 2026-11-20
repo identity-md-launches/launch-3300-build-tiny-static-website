@@ -328,11 +328,19 @@ they go to the transaction on Etherscan.
 
 ## Out of date
 
-A page is out of date when completed results or panel answers are not folded in (not listed in the `<PRIOR>` of the
-request that produced it), or when that request's objective differs from what `templates/rebuild.txt` sends now,
-apart from `<PRIOR>` (`matchesTemplate` in `src/bodies.ts`). Its Overview shows "Out of date: N results not folded
-in" or "Out of date: built with an older format" with a **Rebuild** link to Contribute; its home row shows the same
-note, and Home has a **Needs a rebuild** filter beside All. While reads are outstanding the filter shows no count and
+A page is out of date for either of two reasons, and the note names both when both hold (`outdatedOf` and
+`outdatedText` in `src/model.ts`):
+
+- **Results not folded in**: completed results or panel answers that are not listed in the `<PRIOR>` of the request
+  that produced the page shown. The note reads "Out of date: N results not folded in" ("1 result" for one).
+- **Built with an older format**: the instruction hash in the objective of the request that produced the page
+  differs from the current rebuild instruction file's hash (`matchesTemplate` in `src/bodies.ts`). A page built
+  before instruction files names no hash and counts as older. The note reads
+  "Out of date: built with an older format".
+- **Both**: "Out of date: N results not folded in; built with an older format".
+
+Overview shows the note with a **Rebuild** link to Contribute; its home row shows the same note, and Home has a
+**Needs a rebuild** filter beside All. While reads are outstanding the filter shows no count and
 says "Checking which pages need a rebuild…".
 
 ## What a rebuild is asked to research
@@ -343,8 +351,8 @@ kind per flow, never presenting a stated flow as enforced; a summary paragraph o
 says" for stated flows); publishers named, never "an outside source" or "a news site"; for a first page, at least
 the home page, docs index and main pages, linked repositories and the main contract's explorer page, at least 3
 outside sources, and aims of 5 lines per section and 8 proofs, without padding (a short section is explained in
-notes); and notes written afresh each run. The template is 7,086 characters, so `<PRIOR>` fits F1 and three more
-result URLs under 7,500; older results then wait for the next rebuild (the oldest are deferred first).
+notes); and notes written afresh each run. These standing rules now live in the rebuild instruction file (see
+"Instruction files" below), so the objective itself is about 800 characters plus `<PRIOR>` and the channels.
 
 ## Rebuild, edit and what the site shows
 
@@ -368,16 +376,22 @@ result URLs under 7,500; older results then wait for the next rebuild (the oldes
   `F2:L14` names file F2; an older bare `L14` names every earlier file that has it (all of them when two files
   share the id, since either may have supplied the line), so the site reads those files first (Contribute waits for
   them, and a failed read offers Refresh). The size limit below applies to that whole set.
-- **Size limit**: if `<PRIOR>` would push the objective to 7,500 characters or more, the site keeps F1 and every
-  file to reconsider first (room is reserved for them), then the newest result files that fit (the oldest are
-  deferred first), then the newest panel answers that fit in the room left. If the files to reconsider alone do
-  not fit, the rebuild is not offered. The Contribute card says how many results and answers were left out, and
-  Activity's labels come from the same list.
+- **Size limit and order**: an objective may be at most 7,900 characters (`MAX_OBJECTIVE` in `src/bodies.ts`;
+  IMD refuses more than 8,000). The room for `<PRIOR>` is 7,900 minus the rest of the objective. When everything
+  does not fit, the site includes, in this order, as much as fits (`fitPrior` in `src/model.ts`): **F1**, the page
+  shown; then the **results not folded in, newest first**; then the **files marked reconsider**; then the newest
+  panel answers that fit in the room left. A rebuild is always offered: there is no "not offered" state.
+- **What stays queued**: the Contribute card lists what was left out. A left-out result stays "Not yet folded in"
+  on Activity (labelled "Not yet folded in: left out of the next rebuild for space, which takes the newest first; a
+  later rebuild picks it up"), and a left-out
+  file to reconsider keeps its lines listed as dropped, so the next rebuild picks both up. Activity's labels come
+  from the same list.
 - **Folded in**: a result (page, sources or edit) is folded into the page shown **only** if its artifact URL
   appears in the objective of the request that produced the page shown, read from that request's body in the
   Intake's `Requested` event. Time order alone does not count. Activity labels each completed result "Shown now",
   "Folded into the page shown", or "Not yet folded in: included in the next rebuild" (or, past the size limit,
-  "Not yet folded in: too many earlier files to fit in the next rebuild, which takes the newest"). "It is given N
+  "Not yet folded in: left out of the next rebuild for space, which takes the newest first; a later rebuild picks it
+  up"). "It is given N
   earlier files" counts F1 plus the results that fit.
 - **What Record shows**: the lines of the page shown plus those of every completed sources and edit result not
   folded in. The newest such edit with an `accepted_summary` becomes the summary, marked "Edited by <payer>,
@@ -466,9 +480,70 @@ page file. The site:
   details ("Exact text", "Exact value") and in the facts table cell's tooltip. What is sent to the swarm (targets,
   rewordings, the full request) always uses the exact text.
 
+## Instruction files
+
+Everything in the rebuild and changes templates that does not change from request to request is a static text
+file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
+`scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
+never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
+Current files: `rebuild-aede2eb36737.txt` and `changes-b1e42e455312.txt`; still served: `rebuild-b280294bd61b.txt`
+and `changes-8400e6bf9d85.txt`.
+
+### Where a job fetches the instruction files
+
+The objective names each file by its **content address** at a gateway that answers a plain HTTPS GET with the
+bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `src/instructions.ts`):
+
+`https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
+
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreifo3yxlgzzxchnk4fbv6fl4bes2txkh3rsaeicmrowg5xppzdp3em?filename=rebuild-aede2eb36737.txt`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreifr4qxekuys52ty6r3swvxbb7ofn4bjrlfoanm4tafdahopbeogwy?filename=changes-b1e42e455312.txt`
+
+Why this address (all checked with `curl -sSL` on 2026-11-21):
+
+| Address tried | What came back |
+| --- | --- |
+| `https://record--test--1-identitymd-eth.ipns.dweb.link/instructions/…` (previous round) | HTTP 429, 195 bytes: "This IPFS gateway is switching to a service worker gateway only" |
+| `ipfs.io/ipns/…`, `<cid>.ipfs.dweb.link`, `….ipns.w3s.link`, `….ipns.nftstorage.link` | HTTP 429, the same service-worker notice |
+| `https://record-test-1.identitymd.eth.limo/…` | site root 200; but IMD's check refuses any objective naming it: `unsafe_brief` |
+| `https://ipfs.filebase.io/ipns/record-test-1.identitymd.eth/agents.md` (also `IdentityMD` in capitals) | HTTP 200 with the file, but the check refuses it too: `unsafe_brief` ("reads a private path on the worker's own machine") |
+| `https://ipfs.filebase.io/ipfs/bafkreic22xuzpckcnelrun7wfycqbju4skpx2o2apk6qsyh4dexheak4di` (raw CID computed from the sha256 of the published `agents.md`) | HTTP 200, `text/plain`, 52,528 bytes, sha256 `5ad5e997…015c1a`, byte for byte the published file (`gateway.pinata.cloud` gave the same) |
+
+So the published site is pinned with raw leaves: a file of one block (every instruction file is under 256 KiB) is
+served at the CID computed from its sha256, and that address can never serve other bytes. The current files
+are not published yet (the hosted version, `bafybeihiyfpu…`, predates them; the plane pins this export after the
+job), so their raw CIDs time out until then. Once this version is pinned, check them with:
+
+```sh
+curl -sSL -o rebuild.txt 'https://ipfs.filebase.io/ipfs/bafkreifo3yxlgzzxchnk4fbv6fl4bes2txkh3rsaeicmrowg5xppzdp3em?filename=rebuild-aede2eb36737.txt' -w '%{http_code}\n' && sha256sum rebuild.txt   # 200, aede2eb3…dfb23
+curl -sSL -o changes.txt 'https://ipfs.filebase.io/ipfs/bafkreifr4qxekuys52ty6r3swvxbb7ofn4bjrlfoanm4tafdahopbeogwy?filename=changes-b1e42e455312.txt' -w '%{http_code}\n' && sha256sum changes.txt  # 200, b1e42e45…1c6b6
+```
+
+The visitor's preview ("Instructions this job follows") links both the file on this site
+(`./instructions/<file>`) and the address the job fetches.
+
 ## Free request check
 
-### Suggest changes body (2026-11-20, this revision)
+### Rebuild and changes objectives with a long `<PRIOR>` (2026-11-21, this revision)
+
+`npx vite-node scripts/check-objectives.ts` builds both bodies with the site's own `rebuildBody` and `changesBody`,
+each with as many `<PRIOR>` files as the site fits under 7,900 characters, and POSTs
+`{"action":"job.open","input":<body>}` to `https://api.imd.fun/requests/check`. Subject `imd.fun`, channels
+`[{url: "https://imd.fun/", tie: "strong"}]`, file URLs `artifactUrl(n.toString(16).padStart(64, "0"))` for
+n = 1, 2, …; the changes body has one item: `context` on `F1:L1` "IMD is a swarm of agents.", note "Check how the
+protocol describes agent coordination.", link `https://imd.fun/docs/`.
+
+| Body | `<PRIOR>` | Objective | HTTP | Result (at, UTC) |
+| --- | --- | --- | --- | --- |
+| Rebuild | 69 files (7,027 characters) | 7,843 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-20T23:21:32Z) |
+| Changes | 67 files | 7,812 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-20T23:21:32Z) |
+
+Earlier the same day, the reviewer's fixture (rebuild 69 files, changes 68 files) with this address measured 7,843 and
+7,914 characters and also returned 200 with `blockers: []`; the site itself would send 67 files in that changes body,
+since 7,914 is over its 7,900 limit. The same two bodies naming the eth.limo or `/ipns/record-test-1.identitymd.eth`
+address returned `blockers: [{"code":"unsafe_brief", …}]`, which is why the content address is used.
+
+### Suggest changes body (2026-11-20, previous revision, before instruction files)
 
 `POST https://api.imd.fun/requests/check` with `{"action":"job.open","input":<exact body>}`. Each body was generated
 by `changesBody` in `src/changes.ts` (the function `src/Suggest.tsx` sends), with `<PRIOR>` of the page (`F1`) plus

@@ -26,6 +26,7 @@ import { lackedSource } from "../src/ActivityList";
 import { mergeRecord, parseChanges, parsePage } from "../src/page";
 import { settleAll } from "../src/settle";
 import { refFromId } from "../src/subject";
+import { INSTRUCTIONS } from "../src/instructions";
 import type { Activity } from "../src/useActivity";
 
 const IMD = refFromId("imd.fun");
@@ -48,7 +49,8 @@ describe("the changes body", () => {
     expect(encodeBody({ ...b, objective: "<CHANGES_OBJECTIVE>" })).toBe(
       '{"tag":{"app":"rec-test-1","kind":"changes","subject":"imd.fun"},"skill":"research-report","outputs":[{"name":"changes","path":"artifacts/changes.json","mediaType":"application/json"}],"objective":"<CHANGES_OBJECTIVE>"}',
     );
-    expect(b.objective.startsWith("Judge a visitor's proposed changes to the record of one subject: the project at imd.fun. Your full instructions are the file at https://record--test--1-identitymd-eth.ipns.dweb.link/instructions/changes-")).toBe(true);
+    expect(b.objective.startsWith("Judge a visitor's proposed changes to the record of one subject: the project at imd.fun. Your full instructions are the file at https://ipfs.filebase.io/ipfs/b")).toBe(true);
+    expect(b.objective).toContain(`?filename=${INSTRUCTIONS.changes.file}, sha256 ${INSTRUCTIONS.changes.sha256}. `);
     expect(b.objective).toContain(". Earlier results: [F1] https://api.imd.fun/artifacts/");
     expect(b.objective).toContain("Channels already known: https://imd.fun/ (tie: weak). The changes: (1) type: wrong; target: F1:L3 ");
     expect(b.objective).toContain("Whatever else: output artifacts/changes.json;");

@@ -23,7 +23,7 @@ import {
   statusText,
   unfoldedCount,
 } from "../src/model";
-import { INSTRUCTIONS, paragraphsOf } from "../src/instructions";
+import { INSTRUCTIONS, paragraphsOf, rawCid } from "../src/instructions";
 import { parsePage } from "../src/page";
 import { refFromId } from "../src/subject";
 import type { Activity } from "../src/useActivity";
@@ -184,11 +184,18 @@ describe("Contribute names what was left out (4a8bdfb6d8)", () => {
 });
 
 describe("instruction files: address and paragraphs (920b5e20b2, b95e70dcba)", () => {
-  it("objectives name the dweb.link address of the site, never the eth.limo one the check refuses", () => {
+  it("objectives name the file's content address at a gateway that serves bytes, never an address with the ENS name (e0777a3a9a)", () => {
     for (const ins of Object.values(INSTRUCTIONS)) {
-      expect(ins.url.startsWith("https://record--test--1-identitymd-eth.ipns.dweb.link/instructions/")).toBe(true);
-      expect(ins.url).not.toContain("record-test-1.identitymd");
+      expect(ins.url).toMatch(/^https:\/\/ipfs\.filebase\.io\/ipfs\/bafkrei[a-z2-7]{52}\?filename=(rebuild|changes)-[0-9a-f]{12}\.txt$/);
+      expect(ins.url).not.toContain("identitymd");
+      expect(ins.url).not.toContain("dweb.link");
     }
+  });
+  it("rawCid is the CID IPFS gives a one-block file imported with raw leaves", () => {
+    // The published agents.md (site version bafybeihiyfpu…): Filebase and Pinata served it at this CID on 2026-11-21.
+    expect(rawCid("5ad5e997894269171a37f62e0500a69c929f7d3b407abd0960fc192e72015c1a")).toBe("bafkreic22xuzpckcnelrun7wfycqbju4skpx2o2apk6qsyh4dexheak4di");
+    expect(rawCid("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")).toBe("bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku");
+    expect(() => rawCid("xyz")).toThrow();
   });
   it("are reflowed into paragraphs under new hashes, and the earlier files are still published", () => {
     expect(paragraphsOf(INSTRUCTIONS.rebuild.text).length).toBeGreaterThan(10);

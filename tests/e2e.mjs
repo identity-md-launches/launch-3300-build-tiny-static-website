@@ -14,6 +14,11 @@ import { pathToFileURL } from "node:url";
 
 const fx = JSON.parse(await readFile(resolve(process.argv[2] ?? "test/scratch/fx.json"), "utf8"));
 const out = resolve(process.argv[3] ?? "test/scratch/e2e");
+// The current instruction files (src/instructions.json) and the address a job fetches each from, as src/instructions.ts builds it.
+const MANIFEST = JSON.parse(await readFile(new URL("../src/instructions.json", import.meta.url), "utf8"));
+const RAW_INS = { rebuild: await readFile(new URL(`../public/instructions/${MANIFEST.rebuild.file}`, import.meta.url), "utf8"), changes: await readFile(new URL(`../public/instructions/${MANIFEST.changes.file}`, import.meta.url), "utf8") };
+const rawCid = (hex) => { const a = "abcdefghijklmnopqrstuvwxyz234567"; let o = "b", bits = 0, v = 0; for (const x of Buffer.from("01551220" + hex, "hex")) { v = ((v << 8) | x) & 0xffff; bits += 8; while (bits >= 5) { o += a[(v >>> (bits - 5)) & 31]; bits -= 5; } } if (bits) o += a[(v << (5 - bits)) & 31]; return o; };
+const INS_URL = (name) => `https://ipfs.filebase.io/ipfs/${rawCid(MANIFEST[name].sha256)}?filename=${MANIFEST[name].file}`;
 const { chromium } = await import(pathToFileURL(process.env.IMD_PLAYWRIGHT ?? "playwright").href);
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".md": "text/markdown" };
 const root = resolve("dist");
@@ -163,7 +168,10 @@ try {
     const body = dlg ? await page.locator("pre.body").innerText() : "";
     check(`${W} Add this project opens the first-rebuild dialog for the link's host`, dlg && /Create the page of example\.com/.test(await page.locator("#pay-title").innerText()));
     check(`${W} its tag carries the subject and it asks for the page and the logo`, /"subject": "example\.com"/.test(body) && /"kind": "add"/.test(body) && /"name": "logo"/.test(body) && /"mediaType": "image\/png"/.test(body), body.slice(0, 300));
-    check(`${W} its objective names the project`, body.includes("one subject: the project at example.com.") && body.includes("Start from the earlier results: none."));
+    // The current objective shape (job 6ef62573): the subject, the current rebuild instruction file and its hash, no prior.
+    const firstObjective = (() => { try { return String(JSON.parse(body).objective ?? ""); } catch { return ""; } })();
+    const firstNamed = firstObjective.includes(`Your full instructions are the file at ${INS_URL("rebuild")}, sha256 ${MANIFEST.rebuild.sha256}. `);
+    check(`${W} its objective names the project, the current instruction file and its hash, with no earlier results`, firstObjective.startsWith("Write the record page for one subject: the project at example.com. ") && firstNamed && firstObjective.endsWith("Earlier results: none. Channels already known: none known."), firstObjective.slice(0, 300) + " … " + firstObjective.slice(-120));
     if (dlg) await page.keyboard.press("Escape");
     // An address: the optional chain picker.
     await page.fill("#lookup", "0x1111111111111111111111111111111111111111");
@@ -287,11 +295,13 @@ try {
     check(`${W} the rebuild says the files the page dropped lines from are listed again`, /dropped lines, so 2 files they came from are listed again/.test(rb), rb.slice(0, 600));
     const objective = await page.locator("#rebuild > details > .objective").textContent();
     check(`${W} the rebuild objective marks both files reconsider, numbered after the results`, /\[F4\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[F5\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[A1\]/.test(objective ?? "") && !/at most 40 lines/.test(objective ?? ""), (objective ?? "").slice(-900));
-    const named = /Your full instructions are the file at (https:\/\/\S+\/instructions\/rebuild-([0-9a-f]{12})\.txt), sha256 ([0-9a-f]{64})\./.exec(objective ?? "");
+    const named = /Your full instructions are the file at (https:\/\/ipfs\.filebase\.io\/ipfs\/b[a-z2-7]{58}\?filename=rebuild-([0-9a-f]{12})\.txt), sha256 ([0-9a-f]{64})\./.exec(objective ?? "");
     check(`${W} the rebuild objective has the short fixed shape and names the instruction file and its hash`, !!named && /^Write the record page for one subject: /.test(objective ?? "") && named[3].startsWith(named[2]) && (objective ?? "").length <= 7900, (objective ?? "").slice(0, 400));
     const ins = await page.locator("#rebuild .instructions").innerText();
-    const link = await page.locator("#rebuild .instructions a").getAttribute("href");
-    check(`${W} the instruction preview links the same file and shows its hash and text`, !!named && link === named[1] && ins.includes(named[3]) && /Instructions this job follows/.test(ins) && /For files marked reconsider/.test(ins), ins.slice(0, 300));
+    const links = await page.locator("#rebuild .instructions a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+    check(`${W} the instruction preview links the site's file and the address the job fetches, and shows its hash and text`, !!named && named[1] === INS_URL("rebuild") && links[0] === `./instructions/${MANIFEST.rebuild.file}` && links[1] === named[1] && ins.includes(named[3]) && named[3] === MANIFEST.rebuild.sha256 && /Instructions this job follows/.test(ins) && /For files marked reconsider/.test(ins), JSON.stringify(links) + " " + ins.slice(0, 300));
+    const served = await page.evaluate(async (u) => { const r = await fetch(u); return { status: r.status, text: await r.text() }; }, links[0]);
+    check(`${W} the site serves the instruction file at its named path, byte for byte`, served.status === 200 && served.text === RAW_INS.rebuild, String(served.status));
     check(`${W} the instruction preview is split into paragraphs`, (await page.locator("#rebuild .instructions .ins-text > p").count()) > 5);
     check(`${W} the three IMD presets are gone`, !/Check: The docs price/.test(await page.locator("main").innerText()));
     await page.check('input[value="contract"]');
@@ -307,6 +317,24 @@ try {
     await page.click("text=Review the question");
     check(`${W} the web page form asks for its fields`, (await page.locator("#q-url-err").count()) === 1 && (await page.locator("#q-text-err").count()) === 1);
     check(`${W} no horizontal scroll on Contribute`, (await overflow(page)) <= 0, await wideOf(page));
+
+    // Review and submit → Read the full request: the changes objective names the current changes file and its hash.
+    await page.evaluate(() => localStorage.setItem("imd-record:v1:changes:imd.fun", JSON.stringify([{ id: "e2e-1", type: "context", target: { kind: "line", key: "line:L1", lineId: "L1", text: "IMD is a swarm of agents." }, note: "Check how the protocol describes agent coordination.", links: ["https://imd.fun/docs/"] }])));
+    await page.goto(base + "#/s/imd.fun/record");
+    await page.reload();
+    const trayBtn = await page.waitForSelector(".btn-tray", { timeout: 30000 }).then(() => true, () => false);
+    if (trayBtn) await page.click(".btn-tray");
+    const review = await page.waitForSelector(".review-read", { timeout: 10000 }).then(() => true, () => false);
+    if (review) await page.click(".review-read");
+    await page.waitForSelector("#review-body", { timeout: 10000 }).catch(() => {});
+    const cObjective = review ? (await page.locator("#review-body > .objective").textContent()) ?? "" : "";
+    const cNamed = /^Judge a visitor's proposed changes to the record of one subject: the project at imd\.fun\. Your full instructions are the file at (\S+), sha256 ([0-9a-f]{64})\./.exec(cObjective);
+    check(`${W} the changes objective names the current changes file and its hash, then the change`, !!cNamed && cNamed[1] === INS_URL("changes") && cNamed[2] === MANIFEST.changes.sha256 && /The changes: \(1\) type: context; target: F1:L1 /.test(cObjective) && cObjective.length <= 7900, cObjective.slice(0, 400));
+    const cIns = review ? await page.locator("#review-ins").innerText() : "";
+    const cLinks = review ? await page.locator("#review-ins a").evaluateAll((as) => as.map((a) => a.getAttribute("href"))) : [];
+    check(`${W} the changes preview shows "Instructions this job follows" with the file, its hash and the fetch address`, /Instructions this job follows/.test(cIns) && cIns.includes(MANIFEST.changes.sha256) && cLinks[0] === `./instructions/${MANIFEST.changes.file}` && cLinks[1] === INS_URL("changes"), JSON.stringify(cLinks) + " " + cIns.slice(0, 200));
+    if (review) await page.keyboard.press("Escape");
+    await page.evaluate(() => localStorage.removeItem("imd-record:v1:changes:imd.fun"));
 
     // Sources: every channel with its label, and the key under them.
     await page.goto(base + "#/s/imd.fun/sources");

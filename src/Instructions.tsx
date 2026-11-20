@@ -9,10 +9,14 @@ export function InstructionsBlock({ name, id }: { name: InstructionName; id?: st
       <h4 id={headingId}>Instructions this job follows</h4>
       <p className="small break">
         The job fetches this file first and checks its hash. It is part of the request.{" "}
-        <a href={ins.url} target="_blank" rel="noreferrer" className="mono">
+        <a href={ins.path} target="_blank" rel="noreferrer" className="mono">
           {ins.file}
         </a>
-        , sha256 <span className="mono">{ins.sha256}</span>
+        , sha256 <span className="mono">{ins.sha256}</span>.{" "}
+        <a href={ins.url} target="_blank" rel="noreferrer">
+          The address the job fetches it from
+        </a>{" "}
+        serves these bytes by their content address.
       </p>
       <div className="objective ins-text">
         {paragraphsOf(ins.text).map((p, i) => (

@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { artifactUrl, matchesTemplate, MAX_OBJECTIVE, parsePrior, rebuildBody, rebuildObjective, REBUILD_TEMPLATE } from "../src/bodies";
 import { changesBody, changesObjective, CHANGES_TEMPLATE, lineTarget, parseItems, type Change } from "../src/changes";
-import { INSTRUCTIONS, instructionsOf } from "../src/instructions";
+import { INSTRUCTIONS, instructionsOf, rawCid } from "../src/instructions";
 import { InstructionsBlock } from "../src/Instructions";
 import { leftOutText } from "../src/model";
 import { refFromId } from "../src/subject";
@@ -24,8 +24,10 @@ describe("instruction files", () => {
       expect(ins.file).toBe(`${name}-${ins.sha256.slice(0, 12)}.txt`);
       expect(readFileSync(`public/instructions/${ins.file}`).equals(src)).toBe(true);
       expect(sha(Buffer.from(ins.text, "utf8"))).toBe(ins.sha256);
-      // The site by its ENS name through the dweb.link subdomain gateway: IMD's check refuses the eth.limo address.
-      expect(ins.url).toBe(`https://record--test--1-identitymd-eth.ipns.dweb.link/instructions/${ins.file}`);
+      // The file's content address at a gateway that serves bytes directly (dweb.link answers 429; IMD's check refuses
+      // any address containing the ENS name), named after the published file. The site's own copy is ins.path.
+      expect(ins.url).toBe(`https://ipfs.filebase.io/ipfs/${rawCid(ins.sha256)}?filename=${ins.file}`);
+      expect(ins.path).toBe(`./instructions/${ins.file}`);
       expect(ins.text).not.toMatch(/<[A-Z]+>/);
     }
   });
@@ -58,12 +60,12 @@ describe("the rebuild objective", () => {
     expect(parsePrior(o).files).toEqual([{ n: 1, url: artifactUrl(h("a")), hash: h("a"), reconsider: false }]);
     expect(matchesTemplate(o)).toBe(true);
   });
-  it("leaves room for a long <PRIOR>: 70 earlier files fit in 7,900 characters", () => {
-    const files = Array.from({ length: 70 }, (_, i) => artifactUrl(i.toString(16).padStart(64, "0")));
+  it("leaves room for a long <PRIOR>: 69 earlier files fit in 7,900 characters", () => {
+    const files = Array.from({ length: 69 }, (_, i) => artifactUrl(i.toString(16).padStart(64, "0")));
     const b = rebuildBody({ files, answers: [] }, IMD);
     expect(b.objective.length).toBeLessThanOrEqual(MAX_OBJECTIVE);
     expect(MAX_OBJECTIVE).toBe(7900);
-    expect(parsePrior(b.objective).files.length).toBe(70);
+    expect(parsePrior(b.objective).files.length).toBe(69);
   });
 });
 
@@ -86,7 +88,8 @@ describe("what the visitor sees", () => {
     const html = renderToStaticMarkup(createElement(InstructionsBlock, { name: "rebuild" }));
     expect(html).toContain("<h4");
     expect(html).toContain("Instructions this job follows");
-    expect(html).toContain(`href="${INSTRUCTIONS.rebuild.url}"`);
+    expect(html).toContain(`href="${INSTRUCTIONS.rebuild.path}"`);
+    expect(html).toContain(`href="${INSTRUCTIONS.rebuild.url.replace(/&/g, "&amp;")}"`);
     expect(html).toContain(INSTRUCTIONS.rebuild.sha256);
     expect(html).toContain("The record has no line or claim limit.");
     for (const f of ["src/App.tsx", "src/Suggest.tsx"]) expect(readFileSync(f, "utf8")).toContain("<InstructionsBlock");

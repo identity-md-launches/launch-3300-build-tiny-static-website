@@ -6,7 +6,7 @@ import { writeFileSync } from "node:fs";
 import { INSTRUCTIONS } from "../src/instructions";
 import { MAX_OBJECTIVE } from "../src/bodies";
 import { describeSubject, refFromId, refFromInput } from "../src/subject";
-import { ACTIONS, API, IMD, INTAKE, TOPIC_COMPLETED, TOPIC_REQUESTED, APP_TAG } from "../src/config";
+import { ACTIONS, API, IMD, INTAKE, INSTRUCTIONS_GATEWAY, TOPIC_COMPLETED, TOPIC_REQUESTED, APP_TAG } from "../src/config";
 import { CHANGES_TEMPLATE, CHANGE_MAX_LINKS, NOTE_MAX, READ_MAX_LINKS, changesBody, itemsText, lineTarget, noTarget, sentenceTarget, type Change } from "../src/changes";
 import { LEGACY_PRESETS, filedUnder, questionContract, questionPage, questionPost, templateBody, SOURCE_TEMPLATE, EDIT_TEMPLATE, REBUILD_TEMPLATE, EDIT_MAX_LINKS, EDIT_MAX_TEXT, editBody, encodeBody, oracleBody, priorText, questionP4, rebuildBody, sourceBody, SOURCE_MAX_LINKS, SOURCE_MAX_URL, SOURCE_MAX_OBJECTIVE } from "../src/bodies";
 
@@ -116,10 +116,18 @@ passes, 8,001 returns \`objective: Too big: expected string to have <=8000 chara
 objectives are short and fixed, with only what varies; everything that does not change from request to request is
 a static text file on this site:
 
-- **Where they live:** \`/instructions/<name>-<first 12 hex characters of its sha256>.txt\` on this site, fetched by
-  the job at its ENS gateway address. Current files:
+- **Where they live:** \`/instructions/<name>-<first 12 hex characters of its sha256>.txt\` on this site (current:
+  \`${INSTRUCTIONS.rebuild.path}\` and \`${INSTRUCTIONS.changes.path}\`).
+- **The address in the objective** is the same file by its content address at an HTTPS gateway that answers a plain
+  GET with the bytes: \`${INSTRUCTIONS_GATEWAY}<CID>?filename=<file name>\`, where \`<CID>\` is the raw CIDv1 of the
+  file's sha256 (\`b\` + base32 of \`01 55 12 20 <digest>\`). The site is pinned with raw leaves, so each file (one
+  block) is served at that CID once the site version holding it is pinned, and the address can never serve other
+  bytes. Current files, with the exact address and hash to put in an objective:
   - rebuild: ${INSTRUCTIONS.rebuild.url}, sha256 \`${INSTRUCTIONS.rebuild.sha256}\`
   - changes: ${INSTRUCTIONS.changes.url}, sha256 \`${INSTRUCTIONS.changes.sha256}\`
+- **Why not the site's name:** an address containing the ENS name (on eth.limo or a gateway's \`/ipns/\` path) makes
+  IMD's free check refuse the objective with \`unsafe_brief\`, and dweb.link and ipfs.io answer a plain client with
+  HTTP 429 and a service-worker notice instead of the file (both seen on 2026-11-21).
 - **They never change.** A new wording gets a new file name; every old file keeps being served, so a request already
   sent can always be re-read with the instructions it named.
 - **An agent sending its own request must use the current file and its hash**, exactly as above. The site counts a

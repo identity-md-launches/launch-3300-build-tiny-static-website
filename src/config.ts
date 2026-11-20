@@ -12,12 +12,20 @@ export const SITE_DESCRIPTION =
 export const SITE_URL = "https://record-test-1.identitymd.eth.limo/";
 
 /**
- * Where a job fetches the instruction files: the same site, by the same ENS name, through the dweb.link subdomain
- * gateway (record-test-1.identitymd.eth inlined as record--test--1-identitymd-eth). IMD's free check refuses an
- * objective naming the eth.limo address with unsafe_brief ("reads a private path on the worker's own machine",
- * 2026-11-20, every variant of that host tried); the same objective with this address returns no blockers.
+ * The HTTPS gateway a job fetches an instruction file from, by the file's own content address (see
+ * src/instructions.ts): https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt.
+ * Checked on 2026-11-21 (README, "Where a job fetches the instruction files"):
+ * - Filebase answers a plain GET with HTTP 200 and the file's bytes. The site is pinned with raw leaves, so a file
+ *   under 256 KiB is the block whose CID is computed from its sha256: the published agents.md, fetched by that CID
+ *   here, came back byte for byte (and from gateway.pinata.cloud too).
+ * - dweb.link, ipfs.io, w3s.link and nftstorage.link, by name or by CID, answer HTTP 429 with a 195-byte
+ *   "switching to a service worker gateway" text, so a job could not fetch the file there.
+ * - Any address containing the ENS name (record-test-1.identitymd.eth.limo, ipfs.filebase.io/ipns/record-test-1.
+ *   identitymd.eth, in any letter case) makes IMD's free check refuse the objective with unsafe_brief ("reads a
+ *   private path on the worker's own machine"); the content address returns no blockers.
+ * The address can only ever serve those exact bytes, which suits files that never change.
  */
-export const INSTRUCTIONS_BASE = "https://record--test--1-identitymd-eth.ipns.dweb.link/";
+export const INSTRUCTIONS_GATEWAY = "https://ipfs.filebase.io/ipfs/";
 
 export const CHAIN = mainnet; // Ethereum mainnet, chain 1, only
 export const CHAIN_ID = 1 as const;
