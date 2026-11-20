@@ -1,7 +1,8 @@
 /** Suggest changes where you read: the pencil, the inline panel, the tray bar at the bottom and its review. */
 import { createContext, Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ACTIONS } from "./config";
-import { artifactUrl, MAX_OBJECTIVE } from "./bodies";
+import { artifactUrl, fitsObjective, MAX_OBJECTIVE } from "./bodies";
+import { InstructionsBlock } from "./Instructions";
 import {
   CHANGE_HINTS,
   CHANGE_MAX_LINKS,
@@ -497,7 +498,7 @@ export function planChanges(rec: Pick<RecordModel, "pageHash" | "after" | "scope
   const unplaced = new Set(targeted.filter((c) => idsOf(c.target).some((x) => !refOf(x))).map((c) => c.id));
   // Never sent with an empty target: a line or key facts row with neither a line reference nor its text.
   for (const c of changes) if ((c.target.kind === "line" || c.target.kind === "keyfact") && !c.target.text.trim() && !idsOf(c.target).some((x) => refOf(x))) unplaced.add(c.id);
-  return { body, refOf, gone, unplaced, room: roomLeft(body.objective.length, changes, refOf), over: body.objective.length >= MAX_OBJECTIVE };
+  return { body, refOf, gone, unplaced, room: roomLeft(body.objective.length, changes, refOf), over: !fitsObjective(body.objective.length) };
 }
 
 export function useChangesPlan(rec: RecordModel, list: Change[], live: Map<string, ChangeTarget | null>) {
@@ -541,7 +542,7 @@ export function TrayBar({ rec, quote, onAsk }: { rec: RecordModel; quote: Quote;
             <span className="tray-meta">
               {withSource} with a source, {list.length - withSource} without
               <span aria-hidden="true"> · </span>
-              {plan.over ? "over the 7,500-character limit" : `room for about ${plan.room} more`}
+              {plan.over ? `over the ${MAX_OBJECTIVE.toLocaleString("en-US")}-character limit` : `room for about ${plan.room} more`}
               <span aria-hidden="true"> · </span>
               <span className="mono">{quote.text}</span>
               {quote.failed && (
@@ -720,12 +721,18 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
         </ol>
         {noSource > 0 && <p className="nosource">{noSourceSummary(noSource)}</p>}
         {showBody && (
-          <pre id="review-body" className="body mono" tabIndex={0} aria-label="Request body">
-            {JSON.stringify(plan.body, null, 2)}
-          </pre>
+          <div id="review-body" className="review-body" tabIndex={0} aria-label="The full request">
+            <h4>The objective</h4>
+            <p className="objective">{plan.body.objective}</p>
+            <InstructionsBlock name="changes" id="review-ins" />
+            <h4>The request body</h4>
+            <pre className="body mono" tabIndex={0} aria-label="Request body">
+              {JSON.stringify(plan.body, null, 2)}
+            </pre>
+          </div>
         )}
         {!ready && <p className="warn">{rec.snapshot.why}</p>}
-        {plan.over && <p className="warn">The request is {plan.body.objective.length.toLocaleString("en-US")} characters, over the 7,500 the Intake takes. Remove a change or shorten a note.</p>}
+        {plan.over && <p className="warn">The request is {plan.body.objective.length.toLocaleString("en-US")} characters, over the {MAX_OBJECTIVE.toLocaleString("en-US")} this site allows. Remove a change or shorten a note.</p>}
         {held > 0 && <p className="warn">{plural(held, "change")} above need{held === 1 ? "s" : ""} your attention before you submit.</p>}
         <div className="review-foot">
           <p className="review-price">

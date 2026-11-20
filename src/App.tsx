@@ -5,6 +5,7 @@ import { readContract, waitForTransactionReceipt, writeContract } from "wagmi/ac
 import { ACTIONS, CHAIN_ID, EMPTY_SELECTOR, ERC20_ABI, ETHERSCAN, IMD, INTAKE, INTAKE_ABI, ZERO_ADDRESS } from "./config";
 import {
   MAX_OBJECTIVE,
+  fitsObjective,
   TEMPLATE_KIND,
   TEMPLATE_TITLES,
   encodeBody,
@@ -17,6 +18,7 @@ import {
   validateContract,
   validatePage,
   validateP4,
+  type ChannelTie,
   type Prior,
   type Template,
 } from "./bodies";
@@ -25,7 +27,9 @@ import { ActivityList } from "./ActivityList";
 import { ConnectSheet, config } from "./wallet";
 import { rememberSent, useActivity } from "./useActivity";
 import { holdFocus } from "./modal";
-import { planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
+import { leftOutText, planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
+import { InstructionsBlock } from "./Instructions";
+import type { InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
 import { lineAnchor } from "./format";
 import { TABS, routeOf, setLinkSubject, subjectHref, to } from "./route";
@@ -69,6 +73,8 @@ export interface Ask {
   /** What the request is (add, source, proof, statement, claim), remembered with the sent transaction. */
   kind: string;
   body: Record<string, unknown>;
+  /** The instruction file the objective names, shown under the body. */
+  instructions?: InstructionName;
   warning?: string;
   /** Runs once the request is paid and mined: the tray of changes is emptied. */
   afterSent?: () => void;
@@ -78,15 +84,16 @@ export interface Ask {
 /* ---------- Actions ---------- */
 
 /** "Rebuild the page": the research action, starting from the page shown now and everything completed after it. */
-export function rebuildAsk(prior: Prior, subject: SubjectRef, hasPage: boolean): Ask {
-  const body = rebuildBody(prior, subject);
+export function rebuildAsk(prior: Prior, subject: SubjectRef, hasPage: boolean, channels: ChannelTie[] = []): Ask {
+  const body = rebuildBody(prior, subject, channels);
   return {
     title: hasPage ? `Rebuild the page of ${subject.id}` : `Create the page of ${subject.id}`,
     subject: subject.id,
     action: ACTIONS.research,
     kind: "add",
     body,
-    warning: body.objective.length >= MAX_OBJECTIVE ? `The objective is ${body.objective.length.toLocaleString("en-US")} characters, over the ${MAX_OBJECTIVE.toLocaleString("en-US")} the Intake takes. It would be refused.` : undefined,
+    instructions: "rebuild",
+    warning: fitsObjective(body.objective.length) ? undefined : `The objective is ${body.objective.length.toLocaleString("en-US")} characters, over the ${MAX_OBJECTIVE.toLocaleString("en-US")} this site allows (IMD refuses more than 8,000). It would be refused.`,
   };
 }
 
@@ -109,8 +116,23 @@ function SnapshotNote({ rec, onRefresh, refreshing }: { rec: RecordState; onRefr
   );
 }
 
+function LeftOut({ rec }: { rec: RecordState }) {
+  const items = leftOutText(rec);
+  if (!items.length) return null;
+  return (
+    <div className="warn leftout" role="note">
+      <p>Not everything fits in one objective of {MAX_OBJECTIVE.toLocaleString("en-US")} characters, so this rebuild takes the page shown, then the newest results, then the files to reconsider. Left out this time:</p>
+      <ul className="plain">
+        {items.map((t) => (
+          <li key={t}>{t}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: Ask) => void; rec: RecordState; price: string; onRefresh: () => void; refreshing: boolean }) {
-  const ask = rebuildAsk(rec.prior, rec.subject, !!rec.page);
+  const ask = rebuildAsk(rec.prior, rec.subject, !!rec.page, rec.channels);
   const prior = priorText(rec.prior);
   const ready = rec.snapshot.ok;
   return (
@@ -133,15 +155,10 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
               {(rec.prior.reconsider?.length ?? 0) > 0 &&
                 ` The page shown dropped lines, so ${rec.prior.reconsider!.length} file${rec.prior.reconsider!.length === 1 ? "" : "s"} they came from ${rec.prior.reconsider!.length === 1 ? "is" : "are"} listed again, marked “reconsider dropped lines”: the job carries those lines forward unless one is a duplicate, off subject or replaced by the same speaker.`}
             </p>
-            {(rec.leftOut > 0 || rec.answersLeftOut > 0 || rec.reconsiderLeftOut > 0) && (
-              <p className="warn">
-                {rec.leftOut > 0 && `${rec.leftOut} older result${rec.leftOut === 1 ? " is" : "s are"} left out to keep the objective under 7,500 characters; it takes the newest that fit. `}
-                {rec.answersLeftOut > 0 && `${rec.answersLeftOut} older panel answer${rec.answersLeftOut === 1 ? " is" : "s are"} left out for the same reason. `}
-                {rec.reconsiderLeftOut > 0 && `${rec.reconsiderLeftOut} file${rec.reconsiderLeftOut === 1 ? "" : "s"} to reconsider ${rec.reconsiderLeftOut === 1 ? "is" : "are"} left out for the same reason.`}
-              </p>
-            )}
             <p className="objective">{String(ask.body.objective)}</p>
+            <InstructionsBlock name="rebuild" />
           </details>
+          <LeftOut rec={rec} />
         </>
       ) : (
         <SnapshotNote rec={rec} onRefresh={onRefresh} refreshing={refreshing} />
@@ -412,6 +429,12 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
         {ask.warning && <p className="warn">{ask.warning}</p>}
         <p className="small">The full body, sent as UTF-8 bytes:</p>
         <pre className="body mono" tabIndex={0} aria-label="Request body">{JSON.stringify(ask.body, null, 2)}</pre>
+        {ask.instructions && (
+          <details className="ins-details">
+            <summary>Instructions this job follows</summary>
+            <InstructionsBlock name={ask.instructions} id={`dialog-ins-${ask.instructions}`} />
+          </details>
+        )}
         <p className="small">Payments go to IMD and are not refunded. {needsApprove ? `Your wallet first approves exactly ${price !== null ? imd(price) : "the price"} to the Intake.` : ""}</p>
         <div className="row-actions">
           {priceFailed && price === null && (
@@ -565,9 +588,8 @@ export default function App() {
     const ref: SubjectRef = typed.address ? typed : known;
     const plan = planRebuild(mine, ref);
     if (plan.needsReads) return `The page of ${ref.id} dropped lines whose files must be read first. Open its page and rebuild it from Contribute.`;
-    if (plan.reconsiderLeftOut > 0) return `The files the page of ${ref.id} dropped lines from do not fit in one objective. Open its page to see why.`;
     if (!plan.ok) return `An earlier result of ${ref.id} could not be read yet. Open its page and use Refresh.`;
-    setAsk(rebuildAsk(plan.prior, ref, plan.hasPage));
+    setAsk(rebuildAsk(plan.prior, ref, plan.hasPage, plan.channels));
     return null;
   };
 

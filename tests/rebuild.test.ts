@@ -45,8 +45,9 @@ export const BRIEF_RULES = [
 
 describe("rebuild", () => {
   it("is the research text with the earlier jobs' rules, the brief's Tokens and Supply rows, and the JSON keys", () => {
-    const t = readFileSync("templates/rebuild.txt", "utf8").trim();
-    expect(t.startsWith(`Write the record page for one subject: <SUBJECT>. ${VISITOR} Output artifacts/page.json and artifacts/logo.png.`)).toBe(true);
+    // The standing rules now live in the instruction file; the objective names it.
+    const t = readFileSync("templates/instructions/rebuild.txt", "utf8").trim();
+    expect(t).toContain(`${VISITOR} Output artifacts/page.json and artifacts/logo.png.`);
     for (const s of [INFOBOX, SUMMARY, AMOUNTS]) expect(t).toContain(s);
     expect(t).not.toContain("imd.fun");
     // Tokens replaces Token; one Supply value per token; the Tokens value has its own 30-word limit.
@@ -61,7 +62,8 @@ describe("rebuild", () => {
     expect(t).toContain("For files marked reconsider, carry forward every line the last page dropped unless one of the reasons above applies.");
     expect(t.indexOf("The only reasons to drop are")).toBeLessThan(t.indexOf("For files marked reconsider"));
     expect(t).toContain("Include claims from outside sources such as posts and articles.");
-    expect(t).toContain("Start from the earlier results: <PRIOR>. Fetch each file.");
+    expect(t).toContain("Start from the earlier results the objective lists.");
+    expect(t).toContain("Fetch each file.");
     expect(t.indexOf(INFOBOX)).toBeLessThan(t.indexOf(SUMMARY));
     expect(RESEARCH_OBJECTIVE.length).toBeGreaterThan(0);
     for (const f of ["source.txt", "edit.txt"]) {
@@ -75,7 +77,7 @@ describe("rebuild", () => {
     );
   });
   it("adds this job's rules word for word and keeps the earlier jobs' rules: merging, proofs read more than once, plain words, claim wording, related, logo", () => {
-    const t = readFileSync("templates/rebuild.txt", "utf8").trim();
+    const t = readFileSync("templates/instructions/rebuild.txt", "utf8").trim();
     for (const s of BRIEF_RULES) expect(t).toContain(s);
     // The flows rule sits with the statement rule; the depth rule follows "Then look for what is new".
     expect(t.indexOf("Then look for what is new.")).toBeLessThan(t.indexOf("When no earlier results are supplied"));
@@ -95,10 +97,10 @@ describe("rebuild", () => {
     expect(t).not.toContain("Name the kept line in the dropped entry for an exact duplicate.");
     expect(t).not.toContain("in this order, leaving out any row no line supports");
     expect(t).not.toContain("an outside post says");
-    // Room is left for <PRIOR> and <SUBJECT> under the Intake's 7,500 characters: F1 and three more files fit.
-    expect(t.length).toBeLessThan(7100);
+    // The objective itself is short: the rules are in the instruction file, so <PRIOR> has the room.
+    expect(readFileSync("templates/rebuild.txt", "utf8").trim().length).toBeLessThan(700);
     const u = artifactUrl(H1);
-    expect(rebuildBody({ files: [u, u, u, u], answers: [] }, IMD).objective.length).toBeLessThan(7500);
+    expect(rebuildBody({ files: Array(40).fill(u), answers: [] }, IMD).objective.length).toBeLessThanOrEqual(7900);
   });
   it("keeps the research action's tag and output, and fills <PRIOR> as a numbered list", () => {
     const b = rebuildBody(PRIOR, IMD);
@@ -109,10 +111,10 @@ describe("rebuild", () => {
       { name: "logo", path: "artifacts/logo.png", mediaType: "image/png" },
     ]);
     expect(b.objective).toContain(
-      `Start from the earlier results: [F1] https://api.imd.fun/artifacts/${H1}; [F2] https://api.imd.fun/artifacts/${H2}; [A1] The docs price a job at 0.5 IMD = true, 5 of 5, https://explorer.imd.fun/jobs/j-1. Fetch each file.`,
+      `Earlier results: [F1] https://api.imd.fun/artifacts/${H1}; [F2] https://api.imd.fun/artifacts/${H2}; [A1] The docs price a job at 0.5 IMD = true, 5 of 5, https://explorer.imd.fun/jobs/j-1. Channels already known: none known.`,
     );
-    expect(rebuildBody({ files: [], answers: PRIOR.answers }, IMD).objective).toContain("Start from the earlier results: none. Fetch each file.");
-    expect(b.objective.length).toBeLessThan(7500);
+    expect(rebuildBody({ files: [], answers: PRIOR.answers }, IMD).objective).toContain("Earlier results: none. Channels already known: none known.");
+    expect(b.objective.length).toBeLessThanOrEqual(7900);
   });
   it("reads its own <PRIOR> back, so F and A numbers resolve later", () => {
     const p = parsePrior(rebuildBody(PRIOR, IMD).objective);

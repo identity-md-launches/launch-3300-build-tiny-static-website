@@ -5,9 +5,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Hex } from "viem";
+import { INSTRUCTIONS } from "../src/instructions";
 import { artifactUrl, EDIT_TEMPLATE, REBUILD_TEMPLATE, rebuildObjective, SOURCE_TEMPLATE, sourceObjective, type Prior } from "../src/bodies";
 import { accountsOf, keyFacts, provesToken } from "../src/keyfacts";
-import { droppedFileNumbers, fitPrior, planRebuild, reconsiderFiles } from "../src/model";
+import { droppedFileNumbers, fitPrior, leftOutText, planRebuild, reconsiderFiles } from "../src/model";
 import { candidateFiles, channelStatus, droppedLines, parsePage, type PriorLines } from "../src/page";
 import { refFromId } from "../src/subject";
 import type { TaggedRequest } from "../src/chain";
@@ -73,48 +74,68 @@ describe("the record has no line limit in the parsers (52acaff0)", () => {
 // dc28a9b3 asked to merge only exact duplicates; this job's brief (MERGING IS NOT DROPPING) replaces that rule.
 describe("the rebuild objective merges lines that say the same thing (replaces dc28a9b3)", () => {
   it("merges across files, speakers and dates; a merged line is carried, not dropped", () => {
-    expect(REBUILD_TEMPLATE).toContain("Merge lines that say the same thing into ONE line, even across files, speakers or dates; it lists every origin in from and speaker in by, counts as carried, and its origins stay out of dropped.");
-    expect(REBUILD_TEMPLATE).not.toContain("Merge only exact duplicates of the same attributed line.");
-    expect(REBUILD_TEMPLATE).toContain("Carry every earlier line forward unless a reason to drop applies.");
-    expect(REBUILD_TEMPLATE).toContain("The only reasons to drop are: not about the subject, or replaced by a newer statement from the same speaker.");
+    expect(INSTRUCTIONS.rebuild.text).toContain("Merge lines that say the same thing into ONE line, even across files, speakers or dates; it lists every origin in from and speaker in by, counts as carried, and its origins stay out of dropped.");
+    expect(INSTRUCTIONS.rebuild.text).not.toContain("Merge only exact duplicates of the same attributed line.");
+    expect(INSTRUCTIONS.rebuild.text).toContain("Carry every earlier line forward unless a reason to drop applies.");
+    expect(INSTRUCTIONS.rebuild.text).toContain("The only reasons to drop are: not about the subject, or replaced by a newer statement from the same speaker.");
     expect(readFileSync("templates/rebuild.txt", "utf8").trim()).toBe(REBUILD_TEMPLATE);
   });
 });
 
-describe("files to reconsider keep their room in <PRIOR> (8fe1a504)", () => {
+describe("what fits in <PRIOR>: the page shown, the newest results, then the files to reconsider (replaces 8fe1a504)", () => {
   const ref = refFromId("example.com");
   const measure = (p: Prior) => rebuildObjective(p, ref).length;
   const f1 = artifactUrl(h("f"));
   const old = artifactUrl(h("1"));
-  const later = Array.from({ length: 60 }, (_, i) => ({ id: String(i), url: artifactUrl(i.toString(16).padStart(64, "0")) }));
-  it("the reviewer's case: 60 later results and one file to reconsider; ordinary files give way, newest kept", () => {
-    const fit = fitPrior(f1, later, [], measure, [old]);
+  const later = (n: number) => Array.from({ length: n }, (_, i) => ({ id: String(i), url: artifactUrl(i.toString(16).padStart(64, "0")) }));
+  it("60 later results and one file to reconsider all fit in 7,900 characters", () => {
+    const fit = fitPrior(f1, later(60), [], measure, [old]);
     expect(fit.prior.reconsider).toEqual([old]);
+    expect(fit.leftOut).toBe(0);
     expect(fit.reconsiderLeftOut).toBe(0);
-    expect(measure(fit.prior)).toBeLessThan(7500);
+    expect(measure(fit.prior)).toBeLessThanOrEqual(7900);
     expect(rebuildObjective(fit.prior, ref)).toContain(`${old} (reconsider dropped lines)`);
-    // The newest results are the ones kept.
-    expect(fit.prior.files.at(-1)).toBe(later.at(-1)!.url);
-    expect(fit.included.has("0")).toBe(false);
-    expect(fit.leftOut).toBe(60 - fit.included.size);
   });
-  it("planRebuild with 60 later sources results includes the marked file and stays offered", () => {
+  it("past the room, the newest results are kept first and the file to reconsider is left out, never the page shown", () => {
+    const rs = later(150);
+    const fit = fitPrior(f1, rs, [], measure, [old]);
+    expect(fit.prior.files[0]).toBe(f1);
+    expect(fit.included.has("149")).toBe(true);
+    expect(fit.included.has("0")).toBe(false);
+    expect(fit.leftOut).toBe(150 - fit.included.size);
+    expect(fit.leftOut).toBeGreaterThan(0);
+    expect(fit.reconsiderLeftOut).toBe(1);
+    expect(fit.prior.reconsider).toBeUndefined();
+    expect(measure(fit.prior)).toBeLessThanOrEqual(7900);
+    // Listed in time order after F1: the oldest included result first, the newest last.
+    expect(fit.prior.files.at(-1)).toBe(rs.at(-1)!.url);
+  });
+  it("planRebuild stays offered when the files to reconsider do not fit", () => {
     const shownPage = JSON.stringify({ subject: { name: "Ex" }, lines: [{ id: "L1", section: "money", text: "x", kind: "claim", by: "b", from: ["F1:L1"] }], dropped: [{ id: "F1:L2", why: "space" }] });
     const oldAct = act("add", { block: 100, hash: h("1"), page: JSON.stringify({ subject: { name: "Ex" }, lines: [] }) });
     const shown = act("add", { block: 200, hash: h("f"), page: shownPage, objective: `Start from the earlier results: [F1] ${old}. Fetch each file.` });
-    const after = Array.from({ length: 60 }, (_, i) => act("source", { block: 300 + i * 10, hash: i.toString(16).padStart(64, "0") }));
+    const after = Array.from({ length: 150 }, (_, i) => act("source", { block: 300 + i * 10, hash: i.toString(16).padStart(64, "0") }));
     const plan = planRebuild([oldAct, shown, ...after], ref);
-    expect(plan.prior.reconsider).toEqual([old]);
-    expect(plan.reconsiderLeftOut).toBe(0);
     expect(plan.ok).toBe(true);
-    expect(measure(plan.prior)).toBeLessThan(7500);
+    expect(plan.reconsiderLeftOut).toBe(1);
+    expect(plan.leftOut).toBeGreaterThan(0);
+    expect(measure(plan.prior)).toBeLessThanOrEqual(7900);
+    expect(leftOutText(plan)).toEqual([
+      `${plan.leftOut} older results: they stay “Not yet folded in”, and a later rebuild picks them up.`,
+      "1 file to reconsider: its dropped lines stay listed as dropped, and a later rebuild reconsiders it.",
+    ]);
+    // With fewer results the marked file fits and is listed.
+    const small = planRebuild([oldAct, shown, ...after.slice(0, 60)], ref);
+    expect(small.prior.reconsider).toEqual([old]);
+    expect(leftOutText(small)).toEqual([]);
   });
-  it("when the files to reconsider alone do not fit, the rebuild is not offered", () => {
-    const tooMany = Array.from({ length: 40 }, (_, i) => artifactUrl((i + 100).toString(16).padStart(64, "0")));
-    const fit = fitPrior(f1, later, [], measure, tooMany);
+  it("many files to reconsider: as many as fit, and the rebuild is still offered", () => {
+    const tooMany = Array.from({ length: 100 }, (_, i) => artifactUrl((i + 100).toString(16).padStart(64, "0")));
+    const fit = fitPrior(f1, later(10), [], measure, tooMany);
+    expect(fit.included.size).toBe(10);
     expect(fit.reconsiderLeftOut).toBeGreaterThan(0);
-    expect(fit.included.size).toBe(0);
-    expect(measure(fit.prior)).toBeLessThan(7500);
+    expect(fit.prior.reconsider!.length).toBe(100 - fit.reconsiderLeftOut);
+    expect(measure(fit.prior)).toBeLessThanOrEqual(7900);
   });
 });
 
@@ -152,11 +173,11 @@ describe("a legacy bare dropped id finds its file (45192b1a)", () => {
 
 describe("the jobs' statement rule is the site's label rule (1154ad1b)", () => {
   it("rebuild, sources and edit objectives make Own domain and tie strong channels statements, nothing else", () => {
-    for (const t of [REBUILD_TEMPLATE, SOURCE_TEMPLATE, EDIT_TEMPLATE]) {
+    for (const t of [INSTRUCTIONS.rebuild.text, SOURCE_TEMPLATE, EDIT_TEMPLATE]) {
       expect(t).not.toMatch(/tie (is )?strong or weak/);
       expect(t).toContain("on the subject's domain or a subdomain of it");
     }
-    expect(REBUILD_TEMPLATE).toContain("A line is a statement only if published on a listed channel on the subject's domain or a subdomain of it, or with tie strong; anything else is a claim.");
+    expect(INSTRUCTIONS.rebuild.text).toContain("A line is a statement only if published on a listed channel on the subject's domain or a subdomain of it, or with tie strong; anything else is a claim.");
     const o = sourceObjective(["https://docs.imd.fun/about"], [{ url: "https://docs.imd.fun", tie: "none" }], "", refFromId("imd.fun"));
     expect(o).toContain("If the publisher is a listed channel on the subject's domain or a subdomain of it, or a listed channel with tie strong, its lines have kind statement;");
   });
@@ -287,7 +308,7 @@ describe("an ambiguous bare dropped id reconsiders every candidate file (32496e5
     expect(objective.match(/reconsider dropped lines/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
   });
   it("the size gate still applies to the candidate set", () => {
-    const many = Array.from({ length: 40 }, (_, i) => artifactUrl((i + 100).toString(16).padStart(64, "0")));
+    const many = Array.from({ length: 100 }, (_, i) => artifactUrl((i + 100).toString(16).padStart(64, "0")));
     const fit = fitPrior(artifactUrl(h("f")), [], [], (p) => rebuildObjective(p, ref).length, many);
     expect(fit.reconsiderLeftOut).toBeGreaterThan(0);
   });

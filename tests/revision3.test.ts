@@ -145,7 +145,7 @@ describe("e1648bd6: every row target carries its file number and line id", () =>
     const fit = fitChangesPrior("page", urls.map((url, i) => ({ id: String(i), url })), [], [urls[0]!, urls[2]!], (p) => p.files.length * 4000);
     expect(fit.prior.files).toEqual(["page"]);
     expect(fit.missing.sort()).toEqual([urls[0], urls[2]].sort());
-    const roomy = fitChangesPrior("page", urls.map((url, i) => ({ id: String(i), url })), [], [urls[0]!], (p) => p.files.length * 2600);
+    const roomy = fitChangesPrior("page", urls.map((url, i) => ({ id: String(i), url })), [], [urls[0]!], (p) => p.files.length * 3000);
     expect(roomy.prior.files).toEqual(["page", urls[0]]);
     expect(roomy.missing).toEqual([]);
   });

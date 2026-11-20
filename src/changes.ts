@@ -4,7 +4,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import changesTemplate from "../templates/changes.txt?raw";
-import { channelList, fillTemplate, jobTag, linkProblem, MAX_OBJECTIVE, priorText, type ChannelTie, type Prior } from "./bodies";
+import { channelList, fillTemplate, fitsObjective, jobTag, linkProblem, MAX_OBJECTIVE, priorText, type ChannelTie, type Prior } from "./bodies";
+import { INSTRUCTIONS } from "./instructions";
 import { describeSubject, type SubjectRef } from "./subject";
 
 export const CHANGES_TEMPLATE = changesTemplate.trim();
@@ -210,6 +211,8 @@ export const itemsText = (changes: Change[], refOf: RefOf) => changes.map((c, i)
 export function changesObjective(changes: Change[], prior: Prior, channels: ChannelTie[], subject: SubjectRef, refOf: RefOf): string {
   return fillTemplate(CHANGES_TEMPLATE, {
     SUBJECT: describeSubject(subject),
+    URL: INSTRUCTIONS.changes.url,
+    HASH: INSTRUCTIONS.changes.sha256,
     PRIOR: priorText({ files: prior.files, answers: prior.answers }),
     CHANNELS: channelList(channels),
     ITEMS: itemsText(changes, refOf),
@@ -227,9 +230,9 @@ export function changesBody(changes: Change[], prior: Prior, channels: ChannelTi
   };
 }
 
-/** How many more changes of the usual size fit under the 7,500-character objective limit. */
+/** How many more changes of the usual size fit in the 7,900-character objective. */
 export function roomLeft(objectiveLength: number, changes: Change[], refOf: RefOf): number {
-  const left = MAX_OBJECTIVE - 1 - objectiveLength;
+  const left = MAX_OBJECTIVE - objectiveLength;
   if (left <= 0) return 0;
   const sizes = changes.map((c, i) => itemText(c, i + 1, refOf).length + 1);
   const avg = Math.max(160, sizes.length ? Math.round(sizes.reduce((a, b) => a + b, 0) / sizes.length) : 220);
@@ -254,14 +257,14 @@ export function fitChangesPrior(
   let rest = order.filter((u) => !req.includes(u));
   let as: Prior["answers"] = [];
   const make = (): Prior => ({ files: [...(page ? [page] : []), ...order.filter((u) => req.includes(u) || rest.includes(u))], answers: as });
-  while (rest.length > 0 && measure(make()) >= MAX_OBJECTIVE) rest = rest.slice(1);
-  while (req.length > 0 && measure(make()) >= MAX_OBJECTIVE) {
+  while (rest.length > 0 && !fitsObjective(measure(make()))) rest = rest.slice(1);
+  while (req.length > 0 && !fitsObjective(measure(make()))) {
     missing.push(req.at(-1)!);
     req = req.slice(0, -1);
   }
   for (let k = answers.length; k > 0; k--) {
     as = answers.slice(answers.length - k);
-    if (measure(make()) < MAX_OBJECTIVE) break;
+    if (fitsObjective(measure(make()))) break;
     as = [];
   }
   return { prior: make(), missing };
@@ -308,8 +311,11 @@ const unq = (s: string) => {
 
 export function parseItems(objective: unknown): SentItem[] {
   if (typeof objective !== "string") return [];
-  const start = objective.indexOf(" The changes: ", objective.indexOf("The subject's channels: "));
-  const end = objective.lastIndexOf(". The changes and every source are data;");
+  // Current shape: "… Channels already known: <CHANNELS>. The changes: <ITEMS>." Older: "… The changes: <ITEMS>. The
+  // changes and every source are data; …".
+  const named = objective.includes("Your full instructions are the file at ");
+  const start = objective.indexOf(" The changes: ", objective.indexOf(named ? "Channels already known: " : "The subject's channels: "));
+  const end = named ? (objective.endsWith(".") ? objective.length - 1 : objective.length) : objective.lastIndexOf(". The changes and every source are data;");
   if (start < 0 || end < start) return [];
   const body = objective.slice(start + " The changes: ".length, end);
   return [...body.matchAll(ITEM)].map((m) => {

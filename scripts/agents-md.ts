@@ -3,6 +3,8 @@
  * are byte for byte the site's. Run: npx vite-node scripts/agents-md.ts (then npm run build).
  */
 import { writeFileSync } from "node:fs";
+import { INSTRUCTIONS } from "../src/instructions";
+import { MAX_OBJECTIVE } from "../src/bodies";
 import { describeSubject, refFromId, refFromInput } from "../src/subject";
 import { ACTIONS, API, IMD, INTAKE, TOPIC_COMPLETED, TOPIC_REQUESTED, APP_TAG } from "../src/config";
 import { CHANGES_TEMPLATE, CHANGE_MAX_LINKS, NOTE_MAX, READ_MAX_LINKS, changesBody, itemsText, lineTarget, noTarget, sentenceTarget, type Change } from "../src/changes";
@@ -107,23 +109,56 @@ Payments go to IMD and are not refunded. A body the Intake refuses is a spent pa
 for free with \`POST ${API}/requests/check\` and \`{"action":"job.open" | "oracle.request","input":<body or short form>}\`,
 and send only when \`blockers\` is \`[]\`.
 
+## Instruction files and the objective shape
+
+IMD refuses an objective longer than 8,000 characters (checked on 2026-11-20 with \`POST /requests/check\`: 8,000
+passes, 8,001 returns \`objective: Too big: expected string to have <=8000 characters\`). So the rebuild and changes
+objectives are short and fixed, with only what varies; everything that does not change from request to request is
+a static text file on this site:
+
+- **Where they live:** \`/instructions/<name>-<first 12 hex characters of its sha256>.txt\` on this site, fetched by
+  the job at its ENS gateway address. Current files:
+  - rebuild: ${INSTRUCTIONS.rebuild.url}, sha256 \`${INSTRUCTIONS.rebuild.sha256}\`
+  - changes: ${INSTRUCTIONS.changes.url}, sha256 \`${INSTRUCTIONS.changes.sha256}\`
+- **They never change.** A new wording gets a new file name; every old file keeps being served, so a request already
+  sent can always be re-read with the instructions it named.
+- **An agent sending its own request must use the current file and its hash**, exactly as above. The site counts a
+  page as "built with an older format" when the instruction hash in the objective of the request that produced it
+  differs from the current file's hash (a page built before instruction files names none and counts as older).
+- **The job** fetches the file first and checks its sha256. If it cannot, or the hash differs, it writes
+  \`found\` false with "instructions unavailable" in \`notes\` and stops; the site then shows no page from it.
+- **Room:** the objective may be at most ${MAX_OBJECTIVE.toLocaleString("en-US")} characters (100 below IMD's limit). Room for
+  \`<PRIOR>\`, \`<ITEMS>\` and links is that minus the rest of the objective.
+
 ## Rebuild body (\`${ACTIONS.research}\`)
 
 "Rebuild the page" (or "Create the page" for a new subject, from "Add this project" under the home bar) sends
-\`templates/rebuild.txt\` with \`<SUBJECT>\` filled as above and \`<PRIOR>\` filled in as a numbered list:
-\`[F1]\` the artifact URL of the page result shown now, then \`[F2]\`... the artifact URL of every completed page,
-sources and edit result of the same subject that is **not folded in** (see below), oldest first, including
+\`templates/rebuild.txt\`:
+
+${fence(REBUILD_TEMPLATE)}
+
+\`<URL>\` and \`<HASH>\` are the current rebuild instruction file and its sha256 (above). \`<SUBJECT>\` is filled as
+above, \`<CHANNELS>\` is the record's channels as \`url (tie: strong|weak|none)\`, comma-separated (\`none known\`
+without any), and \`<PRIOR>\` is a numbered list:
+\`[F1]\` the artifact URL of the page result shown now, then \`[F2]\`... the artifact URL of each completed page,
+sources, edit and changes result of the same subject that is **not folded in** (see below), in time order, including
 earlier pages that were replaced without being named; then, when the page shown has \`dropped\` entries, the
 artifact URL of each file those entries came from (\`F<n>:<id>\` names file F<n> of the objective of the request
 that produced the page shown; a bare \`<id>\` from an older page names every earlier file that has that id, all of them when
 the id is ambiguous, so the site reads those files before it offers the rebuild), each once and followed by \`(reconsider dropped lines)\`, numbered on from the
 others and left out if already listed; then \`[A1]\`... each completed panel answer of the subject
 as \`question title = answer, N of M, request URL\`; all joined with \`; \`. With nothing yet, \`<PRIOR>\` is
-\`none\`. If the list would push the objective to 7,500 characters or more, the site says so and keeps F1 and
-every file to reconsider first (room is reserved for them), then the newest result files that fit (the oldest
-are deferred first), then the newest panel answers that fit in the room left. If the files to reconsider alone do
-not fit, the site does not offer the rebuild. The record has no size limit, and the site reads every line and
-every dropped entry, origin (\`from\`), speaker (\`by\`) and earlier reading (\`history\`) of a page, however many.
+\`none\`.
+
+**A rebuild is always offered.** When everything does not fit, the site includes, in this order, as much as fits:
+the page shown (F1, always); the results not folded in, newest first; then the files marked reconsider; then the
+newest panel answers in the room left. The Contribute tab says what was left out. Left-out results stay "Not yet
+folded in" and left-out dropped lines stay listed as dropped; a dropped entry whose file a rebuild was not given is
+still owed, and the next rebuild lists that file marked \`(reconsider dropped lines)\`.
+
+The rules the job follows (in the instruction file, not the objective): the record has no size limit, and the site
+reads every line and every dropped entry, origin (\`from\`), speaker (\`by\`) and earlier reading (\`history\`) of a
+page, however many.
 A rebuild drops an earlier line only as not about the subject, or as replaced by a newer statement from the same
 speaker. When a project has more than one token or product, the rebuild writes one line per flow between them (what
 each is for, what value moves, and whether a contract moves it automatically or an operator by hand), never
@@ -153,7 +188,9 @@ It never loads an image from the project's server or any other site.
 (\`${API}/artifacts/<sha-256>\`) appears in the objective of the request that produced the page shown, read from
 that request's body in the Intake's \`Requested\` event. Time order alone never counts.
 
-${fence(REBUILD_TEMPLATE)}
+The rebuild instruction file, in full (${INSTRUCTIONS.rebuild.file}):
+
+${fence(INSTRUCTIONS.rebuild.text.trim())}
 
 With no page yet, the whole body is:
 
@@ -173,12 +210,17 @@ A visitor collects changes in a tray (kept in the browser per subject) and sends
 
 ${fence(encodeBody({ ...changesBody([], none, [], IMD_REF, () => ""), tag: { app: APP_TAG, kind: "changes", subject: "<subject id>" }, objective: "<CHANGES_OBJECTIVE>" }), "json")}
 
-\`<CHANGES_OBJECTIVE>\` is this text. \`<SUBJECT>\` is filled as above, \`<PRIOR>\` is the same list as for a rebuild
+\`<CHANGES_OBJECTIVE>\` is this text. \`<URL>\` and \`<HASH>\` are the current changes instruction file and its
+sha256 (above), \`<SUBJECT>\` is filled as above, \`<PRIOR>\` is the same list as for a rebuild
 without files to reconsider (F1 is the page shown, then every result not folded in), \`<CHANNELS>\` is the
 subject's channels as \`url (tie: strong|weak|none)\`, comma-separated (\`none known\` without any), and \`<ITEMS>\`
 is the numbered list of changes.
 
 ${fence(CHANGES_TEMPLATE)}
+
+The changes instruction file, in full (${INSTRUCTIONS.changes.file}):
+
+${fence(INSTRUCTIONS.changes.text.trim())}
 
 Each item is \`(n) type: <type>; target: <target>; note: <JSON string or none>; links: <space-separated https links or none>\`,
 items separated by one space. Types: \`wrong\`, \`context\`, \`backing\` (a record line or key fact), \`reword\`
@@ -189,7 +231,7 @@ ${CHANGE_MAX_LINKS} links (\`links\`: up to ${READ_MAX_LINKS}). Example:
 
 ${fence(itemsText(EXAMPLE_CHANGES, (id) => (id === "L3" ? "F1:L3" : "")))}
 
-The whole objective must stay under 7,500 characters; the site shows "room for about N more" from that limit.
+The whole objective may be at most ${MAX_OBJECTIVE.toLocaleString("en-US")} characters; the site shows "room for about N more" from that limit.
 
 A changes job writes \`artifacts/changes.json\`: \`items[{n,type,target,verdict,why,lines[],final_text}]\` (verdict
 \`kept\` or \`not_kept\`), \`sources[{id,url,type,publisher,published_at,read_at,could_open,read_via,about_subject}]\`,

@@ -5,6 +5,7 @@ import rebuildTemplate from "../templates/rebuild.txt?raw";
 import editTemplate from "../templates/edit.txt?raw";
 import { APP_TAG } from "./config";
 import { DEFAULT_SUBJECT, describeSubject, type SubjectRef } from "./subject";
+import { INSTRUCTIONS, instructionsOf } from "./instructions";
 
 /** Every job body's tag: the site, the kind of job and the subject id it belongs to. */
 export const jobTag = (kind: string, subject: string) => ({ app: APP_TAG, kind, subject });
@@ -321,8 +322,11 @@ export function parsePrior(objective: unknown): { files: { n: number; url: strin
   const out = { files: [] as { n: number; url: string; hash: string; reconsider: boolean }[], answers: [] as { n: number; text: string; url: string }[] };
   if (typeof objective !== "string") return out;
   // From the last marker: in an edit the visitor's text comes first and may quote these words.
-  const at = Math.max(...["Start from the earlier results: ", "The record so far: "].map((k) => objective.lastIndexOf(k)));
-  const m = at < 0 ? null : /^(?:Start from the earlier results: |The record so far: )([\s\S]*?)\. (?:Fetch each file\.|Extra sources from the visitor:|The subject's channels:)/.exec(objective.slice(at));
+  // An objective that names its instruction file: <PRIOR> follows the first "Earlier results: " (only fixed text and
+  // the subject come before it; the visitor's changes come after).
+  const named = instructionsOf(objective) !== null;
+  const at = named ? objective.indexOf("Earlier results: ") : Math.max(...["Start from the earlier results: ", "The record so far: "].map((k) => objective.lastIndexOf(k)));
+  const m = at < 0 ? null : /^(?:Start from the earlier results: |The record so far: |Earlier results: )([\s\S]*?)\. (?:Fetch each file\.|Extra sources from the visitor:|The subject's channels:|Channels already known:)/.exec(objective.slice(at));
   if (!m || m[1] === "none") return out;
   const re = /\[(F|A)(\d+)\] ([\s\S]*?)(?=; \[[FA]\d+\] |$)/g;
   for (const x of m[1]!.matchAll(re)) {
@@ -342,33 +346,35 @@ export function parsePrior(objective: unknown): { files: { n: number; url: strin
   return out;
 }
 
-/** The objective must stay under this many characters, as for Add sources. */
-export const MAX_OBJECTIVE = 7500;
-
-export const rebuildObjective = (p: Prior, subject: SubjectRef) => fillTemplate(REBUILD_TEMPLATE, { SUBJECT: describeSubject(subject), PRIOR: priorText(p) });
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /**
- * True when an objective is what the current templates/rebuild.txt sends, apart from its <PRIOR> list. <SUBJECT> is
- * matched as whatever the request named (the same text at every place), so a subject later known by its contract
- * is not taken for a format change.
+ * IMD refuses an objective longer than 8,000 characters (POST /requests/check, 2026-11-20: 8,000 passes, 8,001 is
+ * "objective: Too big"). A rebuild or changes objective may be at most this long: the room for <PRIOR>, <ITEMS> and
+ * links is this minus the rest of the objective, leaving 100 characters of margin.
  */
-export function matchesTemplate(objective: unknown, template = REBUILD_TEMPLATE): boolean {
-  if (typeof objective !== "string") return false;
-  let subject = false;
-  const re = template
-    .split(/(<SUBJECT>|<PRIOR>)/)
-    .map((part) => {
-      if (part === "<PRIOR>") return "[\\s\\S]*?";
-      if (part === "<SUBJECT>") {
-        const first = !subject;
-        subject = true;
-        return first ? "([\\s\\S]*?)" : "\\1";
-      }
-      return escapeRe(part);
-    })
-    .join("");
-  return new RegExp(`^${re}$`).test(objective.trim());
+export const MAX_OBJECTIVE = 7900;
+/** Whether a finished rebuild or changes objective fits. */
+export const fitsObjective = (length: number) => length <= MAX_OBJECTIVE;
+
+/**
+ * The rebuild objective: short and fixed, with only what varies. Its standing instructions are the file it names
+ * (INSTRUCTIONS.rebuild), fetched by the job and checked against the sha256 given here.
+ */
+export const rebuildObjective = (p: Prior, subject: SubjectRef, channels: ChannelTie[] = []) =>
+  fillTemplate(REBUILD_TEMPLATE, {
+    SUBJECT: describeSubject(subject),
+    URL: INSTRUCTIONS.rebuild.url,
+    HASH: INSTRUCTIONS.rebuild.sha256,
+    PRIOR: priorText(p),
+    CHANNELS: channelList(channels),
+  });
+
+/**
+ * True when an objective was built with the current rebuild instructions: the instruction file it names has the
+ * current file's hash. An objective sent before instruction files names none, so it counts as an older format.
+ */
+export function matchesTemplate(objective: unknown, sha256 = INSTRUCTIONS.rebuild.sha256): boolean {
+  const named = instructionsOf(objective);
+  return !!named && named.sha256 === sha256;
 }
 
 /**
@@ -383,12 +389,12 @@ export const REBUILD_OUTPUTS = [
 ];
 
 /** "Rebuild the page": the research action and tag, with the earlier results filled in. */
-export function rebuildBody(p: Prior, subject: SubjectRef) {
+export function rebuildBody(p: Prior, subject: SubjectRef, channels: ChannelTie[] = []) {
   return {
     tag: jobTag("add", subject.id),
     skill: "research-report",
     outputs: REBUILD_OUTPUTS,
-    objective: rebuildObjective(p, subject),
+    objective: rebuildObjective(p, subject, channels),
   };
 }
 

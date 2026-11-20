@@ -1,4 +1,5 @@
 /** One block per finding of the second review of this job (finding ids in each describe). */
+import { INSTRUCTIONS } from "../src/instructions";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { findSubject, matchesQuery, parseLookup, repeatCount, repeatsOf, type Findable } from "../src/lookup";
@@ -145,9 +146,10 @@ describe("a first rebuild with no icon can satisfy both declared outputs (d28f6f
     const body = rebuildBody({ files: [], answers: [], reconsider: [] } as never, refFromId("137:0x1111111111111111111111111111111111111111"));
     expect(body.outputs).toEqual(REBUILD_OUTPUTS);
     expect(body.outputs.map((o) => o.path)).toEqual(["artifacts/page.json", "artifacts/logo.png"]);
-    expect(body.objective).toContain("Output artifacts/page.json and artifacts/logo.png.");
-    expect(body.objective).toContain("set logo to its URL and the time; else write logo.png as a 1 by 1 transparent PNG and leave logo out.");
-    expect(body.objective).not.toContain("artifacts/logo.png if found");
+    expect(body.objective).toContain("Whatever else: output artifacts/page.json and artifacts/logo.png;");
+    expect(INSTRUCTIONS.rebuild.text).toContain("Output artifacts/page.json and artifacts/logo.png.");
+    expect(INSTRUCTIONS.rebuild.text).toContain("set logo to its URL and the time; else write logo.png as a 1 by 1 transparent PNG and leave logo out.");
+    expect(INSTRUCTIONS.rebuild.text).not.toContain("artifacts/logo.png if found");
   });
   it("the site shows the logo file only when page.logo is present", () => {
     const src = readFileSync("src/useActivity.ts", "utf8");

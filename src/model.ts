@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { ACTIONS } from "./config";
-import { artifactUrl, matchesTemplate, MAX_OBJECTIVE, parsePrior, rebuildObjective, type Prior, type PriorAnswer } from "./bodies";
+import { artifactUrl, fitsObjective, matchesTemplate, parsePrior, rebuildObjective, type ChannelTie, type Prior, type PriorAnswer } from "./bodies";
 import { completedBefore } from "./chain";
 import { fetchArtifact } from "./api";
 import { jobLink, payerName } from "./format";
@@ -119,6 +119,8 @@ export interface Core {
   scope: LineScope;
   sections: { section: string; rows: RecordRow[] }[];
   counts: ReturnType<typeof countKinds>;
+  /** Dropped entries of earlier pages whose files a rebuild was not given for space: owed to the next rebuild. */
+  carried: CarriedDrop[];
 }
 
 export function coreOf(items: Activity[]): Core {
@@ -136,7 +138,8 @@ export function coreOf(items: Activity[]): Core {
   // also when a rebuild has since carried that line forward under another id.
   const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective) };
   const sections = applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), scope);
-  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest), after, jobs, scope, sections, counts: countKinds(sections) };
+  const carried = carriedDrops(done.filter((a) => isPageJob(a.req) && a.page));
+  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest), after, jobs, scope, sections, counts: countKinds(sections), carried };
 }
 
 /** A completed panel request with an answer: one of the A1… a rebuild is given. */
@@ -212,10 +215,11 @@ export function reconsiderFiles(
 }
 
 /**
- * Keeps <PRIOR> under 7,500 characters. F1 always, then every file to reconsider (they are required: room is
- * reserved for them before anything else), then the newest results that fit (oldest deferred first), then the
- * newest panel answers in the room left. reconsiderLeftOut > 0 means the files to reconsider alone do not fit;
- * the rebuild is then not offered. Returns which results made it in.
+ * Fills <PRIOR> with as much as fits in the 7,900-character objective, in this order: the page shown (F1, always);
+ * the results not folded in, newest first; then the files marked reconsider (the files the dropped lines came
+ * from), then the newest panel answers in the room left. A rebuild is always offered: whatever does not fit is left
+ * out and counted, so Contribute can say so, and stays "Not yet folded in" (or listed as dropped) for the next one.
+ * Files are listed in time order: F1, the included results oldest first, then the marked files.
  */
 export function fitPrior(
   page: string | null,
@@ -225,28 +229,83 @@ export function fitPrior(
   reconsider: string[] = [],
 ): { prior: Prior; included: Set<string>; leftOut: number; answersLeftOut: number; reconsiderLeftOut: number } {
   const wanted = page ? reconsider.filter((u, i) => u !== page && reconsider.indexOf(u) === i) : [];
-  let rc: string[] = [...wanted];
-  // A result that is also a file to reconsider is listed once, marked.
-  let rs = results.filter((r) => !rc.includes(r.url));
-  const offered = rs.length;
+  // A result that is also a file to reconsider is listed once, as a result, marked.
+  const rs = results.filter((r) => r.url !== page);
+  const inRs = new Set<string>();
+  const inRc = new Set<string>();
   let as: PriorAnswer[] = [];
-  const make = (): Prior => ({ files: [...(page ? [page] : []), ...rs.map((r) => r.url)], answers: as, ...(rc.length ? { reconsider: rc } : {}) });
-  // Ordinary results give way first, oldest first, so the files to reconsider keep their room.
-  while (rs.length > 0 && measure(make()) >= MAX_OBJECTIVE) rs = rs.slice(1);
-  // Only when the files to reconsider alone do not fit is one left out, and then the rebuild is held back.
-  while (rc.length > 0 && measure(make()) >= MAX_OBJECTIVE) rc = rc.slice(0, -1);
+  const make = (): Prior => {
+    const plain = rs.filter((r) => inRs.has(r.id) && !wanted.includes(r.url)).map((r) => r.url);
+    const marked = [...rs.filter((r) => inRs.has(r.id) && wanted.includes(r.url)).map((r) => r.url), ...wanted.filter((u) => inRc.has(u))];
+    const files = [...(page ? [page] : []), ...plain];
+    return { files, answers: as, ...(marked.length ? { reconsider: marked.filter((u, i) => marked.indexOf(u) === i) } : {}) };
+  };
+  const fits = () => fitsObjective(measure(make()));
+  for (const r of [...rs].reverse()) {
+    inRs.add(r.id);
+    if (!fits()) inRs.delete(r.id);
+  }
+  const listedUrls = new Set(rs.filter((r) => inRs.has(r.id)).map((r) => r.url));
+  for (const u of wanted) {
+    if (listedUrls.has(u) || rs.some((r) => r.url === u)) continue;
+    inRc.add(u);
+    if (!fits()) inRc.delete(u);
+  }
   for (let k = answers.length; k > 0; k--) {
     as = answers.slice(answers.length - k);
-    if (measure(make()) < MAX_OBJECTIVE) break;
+    if (fits()) break;
     as = [];
   }
+  const prior = make();
+  const given = new Set([...prior.files, ...(prior.reconsider ?? [])]);
   return {
-    prior: make(),
-    included: new Set(rs.map((r) => r.id)),
-    leftOut: offered - rs.length,
+    prior,
+    included: new Set(inRs),
+    leftOut: rs.length - inRs.size,
     answersLeftOut: answers.length - as.length,
-    reconsiderLeftOut: wanted.length - rc.length,
+    reconsiderLeftOut: wanted.filter((u) => !given.has(u)).length,
   };
+}
+
+/**
+ * A dropped entry of an earlier page whose file a later rebuild was not given (left out for space). It is still
+ * listed as dropped, and its file is reconsidered by the next rebuild.
+ */
+export interface CarriedDrop {
+  url: string;
+  id: string;
+  why: string;
+}
+
+/**
+ * Walks the completed pages, oldest first. The dropped entries of each page that name their file (F2:L14) are owed a
+ * reconsideration by the next rebuild; one whose file that rebuild's <PRIOR> does not list is carried on until a
+ * rebuild lists it. Returns what is still owed after the page shown. Bare ids are resolved only for the page shown.
+ */
+export function carriedDrops(pages: Activity[]): CarriedDrop[] {
+  let carry: CarriedDrop[] = [];
+  for (let k = 1; k < pages.length; k++) {
+    const prev = pages[k - 1]!;
+    const listed = new Set(parsePrior(pages[k]!.req.bodyJson?.objective).files.map((f) => f.url));
+    const prevGiven = parsePrior(prev.req.bodyJson?.objective).files;
+    const owed = (prev.page?.dropped ?? []).flatMap((d) => {
+      const m = /^F(\d+):(.+)$/i.exec(d.id.trim());
+      const f = m ? prevGiven.find((g) => g.n === Number(m[1])) : undefined;
+      return f && f.hash ? [{ url: f.url, id: m![2]!, why: d.why }] : [];
+    });
+    carry = [...carry, ...owed].filter((c, i, all) => !listed.has(c.url) && all.findIndex((x) => x.url === c.url && x.id === c.id) === i);
+  }
+  return carry;
+}
+
+/** What did not fit in the next rebuild's objective, said on Contribute. Empty when everything fits. */
+export function leftOutText(r: { leftOut: number; answersLeftOut: number; reconsiderLeftOut: number }): string[] {
+  const out: string[] = [];
+  if (r.leftOut > 0) out.push(`${r.leftOut} older result${r.leftOut === 1 ? "" : "s"}: ${r.leftOut === 1 ? "it stays" : "they stay"} “Not yet folded in”, and a later rebuild picks ${r.leftOut === 1 ? "it" : "them"} up.`);
+  if (r.reconsiderLeftOut > 0)
+    out.push(`${r.reconsiderLeftOut} file${r.reconsiderLeftOut === 1 ? "" : "s"} to reconsider: ${r.reconsiderLeftOut === 1 ? "its" : "their"} dropped lines stay listed as dropped, and a later rebuild reconsiders ${r.reconsiderLeftOut === 1 ? "it" : "them"}.`);
+  if (r.answersLeftOut > 0) out.push(`${r.answersLeftOut} older panel answer${r.answersLeftOut === 1 ? "" : "s"}.`);
+  return out;
 }
 
 export type Standing = "shown" | "folded" | "next" | "left-out" | "";
@@ -254,7 +313,7 @@ export const STANDING_WORDS: Record<Exclude<Standing, "">, string> = {
   shown: "Shown now",
   folded: "Folded into the page shown",
   next: "Not yet folded in: included in the next rebuild",
-  "left-out": "Not yet folded in: too many earlier files to fit in the next rebuild, which takes the newest",
+  "left-out": "Not yet folded in: left out of the next rebuild for space, which takes the newest first; a later rebuild picks it up",
 };
 
 export interface SubjectSummary {
@@ -485,11 +544,13 @@ export interface RecordModel {
   /** Every completed result not folded in that has a file, oldest first, and the panel answers: a changes job fits its own <PRIOR> from them. */
   results: { id: string; url: string }[];
   answers: PriorAnswer[];
-  /** How many results not folded in were left out of <PRIOR> to stay under 7,500 characters, and panel answers. */
+  /** How many results not folded in were left out of <PRIOR> to fit in 7,900 characters, and panel answers. */
   leftOut: number;
   answersLeftOut: number;
-  /** Files to reconsider that did not fit in <PRIOR>. */
+  /** Files to reconsider that did not fit in <PRIOR>: their dropped lines stay listed as dropped. */
   reconsiderLeftOut: number;
+  /** Dropped entries of earlier pages whose files the last rebuild was not given: still listed as dropped, owed to the next. */
+  carried: CarriedDrop[];
   panel: Activity[];
   /** Panel answers A1... as the shown rebuild was given them. */
   answerRef: (target: string) => { text: string; activity: Activity | undefined } | null;
@@ -498,6 +559,13 @@ export interface RecordModel {
   sourceList: ListedSource[];
   counts: ReturnType<typeof countKinds>;
 }
+
+/** The page's channels as <CHANNELS> lists them: http(s) URLs only, with their ties. */
+export const channelTies = (page: Page | null): ChannelTie[] =>
+  (page?.channels ?? []).flatMap((c) => {
+    const url = safeHref(c.url);
+    return url ? [{ url, tie: c.tie }] : [];
+  });
 
 /** The model for one subject. `items` are that subject's requests only. */
 export function useRecordModel(items: Activity[] | null, chainError: string | null, subjectId: string): RecordModel {
@@ -521,9 +589,10 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   const answers = useMemo(() => answersOf(items ?? []), [items]);
   const fit = useMemo(() => {
     // Bare dropped ids are resolved with the same reads Record's accounting makes.
-    const again = reconsiderFiles(page?.dropped ?? [], given.files, [], accounting.state === "done" ? accounting.read : undefined);
-    return fitPrior(page && pageHash ? artifactUrl(pageHash) : null, results, answers, (p) => rebuildObjective(p, subject).length, again);
-  }, [results, answers, page, pageHash, subject, given, accounting]);
+    const again = [...reconsiderFiles(page?.dropped ?? [], given.files, [], accounting.state === "done" ? accounting.read : undefined), ...core.carried.map((c) => c.url)];
+    const ties = channelTies(page);
+    return fitPrior(page && pageHash ? artifactUrl(pageHash) : null, results, answers, (p) => rebuildObjective(p, subject, ties).length, again);
+  }, [results, answers, page, pageHash, subject, given, accounting, core]);
 
   const sourceList = useMemo(() => allSources(page, jobs), [page, jobs]);
   const byId = useMemo(() => new Map(sections.flatMap((s) => s.rows.map((r) => [r.line.id, r.line] as const))), [sections]);
@@ -620,19 +689,10 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
       if (accounting.state === "error") return { ok: false, why: `Unable to read the earlier files the dropped lines came from: ${accounting.error}. Refresh to try again.`, loading: false };
       if (accounting.state !== "done") return { ok: false, why: "Reading the earlier files the dropped lines came from…", loading: true };
     }
-    if (fit.reconsiderLeftOut > 0)
-      return {
-        ok: false,
-        why: `The ${fit.reconsiderLeftOut + (fit.prior.reconsider?.length ?? 0)} files the dropped lines came from do not fit in one objective of 7,500 characters, so a rebuild would leave dropped lines unrecovered. It is not offered.`,
-        loading: false,
-      };
     return { ok: true, why: "", loading: false };
   })();
 
-  const channels = (page?.channels ?? []).flatMap((c) => {
-    const url = safeHref(c.url);
-    return url ? [{ url, tie: c.tie }] : [];
-  });
+  const channels = channelTies(page);
   return {
     subject,
     latest,
@@ -660,6 +720,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     leftOut: fit.leftOut,
     answersLeftOut: fit.answersLeftOut,
     reconsiderLeftOut: fit.reconsiderLeftOut,
+    carried: core.carried,
     panel,
     answerRef,
     accounting,
@@ -715,7 +776,8 @@ export function planRebuild(items: Activity[], subject: SubjectRef, read?: Prior
   const dropped = core.page?.dropped ?? [];
   // Bare dropped ids need the earlier files read (the subject's page does that); without them, no plan is offered.
   const needsReads = !read && given.length > 0 && hasBareDropped(dropped);
-  const again = reconsiderFiles(dropped, given, [], read);
-  const fit = fitPrior(core.page && pageHash ? artifactUrl(pageHash) : null, results, answersOf(items), (p) => rebuildObjective(p, subject).length, again);
-  return { ...fit, ok: !unread && !needsReads && fit.reconsiderLeftOut === 0, needsReads, hasPage: !!core.page };
+  const again = [...reconsiderFiles(dropped, given, [], read), ...core.carried.map((c) => c.url)];
+  const channels = channelTies(core.page);
+  const fit = fitPrior(core.page && pageHash ? artifactUrl(pageHash) : null, results, answersOf(items), (p) => rebuildObjective(p, subject, channels).length, again);
+  return { ...fit, ok: !unread && !needsReads, needsReads, hasPage: !!core.page, channels };
 }

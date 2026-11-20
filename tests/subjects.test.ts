@@ -157,14 +157,14 @@ describe("folded in", () => {
     expect(plan.prior.files).toEqual([artifactUrl(h("4")), artifactUrl(h("1")), artifactUrl(h("3")), artifactUrl(h("5"))]);
     expect(plan.ok).toBe(true);
   });
-  it("keeps <PRIOR> under 7,500 characters by dropping the oldest results, never F1", () => {
-    const results = Array.from({ length: 60 }, (_, i) => ({ id: String(i), url: artifactUrl(i.toString(16).padStart(64, "0")) }));
+  it("keeps the objective within 7,900 characters by leaving out the oldest results, never F1", () => {
+    const results = Array.from({ length: 150 }, (_, i) => ({ id: String(i), url: artifactUrl(i.toString(16).padStart(64, "0")) }));
     const ref = refFromId("example.com");
     const fit = fitPrior(artifactUrl(h("f")), results, [], (p) => rebuildObjective(p, ref).length);
     expect(fit.leftOut).toBeGreaterThan(0);
     expect(fit.prior.files[0]).toBe(artifactUrl(h("f")));
     expect(fit.prior.files.at(-1)).toBe(results.at(-1)!.url);
-    expect(rebuildObjective(fit.prior, ref).length).toBeLessThan(7500);
+    expect(rebuildObjective(fit.prior, ref).length).toBeLessThanOrEqual(7900);
     expect(fit.included.has("0")).toBe(false);
   });
   it("lists each subject with its name, counts and last change; a domain subject keeps the contract a visitor gave", () => {
@@ -303,16 +303,15 @@ describe("bringing back lines dropped for space", () => {
     expect(fit.prior.reconsider).toEqual([artifactUrl(h("1"))]);
     expect(rebuildObjective(fit.prior, ref)).toContain(`[F3] ${artifactUrl(h("1"))} (reconsider dropped lines)`);
     expect(fitPrior(null, [], [], measure, [artifactUrl(h("1"))]).prior.reconsider).toBeUndefined();
-    // With no room, ordinary results give way (oldest first) so the file to reconsider stays (8fe1a504).
-    const many = Array.from({ length: 60 }, (_, i) => ({ id: String(i), url: artifactUrl(i.toString(16).padStart(64, "0")) }));
+    // With no room, the newest results come first and the file to reconsider is what is left out; the rebuild is
+    // still offered and its dropped lines stay listed as dropped.
+    const many = Array.from({ length: 150 }, (_, i) => ({ id: String(i), url: artifactUrl(i.toString(16).padStart(64, "0")) }));
     const full = fitPrior(artifactUrl(h("f")), many, [], measure, [artifactUrl(h("1"))]);
     const alone = fitPrior(artifactUrl(h("f")), many, [], measure);
-    expect(full.prior.reconsider).toEqual([artifactUrl(h("1"))]);
-    expect(full.reconsiderLeftOut).toBe(0);
-    // The marked file takes the room of one or two ordinary results (its mark adds 26 characters).
-    expect(full.included.size).toBeLessThan(alone.included.size);
-    expect(full.included.size).toBeGreaterThanOrEqual(alone.included.size - 2);
-    expect(measure(full.prior)).toBeLessThan(7500);
+    expect(full.prior.reconsider).toBeUndefined();
+    expect(full.reconsiderLeftOut).toBe(1);
+    expect(full.included.size).toBe(alone.included.size);
+    expect(measure(full.prior)).toBeLessThanOrEqual(7900);
   });
   it("planRebuild reads the dropped entries of the page shown against the objective that produced it", () => {
     const old = act("add", { block: 100, hash: h("1"), page: PAGE("Example") });
@@ -322,8 +321,15 @@ describe("bringing back lines dropped for space", () => {
     expect(plan.prior.files).toEqual([artifactUrl(h("2"))]);
     expect(plan.prior.reconsider).toEqual([artifactUrl(h("1"))]);
     expect(plan.reconsiderLeftOut).toBe(0);
-    const clean = act("add", { block: 300, hash: h("3"), page: PAGE("Example"), objective: `Start from the earlier results: [F1] ${artifactUrl(h("2"))}. Fetch each file.` });
-    expect(planRebuild([old, shown, clean], refFromId("example.com")).prior.reconsider).toBeUndefined();
+    // A rebuild that was not given the file (left out for space) still owes it: the next one reconsiders it, and
+    // the entry stays listed as dropped until then.
+    const skipped = act("add", { block: 300, hash: h("3"), page: PAGE("Example"), objective: `Start from the earlier results: [F1] ${artifactUrl(h("2"))}. Fetch each file.` });
+    expect(planRebuild([old, shown, skipped], refFromId("example.com")).prior.reconsider).toEqual([artifactUrl(h("1"))]);
+    expect(coreOf([old, shown, skipped]).carried).toEqual([{ url: artifactUrl(h("1")), id: "L2", why: "space" }]);
+    // One that was given it settles it.
+    const given = act("add", { block: 300, hash: h("3"), page: PAGE("Example"), objective: `Start from the earlier results: [F1] ${artifactUrl(h("2"))}; [F2] ${artifactUrl(h("1"))} (reconsider dropped lines). Fetch each file.` });
+    expect(planRebuild([old, shown, given], refFromId("example.com")).prior.reconsider).toBeUndefined();
+    expect(coreOf([old, shown, given]).carried).toEqual([]);
   });
 });
 
@@ -334,18 +340,20 @@ describe("panel answers never push a result file out of <PRIOR> (aa9250dc)", () 
     const ref = refFromId("example.com");
     const f1 = artifactUrl(h("f"));
     const src = { id: "s", url: artifactUrl(h("a")) };
-    const answers = Array.from({ length: 20 }, (_, i) => ({ title: "A".repeat(88), answer: "true", agreed: 5, size: 5, url: `https://explorer.imd.fun/jobs/${String(i).padStart(36, "0")}` }));
+    const answers = Array.from({ length: 80 }, (_, i) => ({ title: "A".repeat(88), answer: "true", agreed: 5, size: 5, url: `https://explorer.imd.fun/jobs/${String(i).padStart(36, "0")}` }));
     const measure = (p: Parameters<typeof rebuildObjective>[0]) => rebuildObjective(p, ref).length;
-    // Twenty long answers do not fit beside the template (7,086 characters since this job's Tokens and depth rules).
+    // Eighty long answers do not fit in the 7,900-character objective.
     expect(measure({ files: [f1, src.url], answers })).toBeGreaterThan(10000);
     const fit = fitPrior(f1, [src], answers, measure);
     expect(fit.prior.files).toEqual([f1, src.url]);
     expect(fit.included.has("s")).toBe(true);
     expect(fit.leftOut).toBe(0);
-    expect(fit.prior.answers).toEqual(answers.slice(19));
-    expect(fit.answersLeftOut).toBe(19);
-    expect(measure(fit.prior)).toBeLessThan(7500);
-    expect(measure({ ...fit.prior, answers: answers.slice(18) })).toBeGreaterThanOrEqual(7500);
+    const k = fit.prior.answers.length;
+    expect(k).toBeGreaterThan(0);
+    expect(fit.prior.answers).toEqual(answers.slice(80 - k));
+    expect(fit.answersLeftOut).toBe(80 - k);
+    expect(measure(fit.prior)).toBeLessThanOrEqual(7900);
+    expect(measure({ ...fit.prior, answers: answers.slice(79 - k) })).toBeGreaterThan(7900);
   });
 });
 

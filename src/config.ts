@@ -5,6 +5,12 @@ export const SITE_NAME = "On the record (test)";
 export const SITE_DESCRIPTION =
   "Public record pages for crypto projects. Every line shows who said it, its source and how it was checked.";
 
+/**
+ * Where this site is served by its ENS name (record-test-1.identitymd.eth, through the eth.limo gateway). The
+ * instruction files a job must fetch are named under it, so they are served with the site.
+ */
+export const SITE_URL = "https://record-test-1.identitymd.eth.limo/";
+
 export const CHAIN = mainnet; // Ethereum mainnet, chain 1, only
 export const CHAIN_ID = 1 as const;
 

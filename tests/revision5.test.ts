@@ -3,6 +3,7 @@
  * with the reviewer's cases: a failed supporting result, a failed logo, a second scan, panel answers left out of
  * <PRIOR>, a comma-joined Tokens value and a claim by "Unknown".
  */
+import { INSTRUCTIONS } from "../src/instructions";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import type { Hex } from "viem";
@@ -163,8 +164,12 @@ describe("out of date (90eee5ec)", () => {
     expect(outdatedOf(coreOf([old, answered, listedAnswer, act("add", { block: 30, hash: h("3"), page: PAGE("Newer"), objective: all })]))).toBeNull();
   });
   it("is built with an older format when the objective differs from templates/rebuild.txt apart from <PRIOR>", () => {
+    // The format is the instruction file's hash named in the objective.
     expect(matchesTemplate(current(artifactUrl(h("1"))))).toBe(true);
-    expect(matchesTemplate(current(artifactUrl(h("1"))).replace("Tokens (", "Token ("))).toBe(false);
+    expect(matchesTemplate(current(artifactUrl(h("1"))).replace(INSTRUCTIONS.rebuild.sha256, "0".repeat(64)))).toBe(false);
+    // A page built before instruction files names none: an older format, whatever its words.
+    const before = readFileSync("tests/fixtures/rebuild-before-instructions.txt", "utf8").trim().replace("<SUBJECT>", "the project at example.com").replace("<PRIOR>", `[F1] ${artifactUrl(h("1"))}`);
+    expect(matchesTemplate(before)).toBe(false);
     expect(readFileSync("templates/rebuild.txt", "utf8").trim()).toBe(REBUILD_TEMPLATE);
     const p = act("add", { block: 10, hash: h("1"), page: PAGE("P"), objective: "Write the record page for one subject: example.com. Older words." });
     expect(outdatedOf(coreOf([p]))).toEqual({ kind: "format" });

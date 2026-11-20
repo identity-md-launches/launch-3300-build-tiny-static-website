@@ -876,6 +876,8 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
 function Accounting({ m }: { m: RecordModel }) {
   const a = m.accounting;
   const dropped = a.dropped;
+  const carried = m.carried;
+  const total = dropped.length + carried.length;
   return (
     <>
       {a.state === "loading" && <p className="small">Checking the last rebuild against the {a.files} earlier files it was given…</p>}
@@ -895,10 +897,10 @@ function Accounting({ m }: { m: RecordModel }) {
           </ul>
         </div>
       )}
-      {dropped.length > 0 && (
+      {total > 0 && (
         <details className="dropped" id="dropped">
           <summary>
-            Dropped in the last rebuild <span className="count num">{dropped.length}</span>
+            Dropped in the last rebuild <span className="count num">{total}</span>
           </summary>
           <ul className="plain small">
             {dropped.map((d, i) => (
@@ -907,6 +909,14 @@ function Accounting({ m }: { m: RecordModel }) {
                 {d.text && <> “{d.text}”</>}
                 {": "}
                 <span className="why-dropped">{d.why || "no reason given"}</span>
+              </li>
+            ))}
+            {carried.map((d) => (
+              <li key={`${d.url}:${d.id}`}>
+                <span className="mono">{d.id}</span> of <span className="mono break">{d.url.replace(/^https:\/\/api\.imd\.fun\/artifacts\//, "").slice(0, 12)}…</span>
+                {": "}
+                <span className="why-dropped">{d.why || "no reason given"}</span>
+                <span className="small"> Dropped by an earlier rebuild. Its file was left out of the last one for space, so the next rebuild reconsiders it.</span>
               </li>
             ))}
           </ul>
