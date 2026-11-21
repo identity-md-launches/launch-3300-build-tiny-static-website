@@ -28,9 +28,10 @@ export const SITE_URL = "https://record-test-1.identitymd.eth.limo/";
 export const INSTRUCTIONS_GATEWAY = "https://ipfs.filebase.io/ipfs/";
 /**
  * A second HTTPS gateway for the same raw CID, named in the objective as "or, if that fails, at <URL2>". Checked on
- * 2026-11-21: gateway.pinata.cloud answered the current instruction files' raw CIDs with HTTP 200, the exact bytes
- * (sha256 matched) and Access-Control-Allow-Origin: *. Kept because IMD's free request check returned no blockers
- * for objectives naming both addresses (README, "Where a job fetches the instruction files").
+ * 2026-11-21: gateway.pinata.cloud answered the raw CID of the published rebuild-ede1a5e23b01.txt with HTTP 200, the
+ * exact bytes (sha256 matched) and Access-Control-Allow-Origin: *, as Filebase did (the current files are served once
+ * this export is pinned). Kept because IMD's free request check returned blockers: [] for the rebuild and changes
+ * objectives naming both addresses (README, "Where a job fetches the instruction files").
  */
 export const INSTRUCTIONS_FALLBACK_GATEWAY = "https://gateway.pinata.cloud/ipfs/";
 

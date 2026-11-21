@@ -5,7 +5,10 @@
  * Serves dist/ on a local port and opens it in Chromium at 390, 1440 and 320 wide: home, Add a project, an old link,
  * Overview key facts, Record, Activity labels and the Contribute forms. Every chain read (JSON-RPC)
  * and every api.imd.fun read is answered from the fixture, which holds an old page, a sources result, a panel
- * answer, a rebuild of the first two, and a sources result and an edit completed after the rebuild.
+ * answer, a rebuild of the first two, and a sources result and an edit completed after the rebuild. The two
+ * instruction gateways (ipfs.filebase.io, gateway.pinata.cloud) serve the current instruction files by raw CID, or
+ * fail on request, to check that no pay dialog opens for a job that cannot read its instructions. It also checks the
+ * remembered-wallet flag (no flag: no wallet code; flag: outline, background load, flag cleared when it fails).
  */
 import { createServer } from "node:http";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
@@ -19,6 +22,9 @@ const MANIFEST = JSON.parse(await readFile(new URL("../src/instructions.json", i
 const RAW_INS = { rebuild: await readFile(new URL(`../public/instructions/${MANIFEST.rebuild.file}`, import.meta.url), "utf8"), changes: await readFile(new URL(`../public/instructions/${MANIFEST.changes.file}`, import.meta.url), "utf8") };
 const rawCid = (hex) => { const a = "abcdefghijklmnopqrstuvwxyz234567"; let o = "b", bits = 0, v = 0; for (const x of Buffer.from("01551220" + hex, "hex")) { v = ((v << 8) | x) & 0xffff; bits += 8; while (bits >= 5) { o += a[(v >>> (bits - 5)) & 31]; bits -= 5; } } if (bits) o += a[(v << (5 - bits)) & 31]; return o; };
 const INS_URL = (name) => `https://ipfs.filebase.io/ipfs/${rawCid(MANIFEST[name].sha256)}?filename=${MANIFEST[name].file}`;
+/** The second address for the same raw CID ("or, if that fails, at <URL2>"), INSTRUCTIONS_FALLBACK_GATEWAY. */
+const FB_URL = (name) => `https://gateway.pinata.cloud/ipfs/${rawCid(MANIFEST[name].sha256)}?filename=${MANIFEST[name].file}`;
+const NAMES = (name) => `Your full instructions are the file at ${INS_URL(name)} or, if that fails, at ${FB_URL(name)}, sha256 ${MANIFEST[name].sha256}.`;
 const { chromium } = await import(pathToFileURL(process.env.IMD_PLAYWRIGHT ?? "playwright").href);
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".md": "text/markdown" };
 const root = resolve("dist");
@@ -63,7 +69,10 @@ const rpcAnswer = (call, fx, opts) => {
   }
 };
 
-/** opts: fx (a variant fixture), failBlockNumber (an RPC error), delayLogs (ms before eth_getLogs answers). */
+/**
+ * opts: fx (a variant fixture), failBlockNumber (an RPC error), delayLogs (ms before eth_getLogs answers),
+ * insDown (both instruction gateways answer 504), insFirstDown (only the first gateway, Filebase, answers 504).
+ */
 async function mock(page, opts = {}) {
   const f = opts.fx ?? fx;
   await page.route(/^https?:\/\/(?!127\.0\.0\.1)/, async (route) => {
@@ -91,9 +100,18 @@ async function mock(page, opts = {}) {
         return fx.files[m[1]] ? route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*" }, body: fx.files[m[1]] }) : json({}, 404);
       if (/^\/oracle\/requests\//.test(url.pathname)) return json({ id: fx.oracleId, status: "completed", panelSize: 5, jobId: "job-6", agreement: { agreed: 5, answer: true } });
     }
+    // The two instruction gateways: the current files by their raw CID, as Filebase and Pinata serve them.
+    if (url.hostname === "ipfs.filebase.io" || url.hostname === "gateway.pinata.cloud") {
+      gatewayHits.push(url.hostname);
+      if (opts.insDown || (opts.insFirstDown && url.hostname === "ipfs.filebase.io")) return route.fulfill({ status: 504, headers: { "access-control-allow-origin": "*" }, body: "" });
+      for (const name of ["rebuild", "changes"])
+        if (url.pathname === `/ipfs/${rawCid(MANIFEST[name].sha256)}`) return route.fulfill({ status: 200, contentType: "text/plain; charset=utf-8", headers: { "access-control-allow-origin": "*" }, body: RAW_INS[name] });
+    }
     return route.fulfill({ status: 404, body: "" });
   });
 }
+/** Every instruction-gateway request the mock answered, in order. */
+const gatewayHits = [];
 
 // IMD_CHROME: an installed Chromium or Chrome, when the Playwright build has no matching browser download.
 const browser = await chromium.launch({ headless: true, ...(process.env.IMD_CHROME ? { executablePath: process.env.IMD_CHROME } : {}) });
@@ -170,7 +188,7 @@ try {
     check(`${W} its tag carries the subject and it asks for the page and the logo`, /"subject": "example\.com"/.test(body) && /"kind": "add"/.test(body) && /"name": "logo"/.test(body) && /"mediaType": "image\/png"/.test(body), body.slice(0, 300));
     // The current objective shape (job 6ef62573): the subject, the current rebuild instruction file and its hash, no prior.
     const firstObjective = (() => { try { return String(JSON.parse(body).objective ?? ""); } catch { return ""; } })();
-    const firstNamed = firstObjective.includes(`Your full instructions are the file at ${INS_URL("rebuild")}, sha256 ${MANIFEST.rebuild.sha256}. `);
+    const firstNamed = firstObjective.includes(`${NAMES("rebuild")} `);
     check(`${W} its objective names the project, the current instruction file and its hash, with no earlier results`, firstObjective.startsWith("Write the record page for one subject: the project at example.com. ") && firstNamed && firstObjective.endsWith("Earlier results: none. Channels already known: none known."), firstObjective.slice(0, 300) + " … " + firstObjective.slice(-120));
     if (dlg) await page.keyboard.press("Escape");
     // An address: the optional chain picker.
@@ -300,11 +318,11 @@ try {
     check(`${W} the rebuild says the files the page dropped lines from are listed again`, /dropped lines, so 2 files they came from are listed again/.test(rb), rb.slice(0, 600));
     const objective = await page.locator("#rebuild > details > .objective").textContent();
     check(`${W} the rebuild objective marks both files reconsider, numbered after the results`, /\[F4\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[F5\] https:\/\/api\.imd\.fun\/artifacts\/[0-9a-f]{64} \(reconsider dropped lines\); \[A1\]/.test(objective ?? "") && !/at most 40 lines/.test(objective ?? ""), (objective ?? "").slice(-900));
-    const named = /Your full instructions are the file at (https:\/\/ipfs\.filebase\.io\/ipfs\/b[a-z2-7]{58}\?filename=rebuild-([0-9a-f]{12})\.txt), sha256 ([0-9a-f]{64})\./.exec(objective ?? "");
-    check(`${W} the rebuild objective has the short fixed shape and names the instruction file and its hash`, !!named && /^Write the record page for one subject: /.test(objective ?? "") && named[3].startsWith(named[2]) && (objective ?? "").length <= 7900, (objective ?? "").slice(0, 400));
+    const named = /Your full instructions are the file at (https:\/\/ipfs\.filebase\.io\/ipfs\/b[a-z2-7]{58}\?filename=rebuild-([0-9a-f]{12})\.txt) or, if that fails, at (\S+?), sha256 ([0-9a-f]{64})\./.exec(objective ?? "");
+    check(`${W} the rebuild objective has the short fixed shape and names the instruction file, its second address and its hash`, !!named && /^Write the record page for one subject: /.test(objective ?? "") && named[4].startsWith(named[2]) && named[3] === FB_URL("rebuild") && (objective ?? "").length <= 7900, (objective ?? "").slice(0, 400));
     const ins = await page.locator("#rebuild .instructions").innerText();
     const links = await page.locator("#rebuild .instructions a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
-    check(`${W} the instruction preview links the site's file and the address the job fetches, and shows its hash and text`, !!named && named[1] === INS_URL("rebuild") && links[0] === `./instructions/${MANIFEST.rebuild.file}` && links[1] === named[1] && ins.includes(named[3]) && named[3] === MANIFEST.rebuild.sha256 && /Instructions this job follows/.test(ins) && /For files marked reconsider/.test(ins), JSON.stringify(links) + " " + ins.slice(0, 300));
+    check(`${W} the instruction preview links the site's file and the address the job fetches, and shows its hash and text`, !!named && named[1] === INS_URL("rebuild") && links[0] === `./instructions/${MANIFEST.rebuild.file}` && links[1] === named[1] && ins.includes(named[4]) && named[4] === MANIFEST.rebuild.sha256 && /Instructions this job follows/.test(ins) && /For files marked reconsider/.test(ins), JSON.stringify(links) + " " + ins.slice(0, 300));
     const served = await page.evaluate(async (u) => { const r = await fetch(u); return { status: r.status, text: await r.text() }; }, links[0]);
     check(`${W} the site serves the instruction file at its named path, byte for byte`, served.status === 200 && served.text === RAW_INS.rebuild, String(served.status));
     check(`${W} the instruction preview is split into paragraphs`, (await page.locator("#rebuild .instructions .ins-text > p").count()) > 5);
@@ -336,8 +354,8 @@ try {
     if (review) await page.click(".review-read");
     await page.waitForSelector("#review-body", { timeout: 10000 }).catch(() => {});
     const cObjective = review ? (await page.locator("#review-body > .objective").textContent()) ?? "" : "";
-    const cNamed = /^Judge a visitor's proposed changes to the record of one subject: the project at imd\.fun(?:, whose main contract is 0x[0-9a-f]{40} on chain \d+)?\. Your full instructions are the file at (\S+), sha256 ([0-9a-f]{64})\./.exec(cObjective);
-    check(`${W} the changes objective names the current changes file and its hash, then the change`, !!cNamed && cNamed[1] === INS_URL("changes") && cNamed[2] === MANIFEST.changes.sha256 && /The changes: \(1\) type: context; target: F1:L1 /.test(cObjective) && cObjective.length <= 7900, cObjective.slice(-500));
+    const cNamed = /^Judge a visitor's proposed changes to the record of one subject: the project at imd\.fun(?:, whose main contract is 0x[0-9a-f]{40} on chain \d+)?\. Your full instructions are the file at (\S+) or, if that fails, at (\S+), sha256 ([0-9a-f]{64})\./.exec(cObjective);
+    check(`${W} the changes objective names the current changes file and its hash, then the change`, !!cNamed && cNamed[1] === INS_URL("changes") && cNamed[2] === FB_URL("changes") && cNamed[3] === MANIFEST.changes.sha256 && /The changes: \(1\) type: context; target: F1:L1 /.test(cObjective) && cObjective.length <= 7900, cObjective.slice(-500));
     const cIns = review ? await page.locator("#review-ins").innerText() : "";
     const cLinks = review ? await page.locator("#review-ins a").evaluateAll((as) => as.map((a) => a.getAttribute("href"))) : [];
     check(`${W} the changes preview shows "Instructions this job follows" with the file, its hash and the fetch address`, /Instructions this job follows/.test(cIns) && cIns.includes(MANIFEST.changes.sha256) && cLinks[0] === `./instructions/${MANIFEST.changes.file}` && cLinks[1] === INS_URL("changes"), JSON.stringify(cLinks) + " " + cIns.slice(0, 200));
@@ -349,7 +367,8 @@ try {
     await page.waitForSelector(".channels-block", { timeout: 30000 });
     const ch = await page.locator(".channels-block").innerText();
     check(`${W} Sources labels the channel on the subject's domain Own domain and explains the three labels`, /Own domain/.test(ch) && /Verified on chain:/.test(ch) && /Not verified:/.test(ch) && !/Confirmed on chain|Names the contract|not confirmed/i.test(ch), ch.slice(0, 300));
-    check(`${W} the legend is the brief's sentence`, ch.includes("Lines published on Own domain or Verified on chain channels show as statements; everything else is a claim."));
+    // D10: a channel the own domain links to as its official account (tie linked) is a fourth label, and its lines are statements.
+    check(`${W} the legend is the brief's sentence, with Linked from own site`, ch.includes("Lines published on Own domain, Verified on chain or Linked from own site channels show as statements; everything else is a claim.") && /Linked from own site:/.test(ch), ch.slice(0, 600));
 
     // Add a project on a chain the oracle list does not name (8aeb5d8b).
     await page.goto(base);
@@ -412,6 +431,8 @@ try {
     const { ctx, page } = await variantPage({ fx: fx.variants.person });
     await page.goto(base);
     await page.waitForSelector(".subjects .subject", { timeout: 30000 });
+    // Each row reads its result files after it appears: wait until none still says "Reading its record…".
+    await page.waitForFunction(() => !/Reading its record/.test(document.querySelector(".subjects")?.textContent ?? ""), null, { timeout: 30000 }).catch(() => {});
     const home = await page.locator(".subjects").innerText();
     check("390: a found: false result is listed as No project found, with its notes, never the person's name", /person\.example/.test(home) && /No project found: The domain identifies a person, not a project\./.test(home) && !/Sample Person/.test(await page.locator("main").innerText()), home);
     check("390: a pending first page shows First page in progress", /pending\.example[\s\S]*First page in progress/.test(home), home);
@@ -438,6 +459,92 @@ try {
     if (await page.locator(".offer").count()) await page.click("text=Add this project");
     await page.waitForTimeout(300);
     check("390: failed read: no rebuild review, retry guidance instead", (await page.locator('[role="dialog"]').count()) === 0 && /The project list could not be read\. Try again before reviewing a rebuild\.|Wait until the list has loaded from Ethereum\.|Still reading the projects from Ethereum\. Try again in a moment\./.test(await page.locator("main").innerText()), JSON.stringify({ dialogs: await page.locator('[role="dialog"]').count(), main: (await page.locator("main").innerText()).slice(0, 500) }));
+    await ctx.close();
+  }
+  // C6: no pay dialog for a rebuild whose instruction file cannot be fetched; the second address is tried first.
+  {
+    const { ctx, page } = await variantPage({ insDown: true });
+    gatewayHits.length = 0;
+    await page.goto(base);
+    await page.waitForSelector(".subjects .subject", { timeout: 60000 }).catch(() => {});
+    await page.fill("#lookup", "https://www.Example.com/about");
+    await page.click(".btn-lookup");
+    await page.waitForSelector(".offer", { timeout: 10000 }).catch(() => {});
+    await page.click("text=Add this project");
+    const alert = await page.waitForSelector('[role="alert"]', { timeout: 40000 }).then((e) => e.innerText(), () => "");
+    check("390: instructions unreachable: no pay dialog, the brief's message instead", (await page.locator('[role="dialog"]').count()) === 0 && alert.includes("The instructions for this job cannot be reached right now, so it would stop without doing the work. Try again later."), alert);
+    await page.screenshot({ path: join(out, "390-instructions-unreachable.png") });
+    check("390: instructions unreachable: the notice fits without horizontal scroll", (await overflow(page)) <= 0, await wideOf(page));
+    check("390: instructions unreachable: both gateways were tried, Filebase first", gatewayHits[0] === "ipfs.filebase.io" && gatewayHits.includes("gateway.pinata.cloud"), JSON.stringify(gatewayHits));
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await variantPage({ insFirstDown: true });
+    await page.goto(base);
+    await page.waitForSelector(".subjects .subject", { timeout: 60000 }).catch(() => {});
+    await page.fill("#lookup", "https://www.Example.com/about");
+    await page.click(".btn-lookup");
+    await page.waitForSelector(".offer", { timeout: 10000 }).catch(() => {});
+    await page.click("text=Add this project");
+    const dlg = await page.waitForSelector('[role="dialog"]', { timeout: 40000 }).then(() => true, () => false);
+    check("390: first gateway down: the second address gives the exact bytes and the pay dialog opens", dlg && (await page.locator('[role="alert"]').count()) === 0);
+    await ctx.close();
+  }
+  // A: the remembered wallet. No flag: no wallet code and no third party. Flag: outline, background load, then (no
+  // wallet in this browser) Connect and the flag cleared.
+  {
+    const { ctx, page } = await variantPage({});
+    const chunks = [];
+    const hosts = new Set();
+    page.on("request", (r) => {
+      const u = new URL(r.url());
+      if (/walletRuntime-/.test(u.pathname)) chunks.push(u.pathname);
+      if (u.hostname !== "127.0.0.1") hosts.add(u.hostname);
+    });
+    await page.goto(base);
+    await page.waitForSelector(".subjects .subject", { timeout: 60000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+    check("390: no wallet flag: no wallet code is loaded on page load", chunks.length === 0 && (await page.locator("header .btn-primary", { hasText: "Connect" }).count()) === 1, JSON.stringify(chunks));
+    check("390: no wallet flag: no Coinbase or other wallet host is contacted", ![...hosts].some((h) => /coinbase|walletconnect|cca-lite/.test(h)), JSON.stringify([...hosts]));
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await variantPage({});
+    const chunks = [];
+    const hosts = new Set();
+    await page.addInitScript(() => {
+      if (!sessionStorage.getItem("e2e-flag-set")) {
+        localStorage.setItem("imd-record:wallet-connected", "1");
+        sessionStorage.setItem("e2e-flag-set", "1");
+      }
+    });
+    // Hold the wallet chunk back for a moment so the outline can be seen.
+    await page.route(/walletRuntime-[^/]*\.js$/, async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
+    });
+    page.on("request", (r) => {
+      const u = new URL(r.url());
+      if (/walletRuntime-/.test(u.pathname)) chunks.push(u.pathname);
+      if (u.hostname !== "127.0.0.1") hosts.add(u.hostname);
+    });
+    await page.goto(base);
+    const ghost = await page.waitForSelector("header .acct-chip-ghost", { timeout: 5000 }).then(() => true, () => false);
+    const connectDuring = await page.locator("header .btn-primary", { hasText: "Connect" }).count();
+    check("390: wallet flag: the chip's outline shows in place of Connect while it reconnects", ghost && connectDuring === 0);
+    await page.waitForSelector("header .btn-primary:has-text('Connect')", { timeout: 20000 }).catch(() => {});
+    const flag = await page.evaluate(() => localStorage.getItem("imd-record:wallet-connected"));
+    check("390: wallet flag: the wallet code loads in the background without a click", chunks.length >= 1, JSON.stringify(chunks));
+    check("390: wallet flag: a failed silent reconnect shows Connect and clears the flag", (await page.locator("header .acct-chip-ghost").count()) === 0 && (await page.locator("header .btn-primary", { hasText: "Connect" }).count()) === 1 && flag === null, String(flag));
+    check("390: wallet flag: loading the wallet code contacts no Coinbase or other wallet host", ![...hosts].some((h) => /coinbase|walletconnect|cca-lite/.test(h)), JSON.stringify([...hosts]));
+    await ctx.close();
+  }
+  // D9: an old subject link opens the record and the address bar shows the current one.
+  {
+    const { ctx, page } = await variantPage({});
+    await page.goto(base + "#/s/app.imd.fun/overview");
+    await page.waitForSelector("#record-title", { timeout: 60000 }).catch(() => {});
+    check("390: an old link #/s/app.imd.fun/overview is replaced by #/s/imd.fun/overview", new URL(page.url()).hash === "#/s/imd.fun/overview", page.url());
     await ctx.close();
   }
 } finally {

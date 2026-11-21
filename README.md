@@ -373,6 +373,9 @@ A page is out of date for either of two reasons, and the note names both when bo
   "Out of date: built with an older format".
 - **Both**: "Out of date: N results not folded in; built with an older format".
 
+A changes result whose patches repaired every part it disputes is not counted in "results not folded in"
+(`unfoldedCount`); a rebuild still folds it in.
+
 Overview shows the note with a **Rebuild** link to Contribute; its home row shows the same note, and Home has a
 **Needs a rebuild** filter beside All. While reads are outstanding the filter shows no count and
 says "Checking which pages need a rebuild…".
@@ -515,21 +518,85 @@ page file. The site:
   details ("Exact text", "Exact value") and in the facts table cell's tooltip. What is sent to the swarm (targets,
   rewordings, the full request) always uses the exact text.
 
+## Staying connected (wallet)
+
+Wallet code still loads only when it is needed (`src/walletLazy.tsx`, `src/walletFlag.ts`):
+
+- **The flag.** When a wallet connects, the site keeps one flag in `localStorage`: key
+  `imd-record:wallet-connected`, value `1`. It holds no address. It is cleared when the visitor presses
+  **Disconnect** in the site's own account menu (`src/wallet.tsx`), and when a silent reconnect fails. Where storage
+  is blocked, nothing is remembered and the next visit shows Connect.
+- **With the flag, on page load**, `restoreWallet()` (called from `src/main.tsx`) loads the wallet runtime
+  (`walletRuntime-*.js`: wagmi, the EIP-6963 injected connector and Coinbase Smart Wallet) in the background and
+  reconnects silently, so the address chip appears without a click. While that runs, the header shows the chip's
+  outline (`ChipOutline`, the Connect button's 44 px height; screen readers hear "Reconnecting your wallet…") in
+  place of Connect, so the header does not flicker. If it fails, Connect shows and the flag is cleared.
+- **Without the flag**, nothing changes: no wallet code is loaded and no third party is contacted until Connect is
+  pressed. Loading the wallet code makes no third-party request either; the Coinbase connector is created with
+  `preference: { options: "all", telemetry: false }`.
+
+## Reading whole results
+
+Changes and sources results are read like page results: every line, source and item (`parseLines` and
+`parseChanges` in `src/page.ts`). The old 200-line and 200-item caps are gone, so a link or an `affects` entry
+whose evidence is line 201 or later still marks its target. The only bound is `MAX_RESULT_ENTRIES` (20,000 lines,
+sources or items per file), which stops a broken or hostile file from freezing the tab and is far past any real
+result. A file past it is read up to it, its `tooLarge` is set to how many it holds, and its Activity row says
+"This result is too large to show in full: N lines" (`tooLargeText`). Lines are never dropped silently.
+`tests/revision11.test.ts` checks a 250-line changes result whose last line contradicts `F1:L1` (L1 shows
+Contradicted) and a 20,001-line result (the Activity row shows the note).
+
+## Key facts badges, old links and official accounts
+
+- **One-line badge.** A Stated by or Reported by badge names one speaker, the strongest, then "+N" for the rest:
+  "Stated by Documentation +1" (`speakerShort` in `src/keyfacts.ts`). The row's details list every speaker.
+- **Old links.** An address such as `/#/s/app.uniswap.org/overview` opens the record and the address bar is replaced
+  (no new history entry) with the current one, `/#/s/uniswap.org/overview` (`canonicalHash` in `src/route.ts`).
+- **Official accounts.** The row is judged by the accounts it names (`accountsStatus` in `src/keyfacts.ts`). Only an
+  account on the project's own domain is "Own domain". An account on another site (x.com, github.com) whose channel
+  has tie `linked` (the own domain links to it as its official account) is "Linked from own site", tie `strong` is
+  "Verified on chain", and any other is "Not verified". Several accounts take the most cautious label. Lines
+  published on a linked channel count as statements.
+
+## An edit repairs what it disputes
+
+A kept change now repairs the parts it disputes in the same job; it no longer asks for a separate paid rebuild.
+
+- **Patches.** The changes file asks: "For every infobox row and summary sentence in affects, give a patch: the
+  row's new value, or the sentence's new text, with the line ids it now rests on. Change only what the new evidence
+  requires and keep the rest of the wording. If the evidence shows a part is out of date but not what replaced it,
+  give no patch for it." The result has `patches[{kind,target,value,lines[]}]` (`parsePatches` in `src/page.ts`).
+- **Shown on top of the page.** A patched Key facts row shows the new value with its normal badge, worked out from
+  the lines the patch rests on (`withPatches` in `src/keyfacts.ts`). Its details say "Updated by a change from
+  <payer>" and "Earlier value: …". A patched summary sentence shows its new text, marked "updated by a change from
+  <payer>", and its details give the earlier text (`applySentencePatches` in `src/changeResult.ts`). Record lines
+  take no patch and keep their Out of date or Contradicted markers.
+- **Banner.** "A newer source disputes N parts of this page" counts only parts in `affects` that got no patch
+  (`disputesOf`). A changes result whose disputed parts are all patched (`fullyPatched`) does not make the page
+  "Out of date: N results not folded in".
+- **Rebuild.** The rebuild still folds every changes result in later and treats its patches as part of it: "fold
+  each patch into the infobox row or summary sentence it names, resting on the lines it gives, unless newer evidence
+  says otherwise."
+
 ## Instruction files
 
 Everything in the rebuild and changes templates that does not change from request to request is a static text
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-ede1a5e23b01.txt` and `changes-053f706852a0.txt`; still served: `rebuild-8d7dfbc27d07.txt`,
-`changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
-`changes-8400e6bf9d85.txt`. The current rebuild file adds the scope, key facts, size and uncertainty rules; the
-current changes file adds the whole-record comparison and the `affects[{kind,target,type,by_line}]` key (kind
-`line`, `infobox` or `summary`). Everything in a kept change's `affects` is marked at once (lines with their status,
-a Key facts row with "Out of date" or "Contradicted" in place of its badge, a summary sentence with a red dot or a
-dark amber ring that opens the new line; only the targeted sentence is rewritten), and Overview says "A newer source
-disputes N parts of this page. Rebuild to update them." A later source can still dispute a sentence an earlier kept
-change reworded: entries are matched against the displayed text, and only one from before that rewrite is skipped.
+Current files: `rebuild-5c84552b327e.txt` and `changes-275c3c26682c.txt`; still served: `rebuild-ede1a5e23b01.txt`,
+`changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`, `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`,
+`changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and `changes-8400e6bf9d85.txt`. The current rebuild file adds,
+to the scope, key facts, size and uncertainty rules, the `linked` channel tie ("A channel on another site that the
+project's own domain links to as its official account has tie linked.") and folding a changes result's patches in
+(see "An edit repairs what it disputes"). The current changes file adds, to the whole-record comparison and the
+`affects[{kind,target,type,by_line}]` key (kind `line`, `infobox` or `summary`), the patch rule and the
+`patches[{kind,target,value,lines[]}]` key. Every part in a kept change's `affects` that got no patch is marked
+(lines with their status, a Key facts row with "Out of date" or "Contradicted" in place of its badge, a summary
+sentence with a red dot or a dark amber ring that opens the new line), and Overview says "A newer source disputes N
+parts of this page. Rebuild to update them." for those parts only. A later source can still dispute a sentence an
+earlier kept change reworded: entries are matched against the displayed text, and only one from before that rewrite
+is skipped.
 A changes job may link a new line to a panel answer completed after the last rebuild (A<n> of its own `<PRIOR>`):
 the link is resolved by the answer's URL among the subject's completed answers and settles the line at once.
 
@@ -540,8 +607,17 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreihn4gs6eoybzlfrdqiboqkgwjjd5qc677s66eeor653eluklw6iem?filename=rebuild-ede1a5e23b01.txt`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreiafh5ygquvavefyvffigjlpenehanagwo4hx4cxhivyox46ssjtva?filename=changes-053f706852a0.txt`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreic4qrkswmt6qgpnynng6gnxpbolwncqo3qyoxeecfsj3kvi5vkogm?filename=rebuild-5c84552b327e.txt`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreibhlq6cm2bm72ungaohzokga4ul6wqmsflw7c3yovpiouibbx7mge?filename=changes-275c3c26682c.txt`
+
+Since this revision the objective names a **second address** for the same raw CID, at `gateway.pinata.cloud`
+(`INSTRUCTIONS_FALLBACK_GATEWAY` in `src/config.ts`, `Instructions.fallbackUrl`): "Your full instructions are the
+file at <URL> or, if that fails, at <URL2>, sha256 <HASH>." (`instructionsOf` reads both back.) For example:
+`https://gateway.pinata.cloud/ipfs/bafkreic4qrkswmt6qgpnynng6gnxpbolwncqo3qyoxeecfsj3kvi5vkogm?filename=rebuild-5c84552b327e.txt`.
+It was kept because IMD's request check returned no blockers for both objectives naming it (see "Free request
+check", 2026-11-21T23:09Z). On the same day both gateways served the published `rebuild-ede1a5e23b01.txt` at its
+raw CID (`bafkreihn4gs6…w6iem`) with HTTP 200, `text/plain`, `Access-Control-Allow-Origin: *` and the exact bytes
+(sha256 `ede1a5e23b01…`).
 
 Why this address (all checked with `curl -sSL` on 2026-11-21):
 
@@ -559,16 +635,47 @@ are not published yet (the hosted version, `bafybeihiyfpu…`, predates them; th
 job), so their raw CIDs time out until then. Once this version is pinned, check them with:
 
 ```sh
-curl -sSL -o rebuild.txt 'https://ipfs.filebase.io/ipfs/bafkreihn4gs6eoybzlfrdqiboqkgwjjd5qc677s66eeor653eluklw6iem?filename=rebuild-ede1a5e23b01.txt' -w '%{http_code}\n' && sha256sum rebuild.txt   # 200, ede1a5e2…dbc823
-curl -sSL -o changes.txt 'https://ipfs.filebase.io/ipfs/bafkreiafh5ygquvavefyvffigjlpenehanagwo4hx4cxhivyox46ssjtva?filename=changes-053f706852a0.txt' -w '%{http_code}\n' && sha256sum changes.txt  # 200, 053f7068…4933a8
+for g in https://ipfs.filebase.io/ipfs/ https://gateway.pinata.cloud/ipfs/; do
+  curl -sSL -o rebuild.txt "${g}bafkreic4qrkswmt6qgpnynng6gnxpbolwncqo3qyoxeecfsj3kvi5vkogm" -w '%{http_code}\n' && sha256sum rebuild.txt  # 200, 5c84552b…ed54e33
+  curl -sSL -o changes.txt "${g}bafkreibhlq6cm2bm72ungaohzokga4ul6wqmsflw7c3yovpiouibbx7mge" -w '%{http_code}\n' && sha256sum changes.txt  # 200, 275c3c26…dfec31
+done
 ```
+
+On 2026-11-21 both current CIDs timed out (25 s, no bytes) at both gateways, as expected before this export is
+pinned.
+
+### The site checks the file before it takes payment
+
+Before the pay dialog opens for a rebuild or a set of changes, `openAsk` in `src/App.tsx` calls
+`instructionsReachable` (`src/instructions.ts`). It fetches the file the objective names, then the "if that fails"
+address, each with a 15 s timeout and no credentials, and compares the bytes' sha256 with the objective's hash. While
+it runs, a status toast says "Checking that this job can read its instructions…". If neither address gives the exact
+bytes, no dialog opens and an alert says: "The instructions for this job cannot be reached right now, so it would stop
+without doing the work. Try again later." Sources, edits and panel questions name no instruction file and open as
+before. Until the plane pins this export, the current files' CIDs do not resolve, so rebuilds and changes show that
+message.
+
 
 The visitor's preview ("Instructions this job follows") links both the file on this site
 (`./instructions/<file>`) and the address the job fetches.
 
 ## Free request check
 
-### Rebuild and changes objectives with a long `<PRIOR>` (2026-11-21, this revision)
+### Objectives naming the second gateway (2026-11-21, revision 11)
+
+`npx vite-node scripts/check-objectives.ts`, as below, with the current instruction files. Each objective now reads
+"Your full instructions are the file at https://ipfs.filebase.io/ipfs/<cid>?filename=<file> or, if that fails, at
+https://gateway.pinata.cloud/ipfs/<cid>?filename=<file>, sha256 <hash>."
+
+| Body | `<PRIOR>` | Objective | HTTP | Result (at, UTC) |
+| --- | --- | --- | --- | --- |
+| Rebuild (`rebuild-5c84552b327e.txt`) | 68 files | 7,891 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-21T23:09:18Z) |
+| Changes (`changes-275c3c26682c.txt`) | 66 files | 7,860 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-21T23:09:19Z) |
+
+Blockers are empty for both, so the second address is kept. The second address makes each objective longer, so it
+fits one fewer `<PRIOR>` file than before.
+
+### Rebuild and changes objectives with a long `<PRIOR>` (2026-11-21, previous revision, one address)
 
 `npx vite-node scripts/check-objectives.ts` builds both bodies with the site's own `rebuildBody` and `changesBody`,
 each with as many `<PRIOR>` files as the site fits under 7,900 characters, and POSTs
@@ -635,38 +742,44 @@ pins the site's bodies to them.
 
 ## Validation results
 
-Run on this machine on 2026-11-21 after the last source change (revision 8 of job 11). Earlier details and the
-Better Interface review are in `artifacts/validation.md`.
+Run on this machine on 2026-11-21 after the last source change (revision 11 of this job: the README, the B5 unit
+test and the e2e suite brought up to date with items A to E). Earlier details and the Better Interface reviews are in
+`artifacts/validation.md`.
 
-- **Export was stale, now rebuilt.** The committed `dist/` still held the bundle and instruction files of the job
-  before (it named `rebuild-aede2eb36737.txt` and lacked `rebuild-8d7dfbc27d07.txt` and `changes-0571b29e932d.txt`),
-  so `tests/revision*.test.ts` failed on `dist/agents.md` differing from `public/agents.md`. `npm run build` now
-  writes all six instruction files into `dist/instructions/`, and the bundle names the current two.
 - `npx vite-node scripts/instructions.ts` and `npx vite-node scripts/agents-md.ts`: no change to `public/` or
-  `src/instructions.json` (the current files are `rebuild-8d7dfbc27d07.txt`, `changes-0571b29e932d.txt`; their raw
-  CIDs, recomputed from their sha256, match the ones above and in `public/agents.md`).
-- `npm run typecheck`: exit 0. `npm test`: 254 of 254 pass in 17 files.
-- `npm run build`: exit 0. `dist/index.html` uses only `./` URLs and has the title, favicon, description,
-  og:title and og:image; `dist/` is 1.7 MB. The entry chunk loads `walletRuntime-*.js` (wagmi, the Coinbase
-  connector) only by dynamic `import()`, and `index.html` preloads nothing else.
-- Browser interaction checks: `node tests/e2e.mjs` on `dist/` with the fixture: **234 of 234 pass** at 390, 1440
-  and 320 wide, plus the oracle-only, rejected and failed-read variants. This is the first run of the suite since
-  job 10. It found one real defect, now fixed: a row standing for identical lines (item 4) could not be found by
-  searching the speaker of a merged line ("a forum"); the search now matches every merged line's text and speaker
-  (`rowMatches` in `src/lookup.ts`, unit test in `tests/revision7.test.ts`). Checks that still described the
-  site before this job were updated to the brief: the repeat box now lives inside Page upkeep, Page upkeep is the
-  last section, an unlinked panel answer is listed under Page upkeep only, the filters include Out of date, a logo
-  under 64 px shows at its real size, and the contract form opens from "Write a question from scratch". The same
-  goes for wording earlier accepted jobs changed (How it works copy, the Overview footer links, the changes
-  objective naming the main contract, the waiting message when the chain cannot be read).
-- Design probe `taste.mjs --out test/scratch/taste` (Playwright from `~/.imd-taste`): all 16 checks pass. Render
-  ran with no script errors or missing files; on load it contacted only `api.imd.fun` and the public RPCs
-  (`gateway.tenderly.co`, `ethereum-rpc.publicnode.com`, `rpc.mevblocker.io`), with no Coinbase host. No
-  horizontal scroll at 320, 390 or 1440. Contrast passes 4.5:1 for all measured text. 4 type sizes in use. Prose
-  on the first screen is 52 words at 390. I checked the 390 screenshot: headline, Look it up bar and Connect are
-  on the first screen.
-- **Not tested here:** paying, approving and connecting a real wallet (no wallet on this machine), and live reads
-  against mainnet (the e2e suite answers every chain and api.imd.fun read from a fixture).
+  `src/instructions.json` (current files `rebuild-5c84552b327e.txt`, `changes-275c3c26682c.txt`).
+- `npm run typecheck`: exit 0. `npx vitest run`: **298 of 298 pass in 21 files**. Before this revision 2 failed:
+  `tests/revision7.test.ts` (this README still named the old current files) and `tests/review2.test.ts`
+  (`dist/agents.md` was stale). New: `tests/revision11.test.ts` (B5). With `MAX_RESULT_ENTRIES` set to 200 as a
+  trial, both of its tests fail, so it guards against a cap coming back.
+- `npm run build`: exit 0. `dist/agents.md` is byte for byte `public/agents.md`; `dist/index.html` uses only `./`
+  URLs and has the title, favicon, description, og:title and og:image; `dist/` is 1.9 MB. Without the wallet flag the
+  entry chunk loads `walletRuntime-*.js` only by dynamic `import()` (on Connect, or on load when the flag is set).
+- Request check: `npx vite-node scripts/check-objectives.ts` with both instruction addresses in each objective:
+  rebuild 7,891 and changes 7,860 characters, both HTTP 200, `judged: true`, `blockers: []`, `suggestions: []`
+  (table under "Free request check").
+- Browser interaction checks: `node tests/e2e.mjs` on `dist/` with the fixture (Playwright 1 and Chromium headless
+  shell, installed under `$TMPDIR` with the system libraries and fonts it lacked unpacked there, not in the
+  repository): **245 of 245 pass** at 390, 1440 and 320 wide plus the variants. New checks this revision:
+  - Instruction files: the objectives name the second address. With both gateways failing, no pay dialog opens, the
+    alert shows the brief's message, and both gateways were tried, Filebase first; the notice fits at 390. With only
+    Filebase failing, the Pinata address supplies the exact bytes and the dialog opens.
+  - Wallet: with no flag, no wallet chunk loads and no wallet host is contacted. With the flag set, the chip outline
+    shows in place of Connect, the wallet chunk loads without a click, the failed reconnect (no wallet in this
+    browser) brings back Connect and clears the flag, and no Coinbase or other wallet host is contacted.
+  - Old links: `#/s/app.imd.fun/overview` becomes `#/s/imd.fun/overview`.
+  - Two existing checks were brought up to date. The Sources legend now expects the D10 sentence with "Linked from
+    own site". The found: false home row check used to read the list before its rows finished reading and failed
+    1 run in 2 here; it now waits for "Reading its record…" to clear and passed 3 runs in a row.
+- Design probe `taste.mjs --out test/scratch/taste`: **all 16 checks pass**. Render had no script errors or missing
+  files; external hosts on load were only `api.imd.fun` and the public RPCs. No horizontal scroll at 320, 390 or
+  1440. All measured text meets 4.5:1. 4 type sizes in use (5 with one-offs). First-screen prose is 52 words at 390.
+  I checked the 390 screenshot: the headline, the Look it up bar and Connect are on the first screen.
+- **Not tested here:** paying, approving and connecting a real wallet, including a silent reconnect that succeeds
+  (no wallet on this machine; the e2e covers only the failing path); live chain and api.imd.fun reads (the e2e
+  answers them from a fixture); and the current instruction files on the real gateways. Their raw CIDs timed out on
+  both gateways today because this export is not pinned yet. Until it is, the site shows the "cannot be reached"
+  message for rebuilds and changes.
 
 ## Limits
 

@@ -44,6 +44,10 @@ No tracked capitals, no eyebrows above headings.
 
 - **Header**: brand "On the record (test)" (a link to Home) and the wallet's Connect control on one row. The row
   (`.top-row`) has the page's own `--page-max` and `--page-pad`, so its edges line up with the content below.
+- **Chip outline** (`.acct-chip.acct-chip-ghost`, `ChipOutline` in `src/walletLazy.tsx`): while a remembered wallet
+  reconnects on page load, the header shows the chip's shape in place of Connect: the same 44px pill, at least
+  8.5rem wide, a grey dot (`--color-border`) and a 0.6rem rounded bar in `--color-bg-hover` where the name goes. It
+  is `role="status"` and says "Reconnecting your wallet…" to screen readers. It has no animation.
 - **Account chip** (`.acct-chip`, connected only): a 44px pill (the Connect button's height) with a green 8px dot,
   the ENS name or the short `0x1234…abcd` address (mono, ellipsis past 14rem) and a small chevron. It opens a
   disclosure (`.acct-menu`, white, 1px border, 10px radius, `--shadow-menu`) under its right edge with "Copy
@@ -81,7 +85,8 @@ No tracked capitals, no eyebrows above headings.
   then **Key facts** full width: a bordered box with a table of label, value (linked when it has a url;
   addresses mono, shortened, with a Copy button) and a badge pill ("Proven on chain", "Stated by …", "Reported
   by …", worked out only from the kinds of the row's lines; on the Website and Official accounts rows also the
-  channel's "Own domain" (blue) / "Verified on chain" (green) / "Not verified" (grey)); a badge opens the lines
+  channel's "Own domain" (blue) / "Linked from own site" (blue, `.badge-linked`) / "Verified on chain" (green) / "Not
+  verified" (grey)); a badge opens the lines
   in Record. An Official accounts row listing several accounts shows them as a list (`.kf-accounts`, 4px gap),
   each name linked to its channel with its own label pill. Badges wrap inside their cell (`max-width: 100%`,
   `overflow-wrap: anywhere`), so a long publisher name never widens the page. Without `infobox`, at most four
@@ -103,7 +108,7 @@ No tracked capitals, no eyebrows above headings.
   …" in green or "Contradicted by: …" in red, linking the line or panel answer. Then "Other channels" (channels
   not in key facts, with their labels), "Not known yet", and **Panel answers** always last (also with no page):
   each answer's title, a true/false pill, "panel, N of M agreed", its kind marker and a link to the request.
-- **Sources**: channels with their label (Own domain, Verified on chain, Not verified) and a key saying what each
+- **Sources**: channels with their label (Own domain, Linked from own site, Verified on chain, Not verified) and a key saying what each
   means, then one numbered source list.
 - **Activity**: one card per request of the subject, newest first: state pill, time, what it was (Page rebuild,
   Sources, Edit, Question), the label "Shown now", "Folded into the page shown" or "Not yet folded in: included
@@ -164,6 +169,17 @@ No tracked capitals, no eyebrows above headings.
   the control that opened it (`src/modal.ts`). The pay dialog's Amount reads "Reading price…", then the price, or
   "Price unavailable" with a secondary "Retry price" button beside the actions when the read fails; Pay stays
   disabled until a price is read.
+
+- **Toast** (`.toast`, `src/App.tsx`): a fixed notice over the bottom edge, inset `--space-4` (and the safe area)
+  from the sides and bottom, at most 36rem wide, `--radius-control`, `--shadow-sheet`, small text. Dark
+  (`--gray-900` on `--gray-0`, `role="status"`) while the site checks a job's instruction file; `.toast-error`
+  (`--red-800` on `--red-50` with a 1px `--red-800` border, `role="alert"`) with the "cannot be reached right now"
+  message and a 44px Close button when it fails. Its text wraps (`overflow-wrap: anywhere`), so it fits at 320.
+- **Size note** (`.warn`, orange-800, small, 600): in an Activity row, "This result is too large to show in full: N
+  lines" under the line count.
+- **Patched row or sentence**: a Key facts row a change patched keeps its normal badge; its details start with
+  "Updated by a change from <payer>" and "Earlier value: …". A patched summary sentence carries a small "updated by
+  a change from <payer>" (`.reworded small`), and its open details give the earlier text (`.sentence-updated`).
 
 ## Responsive behaviour
 
