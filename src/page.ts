@@ -67,7 +67,7 @@ export interface LogoSource {
 }
 export interface LineLink {
   /** confirms: establishes the whole sentence as written; partly: only part of it; contradicts: shows it wrong. */
-  type: "confirms" | "contradicts" | "partly" | "context";
+  type: "confirms" | "contradicts" | "partly" | "context" | "outdates";
   target: string;
 }
 /** A row of the key facts box: label, value, an optional link and the line ids it rests on. */
@@ -76,6 +76,8 @@ export interface InfoRow {
   value: string;
   url: string;
   lines: string[];
+  /** When the value lists several things, each one: shown as separate lines. Empty for a single value. */
+  values: string[];
 }
 export interface Dropped {
   id: string;
@@ -178,7 +180,7 @@ function parseLinks(v: unknown): LineLink[] {
       const o = obj(x);
       const t = str(o.type, 32).toLowerCase();
       const target = str(o.target, 64).trim();
-      return (t === "confirms" || t === "contradicts" || t === "partly" || t === "context") && target ? [{ type: t as LineLink["type"], target }] : [];
+      return (t === "confirms" || t === "contradicts" || t === "partly" || t === "context" || t === "outdates") && target ? [{ type: t as LineLink["type"], target }] : [];
     });
 }
 
@@ -494,9 +496,12 @@ export function parsePage(text: string, domain = ""): Page {
       .slice(0, 16)
       .map((r) => {
         const o = obj(r);
-        return { label: str(o.label, 80), value: str(o.value, 300), url: str(o.url, 400), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean) };
+        const values = arr(o.values).map((x) => str(x, 300).trim()).filter(Boolean).slice(0, 20);
+        return { label: str(o.label, 80), value: str(o.value, 300) || values.join("; "), url: str(o.url, 400), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean), values: values.length > 1 ? values : [] };
       })
-      .filter((r) => r.label && r.value),
+      // A row never shows "unverified" or "unknown" as its value: it is left out, as the instructions say.
+      .filter((r) => r.label && r.value && !/^\s*(unverified|unknown|not known|n\/a)\.?\s*$/i.test(r.value))
+      .slice(0, 15),
     lines,
     differs: parseDiffers(j.differs),
     dropped: parseDropped(j.dropped),
@@ -665,6 +670,8 @@ export function parseLines(text: string, opts: { changes?: boolean } = {}): Sour
 export interface RecordRow extends Row {
   /** raised: the line came from a visitor's changes job ("raised by <payer>"). */
   origin: { payer: string; jobHref: string; raised?: boolean } | null;
+  /** Other lines with the same text (ignoring case and punctuation), shown as this ONE row: their origins, speakers and sources. */
+  same?: RecordRow[];
 }
 /** A row of the on-chain facts table: a proof with a fact, from the page or raised by a visitor's changes job. */
 export const isFactRow = (r: RecordRow) => r.line.kind === "proof" && !!r.line.fact && (!r.origin || !!r.origin.raised);

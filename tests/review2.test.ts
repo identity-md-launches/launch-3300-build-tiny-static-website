@@ -103,14 +103,14 @@ describe("one badge per Key facts row (44e42685)", () => {
   it("Official accounts with mixed verification shows one cautious label", () => {
     const [r] = rows({
       subject: { channels: [{ label: "@imd", url: "https://x.com/imd", tie: "strong" }, { label: "@news", url: "https://x.com/news", tie: "weak" }] },
-      infobox: [{ label: "Official accounts", value: "@imd, @news", lines: ["L1"] }],
+      infobox: [{ label: "Official accounts", value: "@imd, @news", values: ["@imd","@news"], lines: ["L1"] }],
       lines: [{ id: "L1", section: "people", text: "x", kind: "statement", by: "@imd", sources: ["S1"] }],
       sources: [{ id: "S1", ref: "https://x.com/imd/status/1" }],
     });
     expect([r!.status?.text, r!.badge]).toEqual(["Not verified", null]);
     const [all] = rows({
       subject: { channels: [{ label: "@imd", url: "https://x.com/imd", tie: "strong" }, { label: "@b", url: "https://x.com/b", tie: "strong" }] },
-      infobox: [{ label: "Official accounts", value: "@imd, @b", lines: [] }],
+      infobox: [{ label: "Official accounts", value: "@imd, @b", values: ["@imd","@b"], lines: [] }],
     });
     expect([all!.status?.text, all!.badge]).toEqual(["Verified on chain", null]);
   });

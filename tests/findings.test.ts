@@ -267,7 +267,7 @@ describe("an Official accounts row shows one badge (2ba970b7, revised by 44e4268
     const p = parsePage(
       JSON.stringify({
         subject: { name: "IMD", channels: [{ label: "@imd", url: "https://x.com/imd", tie: "strong" }, { label: "@news", url: "https://x.com/news", tie: "weak" }] },
-        infobox: [{ label: "Official accounts", value: "@imd, @news", lines: ["L1"] }],
+        infobox: [{ label: "Official accounts", value: "@imd, @news", values: ["@imd","@news"], lines: ["L1"] }],
         lines: [{ id: "L1", section: "people", text: "The accounts are @imd and @news.", kind: "statement", by: "@imd", sources: ["S1"] }],
         sources: [{ id: "S1", ref: "https://x.com/imd/status/1" }],
       }),
@@ -278,7 +278,9 @@ describe("an Official accounts row shows one badge (2ba970b7, revised by 44e4268
     expect(row!.accounts.map((a) => [a.name, a.status?.text])).toEqual([["@imd", "Verified on chain"], ["@news", "Not verified"]]);
     expect(row!.status).toEqual({ text: "Not verified", tone: "unverified" });
     expect(row!.badge).toBeNull();
-    expect(accountsOf(p.channels, "@imd and x.com/news; @other", "imd.fun").map((a) => a.channel?.label ?? null)).toEqual(["@imd", "@news", null]);
+    expect(accountsOf(p.channels, ["@imd", "x.com/news", "@other"], "imd.fun").map((a) => a.channel?.label ?? null)).toEqual(["@imd", "@news", null]);
+    // A text value is one account: never split on commas or "and" (revision 13).
+    expect(accountsOf(p.channels, "@imd and x.com/news; @other", "imd.fun")).toHaveLength(1);
   });
 });
 
@@ -363,7 +365,7 @@ describe("a lone Official accounts handle keeps its tie (d1dd68f7)", () => {
       parsePage(
         JSON.stringify({
           subject: { name: "IMD", channels: [{ label: "IMD on X", url: "https://x.com/imd", tie: "strong" }, ...extra] },
-          infobox: [{ label: "Official accounts", value, lines: ["L1"] }],
+          infobox: [{ label: "Official accounts", value, values: value.includes(",") ? value.split(/\s*,\s*/) : [], lines: ["L1"] }],
           lines: [{ id: "L1", section: "people", text: "We are @imd.", kind: "statement", by: "@imd", sources: ["S1"] }],
           sources: [{ id: "S1", ref: "https://x.com/imd/status/1" }],
         }),

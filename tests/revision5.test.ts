@@ -178,8 +178,9 @@ describe("out of date (90eee5ec)", () => {
 });
 
 describe("Tokens values (436ed92e, 11a41834)", () => {
-  it("keeps each chain with its address in a comma-joined value", () => {
-    const t = tokensOf("GOV: governance, 0x1111111111111111111111111111111111111111 on Ethereum, PAY: fees, 0x2222222222222222222222222222222222222222 on Base");
+  it("never splits a text value on commas; a values list gives one token each (revision 13)", () => {
+    expect(tokensOf("GOV: governance, 0x1111111111111111111111111111111111111111 on Ethereum, PAY: fees, 0x2222222222222222222222222222222222222222 on Base")).toHaveLength(1);
+    const t = tokensOf("", "", ["GOV: governance, 0x1111111111111111111111111111111111111111 on Ethereum", "PAY: fees, 0x2222222222222222222222222222222222222222 on Base"]);
     expect(t).toEqual([
       { symbol: "GOV", purpose: "governance", address: "0x1111111111111111111111111111111111111111", chain: "Ethereum", url: "" },
       { symbol: "PAY", purpose: "fees", address: "0x2222222222222222222222222222222222222222", chain: "Base", url: "" },

@@ -6,14 +6,13 @@
  * open, and by readSubject, which the home list uses to take a digest of each subject it has none for (digest.ts).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getEnsName } from "wagmi/actions";
 import type { Hex } from "viem";
 import { fromStored, loadTaggedRequests, stateOf, getBlockTime, toStored, type Completion, type ScanState, type TaggedRequest } from "./chain";
 import { dropOldFileCache, kvGet, kvSet } from "./store";
 import { cacheGet, cacheSet, fetchLogo, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
 import { parseChanges, parseEdit, parseLines, parsePage, rejectionOf, type ChangesResult, type EditResult, type Page, type SourceLines } from "./page";
-import { config } from "./wallet";
+import { publicClient } from "./reads";
 import { domainOfId } from "./subject";
 
 export interface Activity {
@@ -85,7 +84,7 @@ async function ensOf(addr: Hex): Promise<string | null> {
   const c = cacheGet<{ name: string | null; at: number }>(key);
   if (c && Date.now() - c.at < 86_400_000) return c.name;
   try {
-    const name = await getEnsName(config, { address: addr, chainId: 1 });
+    const name = await publicClient.getEnsName({ address: addr });
     cacheSet(key, { name: name ?? null, at: Date.now() });
     return name ?? null;
   } catch {

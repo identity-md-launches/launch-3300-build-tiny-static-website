@@ -73,7 +73,7 @@ describe("rebuild", () => {
       expect(x).toContain(VISITOR);
     }
     expect(t).toContain(
-      "contracts[{address,chain,role,main}]}, infobox[{label,value,url,lines[]}], summary[{text,lines[],paragraph}], lines[{id,section,text,kind,by,sources[],quote,rerun,fact{name,value,unit},history[{block,value}],from[],links[{type,target}]}], related[{name,id,relation,lines[]}], logo{url,fetched_at}, differs[{lines[],why,level}], dropped[{id,why}], open_questions[]",
+      "contracts[{address,chain,role,main}]}, infobox[{label,value,values[],url,lines[]}], summary[{text,lines[],paragraph}], lines[{id,section,text,kind,by,sources[],quote,rerun,fact{name,value,unit},history[{block,value}],from[],links[{type,target}]}], related[{name,id,relation,lines[]}], logo{url,fetched_at}, differs[{lines[],why,level}], dropped[{id,why}], open_questions[]",
     );
   });
   it("adds this job's rules word for word and keeps the earlier jobs' rules: merging, proofs read more than once, plain words, claim wording, related, logo", () => {

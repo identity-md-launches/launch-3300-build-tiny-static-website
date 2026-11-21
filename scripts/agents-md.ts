@@ -182,7 +182,12 @@ different blocks stays one proof line with the newest reading, older readings in
 A line a proof or panel answer settles is kept with links to what confirms or contradicts it. A link's \`type\` is
 \`confirms\` only when the proof or panel answer establishes the whole sentence as written, including its tense (a value
 read at deployment confirms "was X at launch", not "is X"); \`partly\` when it establishes only part; \`contradicts\`
-when it shows the sentence is wrong. Settling a line never changes its \`kind\` or \`by\`.
+when it shows the sentence was wrong when written; \`outdates\` (on the older line, targeting the newer one) when a
+newer source shows that something it reported has since changed while it was accurate about its own source.
+Settling a line never changes its \`kind\` or \`by\`. When an infobox value lists several things the job also gives
+them in \`values\`, one entry each; the infobox has at most 15 rows and never a value of "unverified" or "unknown".
+For Founder or creator, Contributors and any line about a person's role the job uses every speaker, strongest first:
+the project on its own channels, another person at the project, an outside publication, the person about themselves.
 
 **Two outputs, both always written.** The body declares \`artifacts/page.json\` and \`artifacts/logo.png\`
 (\`image/png\`). The job takes the logo only from the subject's own domain (apple-touch-icon, favicon or
@@ -333,7 +338,7 @@ ${LEGACY_PRESETS.map((p) => `- ${p.id}: ${p.question}`).join("\n")}
 ## What the results hold, and how the site shows them
 
 A rebuild writes \`artifacts/page.json\` with these keys (the last sentence of the rebuild objective):
-\`infobox[{label,value,url,lines[]}]\`, \`summary[{text,lines[],paragraph}]\`,
+\`infobox[{label,value,values[],url,lines[]}]\`, \`summary[{text,lines[],paragraph}]\`,
 \`lines[{id,section,text,kind,by,sources[],quote,rerun,fact{name,value,unit},from[],links[{type,target}]}]\`,
 \`differs[{lines[],why,level}]\`, \`dropped[{id,why}]\` and \`sources[{id,ref,type,read_at,could_open,read_via}]\`,
 beside \`subject\`, \`open_questions\`, \`ignored_instructions\` and \`notes\`.
@@ -412,6 +417,29 @@ filling each row in as it arrives. A row being read is a light placeholder. A pa
 result files failed is still shown, with "Counts may be short" and Try again; a page file that failed shows its
 error and Try again. A logo that failed is read again on the next visit. A lookup by contract address waits for
 those reads ("Checking project contracts…") before it offers "Add this project".
+
+**Out of date lines.** A line with an \`outdates\` link shows an amber "Out of date" marker with "Newer: <the newer
+line>" under it, and is counted apart from Contradicted (its own filter button and section count). A Key facts row
+whose lines are all out of date shows "Out of date" in place of its badge. A kept "This is wrong" on a summary sentence
+with \`final_text\` replaces that sentence, marked "corrected by <payer>"; the visitor may send a suggested corrected
+sentence with the change (\`; suggested final_text: "…"\` after its links).
+
+**One row per text.** Lines with the same text, ignoring case and punctuation, show as ONE row whose details list
+every origin, speaker and source; counts and filters count it once. Dropped lines, unaccounted earlier lines, how
+many identical lines were shown as one, and panel answers no line links to are listed only under "Page upkeep" at
+the bottom of Record (and Activity). Key facts values are shown as separate lines only when the result gives
+\`values\`; a text value is never split on commas or "and". Addresses in Key facts are shortened with a copy button;
+the full address is in the row's details.
+
+**Panel questions from a line.** "Ask a panel to check it" fills the panel form from the line: "A post on X says"
+when its source is an X post (link and handle from the URL), "A contract call returns" when it is a proof whose
+rerun names an address, a function and a chain, and whose fact gives the value, else "A web page says" with its
+source link. A line whose source fits none of these says so and offers "Write a question from scratch".
+
+**Privacy.** On load the site contacts only its own host, IMD's API and the public RPCs. The wallet code (wagmi,
+the EIP-6963 injected connector and Coinbase Smart Wallet, telemetry off) is loaded only when the visitor presses
+Connect. While a rebuild of a subject is pending, its Rebuild button is replaced by "A rebuild is running, started
+<time> by <payer>" with a link to it.
 
 **Out of date.** A page is out of date when completed results or panel answers are not folded in (not listed in
 the \`<PRIOR>\` of the request that produced it), or when that request's objective differs from what

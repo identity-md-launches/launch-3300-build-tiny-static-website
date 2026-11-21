@@ -6,7 +6,7 @@
  */
 import type { Kind, Line, LineLink } from "./page";
 
-export type SettleState = "proven" | "contradicted" | "partly" | "none";
+export type SettleState = "proven" | "contradicted" | "outdated" | "partly" | "none";
 
 export interface Settle {
   state: SettleState;
@@ -14,6 +14,8 @@ export interface Settle {
   confirms: string[];
   contradicts: string[];
   partly: string[];
+  /** Newer lines (or panel answers) that show something this line reported has since changed. */
+  outdates: string[];
 }
 
 /** A panel answer as a rebuild was given it: A1, A2... */
@@ -29,14 +31,17 @@ export function settlesWith(target: string, proofIds: Set<string>): boolean {
  * How one line is settled. Only statements and claims are settled; a proof is evidence, not a thing said.
  * Contradicts wins over confirms: a sentence a proof shows wrong is never shown as Proven.
  */
-export function settleOf(line: Pick<Line, "kind" | "links">, proofIds: Set<string>): Settle {
+export function settleOf(line: Pick<Line, "kind" | "links">, proofIds: Set<string>, lineIds: Set<string> = proofIds): Settle {
   const pick = (type: LineLink["type"]) => line.links.filter((k) => k.type === type && settlesWith(k.target, proofIds)).map((k) => k.target.trim());
   const confirms = pick("confirms");
   const contradicts = pick("contradicts");
   const partly = pick("partly");
-  if (line.kind === "proof") return { state: "none", confirms: [], contradicts: [], partly: [] };
-  const state: SettleState = contradicts.length ? "contradicted" : confirms.length ? "proven" : partly.length ? "partly" : "none";
-  return { state, confirms, contradicts, partly };
+  // Out of date: a newer line of any kind (or a panel answer) shows that what this line reported has since changed.
+  const outdates = line.links.filter((k) => k.type === "outdates" && (isAnswerRef(k.target) || lineIds.has(k.target.trim()))).map((k) => k.target.trim());
+  // A proof read at an older block can be out of date too; it is never proven or contradicted.
+  if (line.kind === "proof") return { state: outdates.length ? "outdated" : "none", confirms: [], contradicts: [], partly: [], outdates };
+  const state: SettleState = contradicts.length ? "contradicted" : outdates.length ? "outdated" : confirms.length ? "proven" : partly.length ? "partly" : "none";
+  return { state, confirms, contradicts, partly, outdates };
 }
 
 /** The proof line ids among these lines. */
@@ -45,10 +50,11 @@ export const proofIdsOf = (lines: Pick<Line, "id" | "kind">[]) => new Set(lines.
 /** Every line's settle state, keyed by line id, and the proof lines a settled row already shows. */
 export function settleAll(lines: Pick<Line, "id" | "kind" | "links">[]): { by: Map<string, Settle>; absorbed: Set<string> } {
   const proofs = proofIdsOf(lines);
+  const ids = new Set(lines.map((l) => l.id));
   const by = new Map<string, Settle>();
   const absorbed = new Set<string>();
   for (const l of lines) {
-    const s = settleOf(l, proofs);
+    const s = settleOf(l, proofs, ids);
     by.set(l.id, s);
     if (s.state === "proven") for (const t of s.confirms) if (proofs.has(t)) absorbed.add(t);
     if (s.state === "contradicted") for (const t of s.contradicts) if (proofs.has(t)) absorbed.add(t);
@@ -57,15 +63,16 @@ export function settleAll(lines: Pick<Line, "id" | "kind" | "links">[]): { by: M
 }
 
 /** What a row counts as: a settled row once, as Proven or Contradicted; otherwise its own kind. */
-export type RowClass = Kind | "proven" | "contradicted";
+export type RowClass = Kind | "proven" | "contradicted" | "outdated";
 export function rowClass(line: Pick<Line, "kind">, s: Settle | undefined): RowClass {
   if (s?.state === "proven") return "proven";
   if (s?.state === "contradicted") return "contradicted";
+  if (s?.state === "outdated") return "outdated";
   return line.kind;
 }
 
 export type Counts = Record<RowClass | "all" | "said", number>;
-export const emptyCounts = (): Counts => ({ all: 0, proven: 0, contradicted: 0, proof: 0, statement: 0, claim: 0, said: 0 });
+export const emptyCounts = (): Counts => ({ all: 0, proven: 0, contradicted: 0, outdated: 0, proof: 0, statement: 0, claim: 0, said: 0 });
 
 /**
  * The counts Record, the filter, Home and Key facts share. A settled row counts once, as Proven or Contradicted;
@@ -85,12 +92,13 @@ export function countLines(lines: Pick<Line, "id" | "kind" | "links">[], settled
   return c;
 }
 
-export type Filter = "all" | "proven" | "contradicted" | "said" | Kind;
-export const FILTERS: Filter[] = ["all", "proven", "contradicted", "proof", "statement", "claim", "said"];
+export type Filter = "all" | "proven" | "contradicted" | "outdated" | "said" | Kind;
+export const FILTERS: Filter[] = ["all", "proven", "contradicted", "outdated", "proof", "statement", "claim", "said"];
 export const FILTER_WORDS: Record<Filter, string> = {
   all: "All",
   proven: "Proven",
   contradicted: "Contradicted",
+  outdated: "Out of date",
   proof: "Proof",
   statement: "Statement",
   claim: "Claim",
@@ -114,6 +122,6 @@ export function speakerText(line: Pick<Line, "kind" | "by" | "channel">): string
 /** "2 proven, 1 contradicted, 3 proofs, 1 statement, 0 claims": proven and contradicted only when there are any. */
 export function countsWords(c: Counts): string {
   const p = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-  const settled = [c.proven ? `${c.proven.toLocaleString("en-US")} proven` : "", c.contradicted ? `${c.contradicted.toLocaleString("en-US")} contradicted` : ""].filter(Boolean);
+  const settled = [c.proven ? `${c.proven.toLocaleString("en-US")} proven` : "", c.contradicted ? `${c.contradicted.toLocaleString("en-US")} contradicted` : "", c.outdated ? `${c.outdated.toLocaleString("en-US")} out of date` : ""].filter(Boolean);
   return [...settled, p(c.proof, "proof"), p(c.statement, "statement"), p(c.claim, "claim")].join(", ");
 }

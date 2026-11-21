@@ -10,7 +10,8 @@ export const config = createConfig({
   chains: [CHAIN],
   // EIP-6963 discovery lists every installed extension under its own name
   multiInjectedProviderDiscovery: true,
-  connectors: [injected(), coinbaseWallet({ appName: SITE_NAME })],
+  // Coinbase Smart Wallet with its telemetry off: the SDK sends no analytics (cca-lite.coinbase.com).
+  connectors: [injected(), coinbaseWallet({ appName: SITE_NAME, preference: { options: "all", telemetry: false } })],
   transports: { [CHAIN.id]: http(RPCS[0]!.url) },
 });
 
@@ -32,7 +33,7 @@ export const isMobileBrowser = () =>
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 /** The connect control and its sheet. */
-export function ConnectSheet() {
+export function ConnectSheet({ autoOpen = false }: { autoOpen?: boolean }) {
   const mobile = isMobileBrowser();
   const { address, isConnected, chainId } = useAccount();
   const { connectors, connect, isPending, variables, error, reset } = useConnect();
@@ -59,6 +60,11 @@ export function ConnectSheet() {
   useEffect(() => {
     if (isConnected) setOpen(false);
   }, [isConnected]);
+  // Opened by the visitor's press on the plain Connect button that loaded this code.
+  useEffect(() => {
+    if (autoOpen && !isConnected) setOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
 
   const named = connectors.some((c) => c.type === "injected" && c.id !== "injected");
   const listed = [...connectors.filter((c) => c.type === "injected"), ...connectors.filter((c) => c.type !== "injected")].filter(

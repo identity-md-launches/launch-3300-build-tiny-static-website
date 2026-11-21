@@ -52,7 +52,7 @@ describe("settled lines", () => {
     const s = settleAll(lines);
     expect([...s.absorbed].sort()).toEqual(["P1", "P2"]);
     const c = countLines(lines);
-    expect(c).toEqual({ all: 5, proven: 2, contradicted: 1, proof: 0, statement: 0, claim: 2, said: 2 });
+    expect(c).toEqual({ all: 5, proven: 2, contradicted: 1, outdated: 0, proof: 0, statement: 0, claim: 2, said: 2 });
     expect(countKinds(mergeRecord(p, []))).toEqual(c);
     expect(countsWords(c)).toBe("2 proven, 1 contradicted, 0 proofs, 0 statements, 2 claims");
     // A partly-confirmed line keeps its own kind and is still only said.
@@ -60,7 +60,7 @@ describe("settled lines", () => {
   });
 
   it("filters Proven, Contradicted and Only said", () => {
-    expect(FILTERS).toEqual(["all", "proven", "contradicted", "proof", "statement", "claim", "said"]);
+    expect(FILTERS).toEqual(["all", "proven", "contradicted", "outdated", "proof", "statement", "claim", "said"]);
     expect(passes("said", "claim")).toBe(true);
     expect(passes("said", "proven")).toBe(false);
     expect(passes("claim", "proven")).toBe(false);

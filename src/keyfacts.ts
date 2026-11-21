@@ -3,7 +3,7 @@ import { channelFor, channelStatus, hostOf, onDomain, safeHref, STATUS_WORDS, un
 import { chainIdOf, chainName } from "./subject";
 import { proofIdsOf, settleOf } from "./settle";
 
-export type Badge = { text: string; tone: "proof" | "statement" | "claim" | "proven" | "contradicted" | ChannelStatus };
+export type Badge = { text: string; tone: "proof" | "statement" | "claim" | "proven" | "contradicted" | "outdated" | ChannelStatus };
 
 export interface KeyRow {
   label: string;
@@ -27,6 +27,8 @@ export interface KeyRow {
    * can link there. Their individual labels are listed on Sources; the row shows only its one status badge.
    */
   accounts: Account[];
+  /** The value as a list, only when the result gave one (infobox values): each entry on its own line. */
+  values: string[];
   /** The Tokens row: one entry per token the value lists, each shown on its own line. Empty on other rows. */
   tokens: TokenItem[];
 }
@@ -61,21 +63,10 @@ const TICKER_START = /^\s*(?:\$[A-Za-z0-9][A-Za-z0-9.\-]{0,11}|[A-Za-z0-9]*[A-Z]
 export function tokenParts(value: string): string[] {
   const v = value.trim();
   if (!v) return [];
-  const parts = v.split(/\s*(?:;|\n)\s*/).filter(Boolean);
-  if (parts.length > 1 || (v.match(new RegExp(ADDR.source, "g")) ?? []).length < 2) return parts;
-  const out: string[] = [];
-  let cur = "";
-  const pieces = v.split(/(\s*,\s*|\s+and\s+)/);
-  for (let i = 0; i < pieces.length; i += 2) {
-    const piece = pieces[i]!;
-    if (cur && ADDR.test(cur) && TICKER_START.test(piece)) {
-      out.push(cur.trim());
-      cur = piece;
-    } else cur += (i > 0 ? pieces[i - 1] : "") + piece;
-  }
-  if (cur.trim()) out.push(cur.trim());
-  return out;
+  // Items are separated by semicolons (the Tokens format) or new lines; never by commas or "and".
+  return v.split(/\s*(?:;|\n)\s*/).filter(Boolean);
 }
+void TICKER_START;
 
 /**
  * Each token a Tokens value lists, such as "IMD: pays for jobs, 0xd34a… on Ethereum; SEAT (seat pass) 0x12… on
@@ -83,8 +74,8 @@ export function tokenParts(value: string): string[] {
  * "on" after the address; the purpose is what is left once those are taken out. `rowUrl` is kept on the one token
  * it points at: the token whose address it contains, or the only token.
  */
-export function tokensOf(value: string, rowUrl = ""): TokenItem[] {
-  const items = tokenParts(value).map((p) => {
+export function tokensOf(value: string, rowUrl = "", values: string[] = []): TokenItem[] {
+  const items = (values.length ? values : tokenParts(value)).map((p) => {
     const address = ADDR.exec(p)?.[0] ?? "";
     let rest = p;
     let chain = "";
@@ -138,11 +129,9 @@ export interface Account {
 }
 
 /** Each account an Official accounts value lists ("@imd, @news"), matched to its channel by label, handle or URL. */
-export function accountsOf(channels: Channel[], value: string, domain: string): Account[] {
-  const parts = value
-    .split(/\s*(?:,|;|\||·|\band\b)\s*/i)
-    .map((p) => p.trim())
-    .filter(Boolean);
+export function accountsOf(channels: Channel[], value: string | string[], domain: string): Account[] {
+  // A text value is never split on commas or "and": only a list the result gave (values) is several accounts.
+  const parts = (typeof value === "string" ? [value] : value).map((p) => p.trim()).filter(Boolean);
   return parts.map((name) => {
     const url = /^https?:\/\//i.test(name) ? name : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(name) ? `https://${name}` : "";
     const channel = channelFor(channels, name, url ? [url] : []);
@@ -161,15 +150,51 @@ export const TIE_ROWS = /^(website|official accounts?)$/i;
  */
 export function badgeOf(lines: Line[], all: Line[] = lines, sourceUrl: (l: Line) => string = () => ""): Badge | null {
   const proofs = proofIdsOf(all);
-  const states = lines.map((l) => settleOf(l, proofs).state);
+  const ids = new Set(all.map((l) => l.id));
+  const states = lines.map((l) => settleOf(l, proofs, ids).state);
   if (states.includes("contradicted")) return { text: "Contradicted", tone: "contradicted" };
+  // Every line the row rests on has a newer line showing it changed: the row says so in place of its badge.
+  if (states.length && states.every((s) => s === "outdated")) return { text: "Out of date", tone: "outdated" };
   if (states.includes("proven")) return { text: "Proven", tone: "proven" };
   if (lines.some((l) => l.kind === "proof")) return { text: "Proven on chain", tone: "proof" };
-  const st = lines.find((l) => l.kind === "statement");
-  if (st) return { text: `Stated by ${st.channel?.label || hostOf(st.channel?.url ?? "") || st.by || "the project"}`, tone: "statement" };
-  const cl = lines.find((l) => l.kind === "claim");
-  if (cl) return { text: `Reported by ${reporter(cl, sourceUrl)}`, tone: "claim" };
-  return null;
+  const names = speakersOf(lines, sourceUrl);
+  if (!names.length) return null;
+  const tone = lines.some((l) => l.kind === "statement") ? "statement" : "claim";
+  return { text: `${tone === "statement" ? "Stated by" : "Reported by"} ${speakerList(names)}`, tone };
+}
+
+/**
+ * Every speaker of these lines, strongest first: the project on its own channels (statements); then an outside
+ * publication or person named by name; then a bare handle (often a person speaking about themselves). A line's by
+ * may list several speakers, separated by ";" or ",". Duplicates count once.
+ */
+export function speakersOf(lines: Line[], sourceUrl: (l: Line) => string = () => ""): string[] {
+  const out: { name: string; rank: number; at: number }[] = [];
+  lines.forEach((l, at) => {
+    if (l.kind === "proof") return;
+    const names =
+      l.kind === "statement"
+        ? [l.channel?.label || hostOf(l.channel?.url ?? "") || l.by || "the project"]
+        : l.by.split(/\s*[;,]\s*/).map((s) => s.trim()).filter((s) => s && !isGenericSpeaker(s));
+    for (const name of names) {
+      const rank = l.kind === "statement" ? 0 : /^@/.test(name) ? 2 : 1;
+      const had = out.find((x) => x.name.toLowerCase() === name.toLowerCase());
+      if (had) had.rank = Math.min(had.rank, rank);
+      else out.push({ name, rank, at });
+    }
+  });
+  // A claim whose speaker is not named falls back to the host of its source, only when no one is named at all.
+  if (!out.length) {
+    const cl = lines.find((l) => l.kind === "claim");
+    return cl ? [reporter(cl, sourceUrl)] : [];
+  }
+  return out.sort((a, b) => a.rank - b.rank || a.at - b.at).map((x) => x.name);
+}
+/** "A", "A and B", or "A, B and 3 more". */
+export function speakerList(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }
 /** Who a claim's badge names: its speaker, or when that is missing or generic the host of its first source. */
 function reporter(l: Line, sourceUrl: (l: Line) => string): string {
@@ -243,13 +268,15 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
   const domain = page.domain ?? "";
   if (page.infobox.length) {
     const used = new Set<Channel>();
+    const chainsRow = page.infobox.find((r) => /^chains?$/i.test(r.label.trim()));
+    const singleChain = !!chainsRow && (chainsRow.values?.length ?? 0) <= 1 && !/[,;]|\band\b/i.test(chainsRow.value);
     const rows = page.infobox.map((r): KeyRow => {
       const lines = r.lines.map(resolve).filter((l): l is Line => !!l);
       const named = channelOfRow(page.channels, r);
       if (named) used.add(named);
       const tied = TIE_ROWS.test(r.label.trim());
       // An Official accounts row naming several accounts links each account to its channel.
-      const listed = tied && /^official accounts?$/i.test(r.label.trim()) ? accountsOf(page.channels, r.value, domain) : [];
+      const listed = tied && /^official accounts?$/i.test(r.label.trim()) ? accountsOf(page.channels, r.values?.length ? r.values : r.value, domain) : [];
       const accounts = listed.length > 1 ? listed : [];
       for (const a of accounts) if (a.channel) used.add(a.channel);
       // A lone account takes the channel its handle resolves to, with the row's URL or value as the fallback.
@@ -261,8 +288,10 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // Stated by or Reported by.
       const status = tied ? rowStatus(r, channel, accounts, domain) : null;
       const badge = tied ? null : badgeOf(lines, all, sourceUrl);
-      const tokens = TOKEN_ROWS.test(r.label.trim()) ? tokensOf(r.value, safeHref(r.url) ? r.url : "") : [];
-      return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge, status, accounts, tokens };
+      const tokens = TOKEN_ROWS.test(r.label.trim()) ? tokensOf(r.value, safeHref(r.url) ? r.url : "", r.values ?? []) : [];
+      // "on <chain>" says nothing when the Chains row names a single chain.
+      if (singleChain) for (const t of tokens) t.chain = "";
+      return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge, status, accounts, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [] };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }
@@ -271,20 +300,20 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
   if (site) {
     const lines = linesOn(all, site);
     const shown = site.url.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-    rows.push({ label: "Website", value: shown || site.url, url: site.url, note: "", lines, channel: site, badge: null, status: statusBadge(site, domain), accounts: [], tokens: [] });
+    rows.push({ label: "Website", value: shown || site.url, url: site.url, note: "", lines, channel: site, badge: null, status: statusBadge(site, domain), accounts: [], tokens: [], values: [] });
   }
   const main = page.contracts.find((c) => c.main && /^0x[0-9a-fA-F]{40}$/.test(c.address));
   if (main) {
     const addr = main.address.toLowerCase();
     const lines = all.filter((l) => [l.text, l.rerun, l.quote, l.fact?.value ?? ""].some((s) => s.toLowerCase().includes(addr)));
     const id = chainIdOf(main.chain);
-    rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines, all, sourceUrl), status: null, accounts: [], tokens: [] });
+    rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines, all, sourceUrl), status: null, accounts: [], tokens: [], values: [] });
   }
   const token = tokenAddresses(page);
   for (const which of ["symbol", "supply"] as const) {
     const l = all.find((x) => x.kind === "proof" && !!x.fact && isTokenFact(x, which) && provesToken(x, token));
     if (!l) continue;
-    rows.push({ label: l.fact!.name, value: `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l], [l], sourceUrl), status: null, accounts: [], tokens: [] });
+    rows.push({ label: l.fact!.name, value: `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l], [l], sourceUrl), status: null, accounts: [], tokens: [], values: [] });
   }
   return { rows, fromInfobox: false, otherChannels: page.channels.filter((c) => c !== site) };
 }

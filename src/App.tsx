@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, pad, stringToHex, type Hex } from "viem";
-import { useAccount } from "wagmi";
-import { readContract, waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import { ACTIONS, CHAIN_ID, EMPTY_SELECTOR, ERC20_ABI, ETHERSCAN, IMD, INTAKE, INTAKE_ABI, ZERO_ADDRESS } from "./config";
 import {
   MAX_OBJECTIVE,
   fitsObjective,
   TEMPLATE_KIND,
   TEMPLATE_TITLES,
+  TEMPLATE_HINTS,
+  plainQuestion,
   encodeBody,
   priorText,
   questionContract,
@@ -24,28 +24,30 @@ import {
 } from "./bodies";
 import { OverviewTab, RecordTab, SourcesTab, type Filter, type Ui } from "./Record";
 import { ActivityList } from "./ActivityList";
-import { ConnectSheet, config } from "./wallet";
+import { Connect, loadWallet, useWalletAccount } from "./walletLazy";
+import { publicClient } from "./reads";
 import { rememberSent, useActivity } from "./useActivity";
 import { holdFocus } from "./modal";
 import { leftOutText, planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
 import { InstructionsBlock } from "./Instructions";
 import type { InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
-import { lineAnchor } from "./format";
+import { jobLink, lineAnchor, payerName } from "./format";
+import { readDate } from "./dates";
 import { TABS, routeOf, setLinkSubject, subjectHref, to } from "./route";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
 import { Home, StillReading } from "./Home";
 import { useDigests } from "./digest";
 import type { Activity } from "./useActivity";
 import { AddButtons, SuggestProvider, TrayBar, type Quote } from "./Suggest";
-import { takeConfirmSeed } from "./changes";
+import { takeConfirmSeed, type ConfirmSeed } from "./changes";
 
 type RecordState = RecordModel;
 const actionId = (a: string) => pad(stringToHex(a), { dir: "right", size: 32 });
 const imd = (v: bigint) => `${formatUnits(v, 18)} IMD`;
 
 async function readPrice(action: string): Promise<bigint> {
-  return readContract(config, { address: INTAKE, abi: INTAKE_ABI, functionName: "priceOf", args: [actionId(action), IMD], chainId: CHAIN_ID });
+  return publicClient.readContract({ address: INTAKE, abi: INTAKE_ABI, functionName: "priceOf", args: [actionId(action), IMD] });
 }
 
 /** The price of an action, read once on load; refresh reads it again (the tray does, so its price stays live). */
@@ -146,7 +148,9 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
   const ask = rebuildAsk(rec.prior, rec.subject, !!rec.page, rec.promptChannels.list, rec.promptChannels.more);
   const prior = priorText(rec.prior);
   // Never opened for payment over the limit: the objective must fit in 7,900 characters.
-  const ready = rec.snapshot.ok && !ask.warning;
+  // One rebuild at a time: while one for this subject is pending, its button is replaced by where to follow it.
+  const running = rec.pendingRebuild;
+  const ready = rec.snapshot.ok && !ask.warning && !running;
   return (
     <div className="card" id="rebuild" tabIndex={-1}>
       <h3>{rec.page ? "Rebuild the page" : "Create the page"}</h3>
@@ -175,33 +179,70 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
         <SnapshotNote rec={rec} onRefresh={onRefresh} refreshing={refreshing} />
       )}
       {rec.snapshot.ok && ask.warning && <p className="warn">{ask.warning}</p>}
+      {running ? (
+        <p className="running" role="status">
+          A rebuild is running, started {startedAt(running)} by <span className="mono">{payerName(running)}</span>.{" "}
+          <a href={jobLink(running.jobId, running.req.transactionHash)} target="_blank" rel="noopener noreferrer">Follow it</a>
+        </p>
+      ) : (
       <div className="row-actions">
         <button className="btn" onClick={() => (ready ? onAsk(ask) : undefined)} disabled={!ready}>
           {ready || ask.warning ? (rec.page ? "Rebuild the page" : "Create the page") : rec.snapshot.loading ? "Reading the record…" : "Record not read"}
         </button>
         <span className="price mono">{price}</span>
       </div>
+      )}
     </div>
   );
+}
+
+/** When a request was sent, as "19 Nov 2026, 14:05" in the visitor's time, or "just now" while its block time is unknown. */
+function startedAt(a: Activity): string {
+  if (!a.time) return "just now";
+  const d = new Date(a.time > 1e12 ? a.time : a.time * 1000);
+  return `${readDate(d.toISOString())}, ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 const field = (id: string, err?: string) => ({ id, "aria-invalid": !!err, "aria-describedby": err ? `${id}-err` : undefined });
 const Err = ({ id, msg }: { id: string; msg?: string }) => (msg ? <p id={`${id}-err`} className="error">{msg}</p> : null);
 
-/** "Confirm a fact": three short forms, one per question template, each ending with the subject's "filed under" sentence. */
+type ConfirmMode = "intro" | "seeded" | "form" | "none";
+type ConfirmFields = { url: string; handle: string; text: string; chain: string; signature: string; address: string; value: string };
+
+/**
+ * "Ask a panel to check a fact". Opened from a line ("Ask a panel to check it"), it is already filled in from that
+ * line: the question in plain words, Edit, the price and Review the question. A line whose source fits none of the
+ * three types says so. Opened on its own it explains how and offers "Write a question from scratch" (the full form).
+ */
 function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState }) {
   const oraclePrice = usePrice(ACTIONS.oracle).text;
+  const defaultChain = String(CHAIN_CHOICES.some((c) => c.id === rec.subject.chainId) ? rec.subject.chainId : 1);
+  const blank: ConfirmFields = { url: "", handle: "", text: "", chain: defaultChain, signature: "", address: rec.subject.address || rec.main, value: "" };
+  const [mode, setMode] = useState<ConfirmMode>("intro");
   const [tpl, setTpl] = useState<Template>("post");
-  const [f, setF] = useState({ url: "", handle: "", text: "", chain: String(CHAIN_CHOICES.some((c) => c.id === rec.subject.chainId) ? rec.subject.chainId : 1), signature: "", address: rec.subject.address || rec.main, value: "" });
+  const [f, setF] = useState<ConfirmFields>(blank);
   const [errs, setErrs] = useState<Record<string, string | undefined>>({});
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
-  // "Ask a panel to check it" on a row opens this form with the row's sentence (and its source page) filled in.
+  const set = (k: keyof ConfirmFields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
+  const apply = (s: ConfirmSeed) => {
+    setErrs({});
+    if (s.type === "none") {
+      setMode("none");
+      setF({ ...blank, text: s.text, url: s.url });
+      return;
+    }
+    setTpl(s.type);
+    setF({ url: s.url, handle: s.handle, text: s.text, chain: s.chain || defaultChain, signature: s.signature, address: s.address || blank.address, value: s.value });
+    setMode("seeded");
+  };
   useEffect(() => {
-    const s = takeConfirmSeed();
-    if (!s) return;
-    setTpl("page");
-    setF((x) => ({ ...x, url: /^https:\/\//.test(s.url) ? s.url : x.url, text: s.text.replace(/[.?!]+$/, "").slice(0, 400) }));
-    window.setTimeout(() => document.getElementById(/^https:\/\//.test(s.url) ? "q-text" : "q-url")?.focus(), 0);
+    const take = () => {
+      const s = takeConfirmSeed();
+      if (s) apply(s);
+    };
+    take();
+    addEventListener("imd-confirm-seed", take);
+    return () => removeEventListener("imd-confirm-seed", take);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const sid = rec.subject.id;
   const question =
@@ -210,32 +251,74 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
       : tpl === "page"
         ? questionPage(f.url || "<URL>", f.text || "<TEXT>", sid)
         : questionContract(f.chain || "<CHAIN ID>", f.signature || "<FUNCTION SIGNATURE>", f.address || "<ADDRESS>", f.value || "<VALUE>", sid);
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = (e?: React.FormEvent) => {
+    e?.preventDefault();
     const found: Record<string, string | undefined> =
       tpl === "post" ? validateP4(f.url, f.handle, f.text) : tpl === "page" ? validatePage(f.url, f.text) : validateContract(f.chain, f.signature, f.address, f.value);
     setErrs(found);
     const first = Object.keys(found)[0];
     if (first) {
-      document.getElementById(`q-${first}`)?.focus();
+      setMode("form");
+      window.setTimeout(() => document.getElementById(`q-${first}`)?.focus(), 0);
       return;
     }
     onAsk({ title: `Confirm: ${TEMPLATE_TITLES[tpl].toLowerCase()}`, subject: sid, action: ACTIONS.oracle, kind: TEMPLATE_KIND[tpl], body: templateBody(tpl, question, Number(f.chain)) });
   };
+  const scratch = () => {
+    setTpl("post");
+    setF(blank);
+    setErrs({});
+    setMode("form");
+    window.setTimeout(() => document.querySelector<HTMLInputElement>("#confirm input[name=template]:checked")?.focus(), 0);
+  };
+  const price = (
+    <span className="price mono">{oraclePrice}</span>
+  );
   return (
     <div className="card" id="confirm" tabIndex={-1}>
       <h3>Ask a panel to check a fact</h3>
-      <p>
-        A panel of 5 agents answers true or false; 4 must agree. The answer is filed under this record and shows on the line it confirms or contradicts. Each question costs{" "}
-        <span className="mono">{oraclePrice}</span>.
-      </p>
+      <p>For a line that matters: five agents answer independently, four must agree, and the answer is signed.</p>
+      {mode === "intro" && (
+        <>
+          <p>Open any line and choose Ask a panel to check it.</p>
+          <p>
+            <button type="button" className="linklike" onClick={scratch}>Write a question from scratch</button>
+          </p>
+        </>
+      )}
+      {mode === "none" && (
+        <div className="seeded" role="status">
+          <p>“{f.text}”</p>
+          <p className="warn">This line’s source is not an X post, a web page or a contract call, so no question can be filled in from it.</p>
+          <p>
+            <button type="button" className="linklike" onClick={scratch}>Write a question from scratch</button>
+          </p>
+        </div>
+      )}
+      {mode === "seeded" && (
+        <div className="seeded">
+          <p className="small">{TEMPLATE_TITLES[tpl]}</p>
+          <p className="plain-q break" id="q-plain">{plainQuestion(tpl, f, chainName(Number(f.chain)))}</p>
+          <details>
+            <summary>Read the exact question</summary>
+            <p className="objective">{question}</p>
+          </details>
+          <div className="row-actions">
+            <button type="button" className="btn" onClick={() => setMode("form")}>Edit</button>
+            <button type="button" className="btn btn-primary" onClick={() => submit()}>Review the question</button>
+            {price}
+          </div>
+        </div>
+      )}
+      {mode === "form" && (
       <form className="form" onSubmit={submit} noValidate>
-        <fieldset className="seg">
+        <fieldset className="seg seg-hints">
           <legend>What to check</legend>
           {(Object.keys(TEMPLATE_TITLES) as Template[]).map((k) => (
             <label key={k} className="seg-item">
               <input type="radio" name="template" value={k} checked={tpl === k} onChange={() => { setTpl(k); setErrs({}); }} />
-              {TEMPLATE_TITLES[k]}
+              <span className="seg-word">{TEMPLATE_TITLES[k]}</span>
+              <span className="seg-hint">{TEMPLATE_HINTS[k]}</span>
             </label>
           ))}
         </fieldset>
@@ -287,9 +370,10 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
         </details>
         <div className="row-actions">
           <button className="btn" type="submit">Review the question</button>
-          <span className="price mono">{oraclePrice}</span>
+          {price}
         </div>
       </form>
+      )}
     </div>
   );
 }
@@ -324,7 +408,7 @@ function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { o
 type Step = "review" | "approving" | "sending" | "sent" | "error";
 
 function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; onSent: () => void }) {
-  const { address, isConnected, chainId } = useAccount();
+  const { address, isConnected, chainId } = useWalletAccount();
   const [price, setPrice] = useState<bigint | null>(null);
   const [allowance, setAllowance] = useState<bigint | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
@@ -342,8 +426,8 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
     setPrice(p);
     if (address) {
       const [a, b] = await Promise.all([
-        readContract(config, { address: IMD, abi: ERC20_ABI, functionName: "allowance", args: [address, INTAKE], chainId: CHAIN_ID }),
-        readContract(config, { address: IMD, abi: ERC20_ABI, functionName: "balanceOf", args: [address], chainId: CHAIN_ID }),
+        publicClient.readContract({ address: IMD, abi: ERC20_ABI, functionName: "allowance", args: [address, INTAKE] }),
+        publicClient.readContract({ address: IMD, abi: ERC20_ABI, functionName: "balanceOf", args: [address] }),
       ]);
       setAllowance(a);
       setBalance(b);
@@ -390,15 +474,17 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
         setMsg(`The price changed to ${imd(p)}. Review it and pay again.`);
         return;
       }
-      const a = await readContract(config, { address: IMD, abi: ERC20_ABI, functionName: "allowance", args: [address, INTAKE], chainId: CHAIN_ID });
+      const a = await publicClient.readContract({ address: IMD, abi: ERC20_ABI, functionName: "allowance", args: [address, INTAKE] });
       if (a < p) {
         setStep("approving");
-        const h = await writeContract(config, { address: IMD, abi: ERC20_ABI, functionName: "approve", args: [INTAKE, p], chainId: CHAIN_ID });
-        await waitForTransactionReceipt(config, { hash: h, chainId: CHAIN_ID });
+        const w = await loadWallet();
+        const h = await w.write({ address: IMD, abi: ERC20_ABI, functionName: "approve", args: [INTAKE, p], chainId: CHAIN_ID });
+        await w.waitFor(h, CHAIN_ID);
         setAllowance(p);
       }
       setStep("sending");
-      const h = await writeContract(config, {
+      const w = await loadWallet();
+      const h = await w.write({
         address: INTAKE,
         abi: INTAKE_ABI,
         functionName: "request",
@@ -407,7 +493,7 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
       });
       setTx(h);
       rememberSent({ hash: h, kind: ask.kind, action: ask.action, at: Date.now() });
-      await waitForTransactionReceipt(config, { hash: h, chainId: CHAIN_ID });
+      await w.waitFor(h, CHAIN_ID);
       setStep("sent");
       ask.afterSent?.();
       onSent();
@@ -454,9 +540,9 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
             </button>
           )}
           {!isConnected ? (
-            <><ConnectSheet /><span className="small">Connect a wallet to pay.</span></>
+            <><Connect /><span className="small">Connect a wallet to pay.</span></>
           ) : !right ? (
-            <ConnectSheet />
+            <Connect />
           ) : step === "sent" ? (
             <button className="btn btn-primary" onClick={close}>Done</button>
           ) : (
@@ -512,14 +598,17 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, re
       }),
     [],
   );
-  const openLines = useCallback((ids: string[]) => {
+  const alias = rec.alias;
+  const openLines = useCallback((raw: string[]) => {
+    // A line shown as one row with an identical line opens that row.
+    const ids = [...new Set(raw.map((id) => alias.get(id) ?? id))];
     if (!ids.length) return;
     setFilter("all");
     setOpenSet((s) => new Set([...s, ...ids]));
     const h = to(lineAnchor(ids[0]!));
     if (location.hash === h) dispatchEvent(new HashChangeEvent("hashchange"));
     else location.hash = h;
-  }, []);
+  }, [alias]);
   const ui: Ui = { filter, setFilter, openSet, toggle, openLines, target: route.target, routeN: route.n };
 
   // After a link: scroll to its target once it exists, else to the top of the tab; move focus there.
@@ -612,7 +701,7 @@ export default function App() {
       <header className="top">
         <div className="top-row">
           <a className="brand" href="#/">On the record <span className="brand-test">(test)</span></a>
-          <ConnectSheet />
+          <Connect />
         </div>
       </header>
       <main id="root-main" tabIndex={-1}>

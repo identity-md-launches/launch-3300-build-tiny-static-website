@@ -37,7 +37,7 @@ import {
 import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
 import { applyChangeLinks, applyRewords, carriedOf, lineInFile, type LineScope, type Reworded } from "./changeResult";
-import type { KnownContract } from "./lookup";
+import { mergeRepeats, type KnownContract } from "./lookup";
 
 export interface Accounting {
   /** none: the shown page was not a rebuild from earlier files. */
@@ -56,6 +56,8 @@ export interface ShownSentence extends SummarySentence {
   refs: Line[];
   /** Set when a kept reword from a changes job replaced this sentence. */
   rewordedBy?: string;
+  /** Set when a kept "This is wrong" from a changes job replaced this sentence with its final_text. */
+  correctedBy?: string;
   original?: string;
 }
 
@@ -143,6 +145,10 @@ export interface Core {
   /** Where a line of the page, a job or an earlier file is shown now (see changeResult.ts). */
   scope: LineScope;
   sections: { section: string; rows: RecordRow[] }[];
+  /** A line folded into another row with the same text: its id and the id of the row that shows it. */
+  alias: Map<string, string>;
+  /** How many identical lines were shown as one. */
+  merged: number;
   counts: ReturnType<typeof countKinds>;
   /** Dropped entries of earlier pages whose files a rebuild was not given for space: owed to the next rebuild. */
   carried: CarriedDrop[];
@@ -166,9 +172,13 @@ export function coreOf(items: Activity[], history?: HistoryReads): Core {
   // A changes result's new lines point at the line they are about; the target row shows what each does to it,
   // also when a rebuild has since carried that line forward under another id.
   const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective) };
-  const sections = applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), scope);
+  // Lines with the same text show as one row (see mergeRepeats); counts and filters count it once.
+  const repeats = mergeRepeats(applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), scope));
+  const sections = repeats.sections;
+  const alias = repeats.alias;
+  const merged = repeats.merged;
   const carried = carriedDrops(done.filter((a) => isPageJob(a.req) && a.page), history);
-  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest, lineage), after, jobs, scope, sections, counts: countKinds(sections), carried };
+  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest, lineage), after, jobs, scope, sections, alias, merged, counts: countKinds(sections), carried };
 }
 
 /** A completed panel request with an answer: one of the A1… a rebuild is given. */
@@ -634,6 +644,12 @@ export interface RecordModel {
   answerRef: (target: string) => { text: string; activity: Activity | undefined } | null;
   accounting: Accounting;
   sections: { section: string; rows: RecordRow[] }[];
+  /** A line folded into a row with the same text, mapped to that row's id. */
+  alias: Map<string, string>;
+  /** How many identical lines were shown as one. */
+  merged: number;
+  /** The newest page job for this subject that has not completed yet: while it runs, Rebuild is not offered. */
+  pendingRebuild: Activity | null;
   sourceList: ListedSource[];
   counts: ReturnType<typeof countKinds>;
 }
@@ -727,7 +743,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   }, [results, answers, page, pageHash, subject, given, accounting, core, promptChannels]);
 
   const sourceList = useMemo(() => allSources(page, jobs), [page, jobs]);
-  const byId = useMemo(() => new Map(sections.flatMap((s) => s.rows.map((r) => [r.line.id, r.line] as const))), [sections]);
+  const byId = useMemo(() => new Map(sections.flatMap((s) => s.rows.flatMap((r) => [r, ...(r.same ?? [])].map((x) => [x.line.id, x.line] as const)))), [sections]);
   // Page lines keep their own ids; lines of a sources or edit job are "<request id>:<id>" (see mergeRecord).
   const resolve = (id: string) => byId.get(id.trim());
 
@@ -865,6 +881,9 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     answerRef,
     accounting,
     sections,
+    alias: core.alias,
+    merged: core.merged,
+    pendingRebuild: pendingRebuildOf(items ?? []),
     sourceList,
     counts,
   };
@@ -924,4 +943,9 @@ export function planRebuild(items: Activity[], subject: SubjectRef, read?: Prior
   const ch = promptChannelsOf(core.page, pageUrl, subject);
   const fit = fitPrior(pageUrl, results, answersOf(items), (p) => rebuildObjective(p, subject, ch.list, ch.more).length, again);
   return { ...fit, ok: !unread && !needsReads, needsReads, hasPage: !!core.page, channels: ch.list, moreChannels: ch.more };
+}
+
+/** The newest rebuild (page job) of these requests that is still pending, or null. */
+export function pendingRebuildOf(items: Activity[]): Activity | null {
+  return items.filter((a) => isPageJob(a.req) && a.state === "pending").sort((a, b) => (b.time ?? 0) - (a.time ?? 0))[0] ?? null;
 }

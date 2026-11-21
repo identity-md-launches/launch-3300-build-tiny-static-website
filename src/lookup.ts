@@ -162,3 +162,52 @@ export function initialOf(name: string): string {
   const m = /[\p{L}\p{N}]/u.exec(name.replace(/^(https?:\/\/)?(www\.)?/i, ""));
   return m ? m[0].toUpperCase() : "?";
 }
+
+const KIND_RANK: Record<string, number> = { proof: 0, statement: 1, claim: 2 };
+const uniq = <T,>(xs: T[]) => [...new Set(xs)];
+
+/**
+ * Lines with the same text, ignoring case and punctuation, become ONE row: the row of the strongest kind (proof,
+ * then statement, then claim; the first in record order among equals) stays where it is and carries the others in
+ * `same`; its line takes every source, origin and link of the group, so counts and filters count it once.
+ * `alias` maps each folded line id to the id of the row that shows it. Pure, for tests.
+ */
+export function mergeRepeats<R extends { line: Line; same?: R[] }>(sections: { section: string; rows: R[] }[]): { sections: { section: string; rows: R[] }[]; alias: Map<string, string>; merged: number } {
+  const groups = new Map<string, R[]>();
+  for (const s of sections)
+    for (const r of s.rows) {
+      const k = repeatKey(r.line.text);
+      if (k) groups.set(k, [...(groups.get(k) ?? []), r]);
+    }
+  const keep = new Map<R, R>();
+  const drop = new Set<R>();
+  const alias = new Map<string, string>();
+  let merged = 0;
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const host = [...g].sort((a, b) => (KIND_RANK[a.line.kind] ?? 3) - (KIND_RANK[b.line.kind] ?? 3))[0]!;
+    const others = g.filter((r) => r !== host);
+    const ids = new Set(g.map((r) => r.line.id));
+    const links = uniq(g.flatMap((r) => r.line.links.map((k) => JSON.stringify(k))))
+      .map((s) => JSON.parse(s) as Line["links"][number])
+      .filter((k) => !ids.has(k.target.trim()));
+    const line: Line = {
+      ...host.line,
+      srcKeys: uniq(g.flatMap((r) => r.line.srcKeys)),
+      sources: uniq(g.flatMap((r) => r.line.sources)),
+      from: uniq(g.flatMap((r) => r.line.from)),
+      links,
+    };
+    keep.set(host, { ...host, line, same: others });
+    for (const r of others) {
+      drop.add(r);
+      if (r.line.id) alias.set(r.line.id, host.line.id);
+    }
+    merged += others.length;
+  }
+  return {
+    sections: sections.map((s) => ({ section: s.section, rows: s.rows.filter((r) => !drop.has(r)).map((r) => keep.get(r) ?? r) })).filter((s) => s.rows.length > 0),
+    alias,
+    merged,
+  };
+}

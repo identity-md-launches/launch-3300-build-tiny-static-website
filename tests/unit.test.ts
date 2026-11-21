@@ -286,7 +286,7 @@ describe("add sources", () => {
     const merged = mergeRecord(p, [{ key: "j", data, payer: "p", jobHref: "h" }]).flatMap((s) => s.rows).filter((r) => r.origin);
     expect(merged.map((r) => [r.line.id, r.line.kind])).toEqual([["j:L2", "statement"], ["j:L1", "claim"]]);
     const counts = countKinds(mergeRecord(p, [{ key: "j", data, payer: "p", jobHref: "h" }]));
-    expect(counts).toEqual({ all: 9, proven: 0, contradicted: 0, proof: 3, statement: 3, claim: 3, said: 6 });
+    expect(counts).toEqual({ all: 9, proven: 0, contradicted: 0, outdated: 0, proof: 3, statement: 3, claim: 3, said: 6 });
     expect(channelFor([{ label: "X", url: "https://x.com/imd_fun", tie: "weak" }], "@imd_fun", [])?.label).toBe("X");
     expect(underChannel("https://imd.fun.evil.com/docs", { label: "", url: "https://imd.fun/", tie: "weak" })).toBe(false);
     expect(chainAndBlock({}, "Read on chain 1", "at block 12,345,678")).toEqual({ chain: "Ethereum", block: "12345678" });

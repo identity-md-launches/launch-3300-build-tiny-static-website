@@ -58,7 +58,16 @@ export const filedUnder = (subject: string) => ` This question is filed under th
 const FILED = / This question is filed under the record of (\S+?)\.$/;
 
 export type Template = "post" | "page" | "contract";
-export const TEMPLATE_TITLES: Record<Template, string> = { post: "A post says", page: "A web page says", contract: "A contract returns" };
+export const TEMPLATE_TITLES: Record<Template, string> = { post: "A post on X says", page: "A web page says", contract: "A contract call returns" };
+/** One line under each question type in the panel form. */
+export const TEMPLATE_HINTS: Record<Template, string> = { post: "Did this account post this?", page: "Does this page state this?", contract: "Does this call return this value?" };
+/** The question in plain words, shown before the exact wording a panel receives. */
+export function plainQuestion(tpl: Template, f: { url: string; handle: string; text: string; chain: string; signature: string; address: string; value: string }, chain = f.chain): string {
+  const t = noEnd(f.text);
+  if (tpl === "post") return `Did @${f.handle.replace(/^@/, "")} post, at ${f.url}, that ${t}?`;
+  if (tpl === "page") return `Does the page at ${f.url} state that ${t}?`;
+  return `Does calling ${f.signature} on ${f.address} (${chain}) return ${noEnd(f.value)}?`;
+}
 /** The kind of record line each template's answer settles, for its marker. */
 export const TEMPLATE_KIND: Record<Template, Kind> = { post: "claim", page: "claim", contract: "proof" };
 export const TEMPLATE_EVIDENCE: Record<Template, "panel" | "chain"> = { post: "panel", page: "panel", contract: "chain" };

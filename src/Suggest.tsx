@@ -29,6 +29,8 @@ import {
   planLinks,
   roomLeft,
   setConfirmSeed,
+  seedFromLine,
+  SUGGEST_MAX,
   useTray,
   validateChange,
   needsNote,
@@ -286,13 +288,17 @@ function EvidenceList({ mode, target, evidence, onOpenLines }: { mode: PanelMode
  * disabled until the change is complete. "Ask a panel to check it" opens Confirm a fact instead: a panel question
  * is sent on its own.
  */
-export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", onClose, onOpenLines }: { target: ChangeTarget; mode: PanelMode; evidence?: Evidence[]; sourceUrl?: string; onClose?: () => void; onOpenLines?: (ids: string[]) => void }) {
+/** What "Ask a panel to check it" reads from a line to fill in the panel form. */
+export type SeedLine = { text: string; kind?: string; by?: string; rerun?: string; fact?: { value: string; unit?: string; chain?: string } | null };
+
+export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", line, onClose, onOpenLines }: { target: ChangeTarget; mode: PanelMode; evidence?: Evidence[]; sourceUrl?: string; line?: SeedLine; onClose?: () => void; onOpenLines?: (ids: string[]) => void }) {
   const s = useSuggest();
   const existing = pendingFor(s, target.key);
   const choices = CHOICES[mode];
   const [type, setType] = useState<ChangeType>(existing?.type ?? (choices[0] as ChangeType));
   const [note, setNote] = useState(existing?.note ?? (mode === "sentence" && type === "reword" ? target.text : ""));
   const [links, setLinks] = useState((existing?.links ?? []).join("\n"));
+  const [corrected, setCorrected] = useState(existing?.suggest ?? "");
   const [errs, setErrs] = useState<{ note?: string; links?: string }>({});
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
@@ -317,7 +323,7 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", onClo
   }, []);
   const pick = (t: ChangeType | "panel") => {
     if (t === "panel") {
-      setConfirmSeed({ text: target.text, url: sourceUrl });
+      setConfirmSeed(seedFromLine(line ?? { text: target.text }, sourceUrl));
       s.setOpen(null);
       location.hash = to("confirm");
       return;
@@ -333,7 +339,7 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", onClo
     setErrs(found);
     if (found.note) return document.getElementById(`${id}-note`)?.focus();
     if (found.links) return document.getElementById(`${id}-links`)?.focus();
-    const c: Change = { id: existing?.id ?? newChangeId(), type, target: mode === "new_line" || mode === "links" ? (existing?.target ?? noTarget()) : target, note: type === "links" ? "" : cleanNote(note), links: plan.links };
+    const c: Change = { id: existing?.id ?? newChangeId(), type, target: mode === "new_line" || mode === "links" ? (existing?.target ?? noTarget()) : target, note: type === "links" ? "" : cleanNote(note), links: plan.links, ...(type === "wrong" && mode === "sentence" && cleanNote(corrected) ? { suggest: cleanNote(corrected).slice(0, SUGGEST_MAX) } : {}) };
     s.tray.put(c);
     close();
   };
@@ -379,6 +385,13 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", onClo
               {count} of {NOTE_MAX} characters{needsNote(type) && count < NOTE_MIN ? `, at least ${NOTE_MIN}` : ""}
             </p>
             {errs.note && <p id={`${id}-note-err`} className="error">{errs.note}</p>}
+          </>
+        )}
+        {type === "wrong" && mode === "sentence" && (
+          <>
+            <label htmlFor={`${id}-corrected`}>Corrected sentence (optional)</label>
+            <textarea id={`${id}-corrected`} rows={2} maxLength={SUGGEST_MAX} value={corrected} onChange={(e) => setCorrected(e.target.value)} aria-describedby={`${id}-corrected-hint`} />
+            <p id={`${id}-corrected-hint`} className="small">Sent as a suggestion. If the change is kept, the summary shows the corrected sentence the job writes.</p>
           </>
         )}
         <label htmlFor={`${id}-links`}>{type === "links" ? `Links to read, one per line (up to ${READ_MAX_LINKS})` : type === "backing" ? `Your source: up to ${CHANGE_MAX_LINKS} https links, one per line` : `Links, one per line (up to ${CHANGE_MAX_LINKS}, optional)`}</label>

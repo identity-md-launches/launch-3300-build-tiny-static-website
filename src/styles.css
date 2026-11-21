@@ -15,6 +15,9 @@
   --blue-800: #1e4fa8;
   --orange-50: #fff1e5;
   --orange-800: #9a3d00;
+  --amber-50: #fff6d6;
+  --amber-500: #c98a00;
+  --amber-800: #6e4a00;
   --red-50: #fdecea;
   --red-800: #a1231b;
 
@@ -680,3 +683,31 @@ body.has-tray main { padding-bottom: 9rem; }
 
 /* Single-column grids take the column's width, never their content's: nothing inside widens the page. */
 .tab, .overview, .facts-col, .summary, .lines, .row, .details, .review-item { grid-template-columns: minmax(0, 1fr); }
+
+/* ---------- Revision 13: out of date, page upkeep, key facts lists, panel questions ---------- */
+.kind-outdated { color: var(--amber-800); }
+.row-text > .kind-outdated { padding: 1px var(--space-2); border-radius: 999px; background: var(--amber-50); }
+.badge-outdated { background: var(--amber-50); color: var(--amber-800); }
+.settled-outdates { color: var(--amber-800); }
+.settled.also { color: var(--color-text-secondary); }
+.kf-values { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.kf-values li { overflow-wrap: anywhere; }
+.kf-toggle { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 24px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
+.kf-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.kf-details .facts { margin: 0; }
+/* A token keeps together: symbol and purpose, then its address with the copy button. */
+.kf-tokens li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
+.tok-name { min-width: 0; }
+.tok-addr { display: inline-flex; align-items: baseline; gap: var(--space-1); white-space: nowrap; }
+.logo-small { object-fit: scale-down; }
+.upkeep > summary { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; cursor: pointer; font-weight: 600; }
+.upkeep-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber-500); flex: none; }
+.upkeep-body { display: grid; gap: var(--space-2); overflow-wrap: anywhere; }
+.upkeep-body h3 { font-size: var(--text-body); margin-top: var(--space-2); }
+.seg-hints .seg-item { flex-direction: column; align-items: flex-start; justify-content: center; white-space: normal; padding: var(--space-2) var(--space-3); text-align: start; }
+.seg-word { font-weight: 600; }
+.seg-hint { font-size: var(--text-small); font-weight: 400; }
+.seeded { display: grid; gap: var(--space-2); }
+.plain-q { font-size: var(--text-body); font-weight: 600; overflow-wrap: anywhere; }
+.running { font-size: var(--text-small); color: var(--amber-800); background: var(--amber-50); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); }
+.running a { color: inherit; font-weight: 600; }

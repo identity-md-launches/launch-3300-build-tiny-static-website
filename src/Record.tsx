@@ -5,7 +5,7 @@ import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { keyFacts, splitAddresses, type KeyRow } from "./keyfacts";
 import { addHref, subjectHref, to } from "./route";
 import { SubjectLogo } from "./Logo";
-import { findSubject, lineMatches, parseLookup, repeatCount, repeatsOf, type Findable } from "./lookup";
+import { findSubject, lineMatches, parseLookup, type Findable } from "./lookup";
 import { countLines, countsWords, FILTER_WORDS, FILTERS, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
 import {
   blockNumber,
@@ -22,6 +22,7 @@ import {
   type Channel,
   type ChannelStatus,
   isFactRow, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
+import { readDate } from "./dates";
 import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, isInstructionsUnavailable, statusText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { OutdatedNote, StillReading } from "./Home";
@@ -92,6 +93,16 @@ function Copy({ value }: { value: string }) {
 
 /** A value with every 0x address shortened in monospace, each with a copy button; linked when it has a url. */
 function KeyValue({ row }: { row: KeyRow }) {
+  if (row.values.length)
+    return (
+      <ul className="kf-values">
+        {row.values.map((v, i) => (
+          <li key={i}>
+            <ValueText text={v} />
+          </li>
+        ))}
+      </ul>
+    );
   if (row.accounts.length)
     return (
       <ul className="kf-accounts">
@@ -107,19 +118,20 @@ function KeyValue({ row }: { row: KeyRow }) {
       <ul className="kf-tokens">
         {row.tokens.map((t, i) => (
           <li key={i}>
-            {t.symbol && <strong>{t.symbol}</strong>}
-            {t.symbol && t.purpose ? ": " : ""}
-            {t.purpose && formatNumbers(t.purpose)}
+            <span className="tok-name">
+              {t.symbol && <strong>{t.symbol}</strong>}
+              {t.symbol && t.purpose ? ": " : ""}
+              {t.purpose && formatNumbers(t.purpose)}
+            </span>
             {t.address && (
-              <>
-                {" "}
+              <span className="tok-addr">
                 {t.url ? (
                   <ExtLink url={t.url} className="mono">{shortHex(t.address)}</ExtLink>
                 ) : (
-                  <span className="mono" title={t.address}>{shortHex(t.address)}</span>
+                  <span className="mono">{shortHex(t.address)}</span>
                 )}
                 <Copy value={t.address} />
-              </>
+              </span>
             )}
             {!t.address && t.url && (
               <>
@@ -132,30 +144,35 @@ function KeyValue({ row }: { row: KeyRow }) {
         ))}
       </ul>
     );
-  const parts = splitAddresses(row.value);
-  const body = parts.map((p, i) =>
-    p.address ? (
-      <span key={i} className="mono" title={p.text}>
-        {shortHex(p.text)}
-      </span>
-    ) : (
-      <Fragment key={i}>{formatNumbers(p.text)}</Fragment>
-    ),
-  );
   return (
     <>
-      {safeHref(row.url) ? <ExtLink url={row.url} className="break">{body}</ExtLink> : <span className="break">{body}</span>}
-      {parts.filter((p) => p.address).map((p, i) => (
-        <Copy key={i} value={p.text} />
-      ))}
+      <ValueText text={row.value} url={row.url} />
       {row.note && <span className="small"> {row.note}</span>}
     </>
   );
 }
 
+/** A text value: every 0x address shortened in monospace with its copy button; linked when it has a url. */
+function ValueText({ text, url = "" }: { text: string; url?: string }) {
+  const parts = splitAddresses(text);
+  const body = parts.map((p, i) => (p.address ? <span key={i} className="mono">{shortHex(p.text)}</span> : <Fragment key={i}>{formatNumbers(p.text)}</Fragment>));
+  return (
+    <>
+      {safeHref(url) ? <ExtLink url={url} className="break">{body}</ExtLink> : <span className="break">{body}</span>}
+      {parts.filter((p) => p.address).map((p, i) => (
+        <Copy key={i} value={p.text} />
+      ))}
+    </>
+  );
+}
+
+/** Every full address a key facts row names, for its details: the table itself shows them shortened. */
+const rowAddresses = (r: KeyRow) => [...new Set([r.value, ...r.values, ...r.tokens.map((t) => t.address)].flatMap((v) => splitAddresses(v).filter((p) => p.address).map((p) => p.text)))];
+
 function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
   const { rows } = useKeyFacts(m);
   const s = useSuggest();
+  const [openRow, setOpenRow] = useState<string | null>(null);
   if (!rows.length) return null;
   return (
     <section className="keyfacts" aria-labelledby="keyfacts-title">
@@ -169,7 +186,16 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
             return (
               <Fragment key={i}>
                 <tr className="has-pencil">
-                  <th scope="row">{r.label}</th>
+                  <th scope="row">
+                    {rowAddresses(r).length ? (
+                      <button type="button" className="kf-toggle" aria-expanded={openRow === r.label} aria-controls={`kf-d-${i}`} onClick={() => setOpenRow(openRow === r.label ? null : r.label)}>
+                        <span className="chev" aria-hidden="true" />
+                        {r.label}
+                      </button>
+                    ) : (
+                      r.label
+                    )}
+                  </th>
                   <td className="kf-value">
                     <KeyValue row={r} />
                     <PendingTag targetKey={target.key} />
@@ -181,10 +207,26 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                     <Pencil target={target} label={`Suggest a change`} />
                   </td>
                 </tr>
+                {openRow === r.label && rowAddresses(r).length > 0 && (
+                  <tr className="kf-details" id={`kf-d-${i}`}>
+                    <td colSpan={4}>
+                      <dl className="facts">
+                        {rowAddresses(r).map((a) => (
+                          <Fragment key={a}>
+                            <dt>Full address</dt>
+                            <dd className="mono break">
+                              {a} <Copy value={a} />
+                            </dd>
+                          </Fragment>
+                        ))}
+                      </dl>
+                    </td>
+                  </tr>
+                )}
                 {s.open === target.key && (
                   <tr className="kf-panel">
                     <td colSpan={4}>
-                      <ChangePanel target={target} mode="line" sourceUrl={url} evidence={evidenceOf(r.lines, allLines(m))} onOpenLines={ui.openLines} />
+                      <ChangePanel target={target} mode="line" sourceUrl={url} line={r.lines[0] ?? { text: r.value }} evidence={evidenceOf(r.lines, allLines(m))} onOpenLines={ui.openLines} />
                     </td>
                   </tr>
                 )}
@@ -302,6 +344,7 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
                     <Sentence text={s.text} active={sg.open === target.key} onOpen={() => sg.setOpen(sg.open === target.key ? null : target.key)} />
                     <SentenceDots lines={s.refs} ui={ui} />
                     {s.rewordedBy && <span className="reworded small"> reworded by <span className="mono">{s.rewordedBy}</span></span>}
+                    {s.correctedBy && <span className="reworded small"> corrected by <span className="mono">{s.correctedBy}</span></span>}
                     <PendingTag targetKey={target.key} />{" "}
                   </Fragment>
                 );
@@ -325,13 +368,24 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
   );
 }
 
+/** The panel answers some record line links to; the others are listed only under Page upkeep and Activity. */
+export function linkedAnswers(m: Pick<RecordModel, "panel" | "sections" | "answerRef">): { linked: Activity[]; unlinked: Activity[] } {
+  const ids = new Set<string>();
+  for (const l of allLines(m)) for (const k of l.links) {
+    const a = m.answerRef(k.target)?.activity;
+    if (a) ids.add(a.req.requestId);
+  }
+  return { linked: m.panel.filter((a) => ids.has(a.req.requestId)), unlinked: m.panel.filter((a) => !ids.has(a.req.requestId)) };
+}
+
 function PanelAnswers({ m }: { m: RecordModel }) {
-  if (!m.panel.length) return null;
+  const { linked } = linkedAnswers(m);
+  if (!linked.length) return null;
   return (
     <div className="card" id="panel-answers">
       <h2>Panel answers</h2>
       <ul className="lines">
-        {[...m.panel].reverse().map((a) => (
+        {[...linked].reverse().map((a) => (
           <li key={a.req.requestId} className="panel-row" id={panelAnchor(a)} tabIndex={-1}>
             <p className="row-text">{a.req.title || String(a.req.bodyJson?.question ?? "").slice(0, 120)}</p>
             <div className="row-meta">
@@ -581,7 +635,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
             <Fragment key={t}>
               <dt>Panel answer</dt>
               <dd>
-                {a ? a.text : <span className="mono">{t}</span>}
+                {a ? a.text : "A panel answer not shown in this record"}
                 {a?.activity && (
                   <span className="block small">
                     {a.activity.oracle?.agreed ?? "?"} of {a.activity.oracle?.panelSize ?? "?"} agreed.{" "}
@@ -624,10 +678,25 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
             </dd>
           </>
         )}
-        {line.from.length > 0 && (
+        {!!row.same?.length && (
           <>
-            <dt>Carried from</dt>
-            <dd className="mono">{line.from.join(", ")}</dd>
+            <dt>Also in the record</dt>
+            <dd>
+              <ul className="plain">
+                {row.same.map((o, i) => {
+                  const nums = o.line.srcKeys.map((k) => ctx.numbers.get(k)?.n).filter((n): n is number => n !== undefined);
+                  const who = o.line.kind === "proof" ? "A proof" : speakerText(o.line);
+                  const added = o.origin ? `added by ${o.origin.raised ? "a changes job" : "a sources or edit job"} paid by ${o.origin.payer}` : "from the page job";
+                  return (
+                    <li key={i}>
+                      {who}, {added}
+                      {nums.length ? `, source${nums.length === 1 ? "" : "s"} ${nums.join(", ")}` : ""}
+                      {o.line.quote ? <span className="block">“{o.line.quote}”</span> : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </dd>
           </>
         )}
         <dt>Added by</dt>
@@ -667,7 +736,8 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
   // What a settled row already leads with is not repeated under it.
   const st = ctx.settled.by.get(line.id);
   const lead = new Set(st?.state === "proven" ? st.confirms.map((t) => `confirms:${t}`) : st?.state === "contradicted" ? st.contradicts.map((t) => `contradicts:${t}`) : []);
-  const links = line.links.filter((k) => !lead.has(`${k.type}:${k.target.trim()}`));
+  // Out of date is the row's lead with "Newer:" under it; a link to nothing the record shows is left out.
+  const links = line.links.filter((k) => k.type !== "outdates" && !lead.has(`${k.type}:${k.target.trim()}`) && (ctx.m.resolve(k.target) || ctx.m.answerRef(k.target)));
   if (!links.length) return null;
   return (
     <ul className="settled">
@@ -675,7 +745,7 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
         const word = k.type === "confirms" ? "Confirmed by" : k.type === "partly" ? "Partly confirmed by" : k.type === "context" ? "Context" : "Contradicted by";
         const target = ctx.m.resolve(k.target);
         const answer = target ? null : ctx.m.answerRef(k.target);
-        let body: React.ReactNode = <span className="mono">{k.target}</span>;
+        let body: React.ReactNode = <span>a line not shown in this record</span>;
         if (target)
           body = (
             <a
@@ -720,6 +790,13 @@ const onRowClick = (toggle: () => void) => (e: React.MouseEvent) => {
 
 /** The green "Proven" (or "Confirmed by a panel, N of M") or red "Contradicted" marker a settled row leads with. */
 export function SettleMark({ s, ctx }: { s: Settle; ctx: Ctx }) {
+  if (s.state === "outdated")
+    return (
+      <span className="kind kind-outdated">
+        <span className="dot" aria-hidden="true" />
+        Out of date
+      </span>
+    );
   if (s.state === "contradicted")
     return (
       <span className="kind kind-contradicted">
@@ -746,6 +823,56 @@ function shownBy(t: string, ctx: Ctx): { who: string; text: string } {
   return { who: "The panel answered", text: a?.text || `answer ${t}` };
 }
 
+/** "Newer: <the newer line>" under an Out of date row, each opening that line. */
+function NewerNotes({ ids, ctx }: { ids: string[]; ctx: Ctx }) {
+  return (
+    <ul className="settled">
+      {ids.map((t) => {
+        const newer = ctx.m.resolve(t);
+        const a = newer ? null : ctx.m.answerRef(t);
+        if (!newer && !a) return null;
+        return (
+          <li key={t} className="settled-outdates">
+            <span className="settled-word">Newer:</span>{" "}
+            {newer ? (
+              <a
+                href={to(lineAnchor(newer.id))}
+                onClick={(e) => {
+                  e.preventDefault();
+                  ctx.ui.openLines([newer.id]);
+                }}
+              >
+                {formatNumbers(newer.text)}
+              </a>
+            ) : (
+              <span>{a!.text}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * Who else says what this row says: the speakers of identical lines shown as this one row, and statements or
+ * claims of the record whose confirms (or partly) link points at it. Each opens that line.
+ */
+function alsoSaidBy(row: RecordRow, ctx: Ctx): { who: string; id: string }[] {
+  const { line } = row;
+  const mine = (line.kind === "proof" ? "" : speakerText(line)).replace(/^(Stated|Claimed) by /, "").toLowerCase();
+  const out: { who: string; id: string }[] = [];
+  const add = (l: Line, id: string) => {
+    if (l.kind === "proof") return;
+    const who = speakerText(l).replace(/^(Stated|Claimed) by /, "");
+    if (!who || who.toLowerCase() === mine || out.some((x) => x.who.toLowerCase() === who.toLowerCase())) return;
+    out.push({ who, id });
+  };
+  for (const o of row.same ?? []) add(o.line, line.id);
+  for (const l of allLines(ctx.m)) if (l.id !== line.id && l.links.some((k) => (k.type === "confirms" || k.type === "partly") && k.target.trim() === line.id)) add(l, l.id);
+  return out;
+}
+
 function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<string> }) {
   const { line } = row;
   const anchor = lineAnchor(line.id || line.text.slice(0, 40));
@@ -753,8 +880,9 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
   const open = ctx.ui.openSet.has(line.id);
   const toggle = () => ctx.ui.toggle(line.id);
   const s = ctx.settled.by.get(line.id);
-  const settled = s && (s.state === "proven" || s.state === "contradicted") ? s : null;
+  const settled = s && (s.state === "proven" || s.state === "contradicted" || s.state === "outdated") ? s : null;
   const sg = useSuggest();
+  const also = alsoSaidBy(row, ctx);
   const target = lineTarget(line.id || line.text.slice(0, 40), line.text, line.id ? originOfLine(line.id, ctx.m.scope) : null);
   const srcUrl = line.srcKeys.map((k) => ctx.numbers.get(k)?.url).find(Boolean) ?? "";
   return (
@@ -778,6 +906,11 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
                 );
               })}
             </span>
+          ) : settled?.state === "outdated" ? (
+            <span className="row-text">
+              <SettleMark s={settled} ctx={ctx} />
+              <span className="block">{formatNumbers(line.text)}</span>
+            </span>
           ) : (
             <span className="row-text">{formatNumbers(line.text)}</span>
           )}
@@ -785,7 +918,7 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
             {settled ? (
               <>
                 {settled.state === "proven" && <SettleMark s={settled} ctx={ctx} />}
-                <span className="by small">{speakerText(line)}</span>
+                {line.kind === "proof" ? <KindMark kind="proof" /> : <span className="by small">{speakerText(line)}</span>}
               </>
             ) : (
               <>
@@ -800,9 +933,30 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
         <Pencil target={target} />
       </div>
       <PendingTag targetKey={target.key} />
+      {settled?.state === "outdated" && <NewerNotes ids={settled.outdates} ctx={ctx} />}
+      {also.length > 0 && (
+        <ul className="settled also">
+          {also.map((a, i) => (
+            <li key={i}>
+              <span className="settled-word">Also said by</span>{" "}
+              <a
+                href={to(lineAnchor(a.id))}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (a.id === line.id) {
+                    if (!open) toggle();
+                  } else ctx.ui.openLines([a.id]);
+                }}
+              >
+                {a.who}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
       <LinkNotes line={line} ctx={ctx} />
       {open && <Details row={row} ctx={ctx} id={`${anchor}-d`} />}
-      {sg.open === target.key && <ChangePanel target={target} mode="line" sourceUrl={srcUrl} evidence={evidenceOf([line], allLines(ctx.m))} onOpenLines={ctx.ui.openLines} />}
+      {sg.open === target.key && <ChangePanel target={target} mode="line" sourceUrl={srcUrl} line={line} evidence={evidenceOf([line], allLines(ctx.m))} onOpenLines={ctx.ui.openLines} />}
     </li>
   );
 }
@@ -857,7 +1011,7 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
               {sg.open === target.key && (
                 <tr className="fact-details">
                   <td colSpan={3}>
-                    <ChangePanel target={target} mode="line" sourceUrl={ctx.numbers.get(row.line.srcKeys[0] ?? "")?.url ?? ""} evidence={evidenceOf([row.line], allLines(ctx.m))} onOpenLines={ctx.ui.openLines} />
+                    <ChangePanel target={target} mode="line" sourceUrl={ctx.numbers.get(row.line.srcKeys[0] ?? "")?.url ?? ""} line={row.line} evidence={evidenceOf([row.line], allLines(ctx.m))} onOpenLines={ctx.ui.openLines} />
                   </td>
                 </tr>
               )}
@@ -883,36 +1037,32 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
   );
 }
 
-function Accounting({ m }: { m: RecordModel }) {
+/**
+ * "Page upkeep": one closed row at the bottom of Record. It opens to show the lines dropped in the last rebuild with
+ * their reasons, earlier lines unaccounted for (if any), how many identical lines were shown as one, and panel
+ * answers no line links to. Internal ids appear only here (and on Contribute under Rebuild the page). A small amber
+ * dot marks the row only when there are unaccounted lines.
+ */
+function PageUpkeep({ m }: { m: RecordModel }) {
   const a = m.accounting;
   const dropped = a.dropped;
   const carried = m.carried;
+  const missing = a.state === "done" ? a.missing : [];
+  const { unlinked } = linkedAnswers(m);
   const total = dropped.length + carried.length;
+  if (!m.page && !unlinked.length) return null;
   return (
-    <>
-      {a.state === "loading" && <p className="small">Checking the last rebuild against the {a.files} earlier files it was given…</p>}
-      {a.state === "error" && <p className="small">Unable to check the last rebuild against its earlier files: {a.error}</p>}
-      {a.state === "done" && a.missing.length > 0 && (
-        <div className="warn-box" id="unaccounted" role="note">
-          <h2>
-            {a.missing.length} earlier line{a.missing.length === 1 ? " is" : "s are"} unaccounted for
-          </h2>
-          <p className="small">The last rebuild neither carried these lines forward nor listed them as dropped.</p>
-          <ul className="plain small">
-            {a.missing.map((x) => (
-              <li key={x.ref}>
-                <span className="mono">{x.ref}</span> {x.text}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {total > 0 && (
-        <details className="dropped" id="dropped">
-          <summary>
-            Dropped in the last rebuild <span className="count num">{total}</span>
-          </summary>
-          <ul className="plain small">
+    <details className="card upkeep" id="upkeep">
+      <summary>
+        <span className="upkeep-title">Page upkeep</span>
+        {missing.length > 0 && <span className="upkeep-dot" role="img" aria-label="Earlier lines unaccounted for" />}
+      </summary>
+      <div className="upkeep-body small">
+        {a.state === "loading" && <p>Checking the last rebuild against the {a.files} earlier files it was given…</p>}
+        {a.state === "error" && <p>Unable to check the last rebuild against its earlier files: {a.error}</p>}
+        <h3>Dropped in the last rebuild</h3>
+        {total > 0 ? (
+          <ul className="plain" id="dropped">
             {dropped.map((d, i) => (
               <li key={i}>
                 <span className="mono">{d.ref}</span>
@@ -926,13 +1076,52 @@ function Accounting({ m }: { m: RecordModel }) {
                 <span className="mono">{d.id}</span> of <span className="mono break">{d.url.replace(/^https:\/\/api\.imd\.fun\/artifacts\//, "").slice(0, 12)}…</span>
                 {": "}
                 <span className="why-dropped">{d.why || "no reason given"}</span>
-                <span className="small"> Dropped by an earlier rebuild. Its file was left out of the last one for space, so the next rebuild reconsiders it.</span>
+                <span> Dropped by an earlier rebuild; the next rebuild reconsiders it.</span>
               </li>
             ))}
           </ul>
-        </details>
-      )}
-    </>
+        ) : (
+          <p>None.</p>
+        )}
+        {missing.length > 0 && (
+          <div id="unaccounted">
+            <h3>
+              {missing.length} earlier line{missing.length === 1 ? " is" : "s are"} unaccounted for
+            </h3>
+            <p>The last rebuild neither carried these lines forward nor listed them as dropped.</p>
+            <ul className="plain">
+              {missing.map((x) => (
+                <li key={x.ref}>
+                  <span className="mono">{x.ref}</span> {x.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <h3>Identical lines</h3>
+        <p id="repeats">
+          {m.merged
+            ? `${m.merged.toLocaleString("en-US")} line${m.merged === 1 ? " had" : "s had"} the same text as another line (ignoring case and punctuation) and ${m.merged === 1 ? "is" : "are"} shown as one row. The next rebuild merges them.`
+            : "No two lines have the same text."}
+        </p>
+        {unlinked.length > 0 && (
+          <>
+            <h3>Panel answers no line links to yet</h3>
+            <ul className="plain">
+              {[...unlinked].reverse().map((p) => (
+                <li key={p.req.requestId} id={panelAnchor(p)} tabIndex={-1}>
+                  {p.req.title || String(p.req.bodyJson?.question ?? "").slice(0, 120)}:{" "}
+                  <span className={`answer answer-${p.oracle?.answer ?? "none"}`}>{p.oracle?.answer ?? "no answer"}</span>, {p.oracle?.agreed ?? "?"} of {p.oracle?.panelSize ?? "?"} agreed.{" "}
+                  <a href={jobLink(p.jobId, p.req.transactionHash)} target="_blank" rel="noopener noreferrer">
+                    {p.jobId ? "Open the request" : "Open the transaction"}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -986,6 +1175,8 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   // settled filter that would hide it is cleared.
   useEffect(() => {
     if (!ui.target?.startsWith("line-")) return;
+    const folded = [...m.alias].find(([id]) => lineAnchor(id) === ui.target);
+    if (folded) return ui.openLines([folded[1]]);
     const row = sections.flatMap((s) => s.rows).find((r) => lineAnchor(r.line.id) === ui.target);
     if (!row) return;
     // A proof that a settled row shows (and that is not in the facts table) has no row of its own: open that row.
@@ -1003,8 +1194,6 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui.target, sections]);
   const matched = shown.reduce((n, s) => n + s.rows.length + s.table.length, 0);
-  const repeats = repeatsOf(all.map((r) => r.line));
-  const repeated = repeatCount(repeats);
 
   return (
     <section className="tab" aria-labelledby="record-tab-title">
@@ -1016,7 +1205,6 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
         </div>
       ) : (
         <>
-          <Accounting m={m} />
           {counts.all > 0 && (
             <div className="filter" role="group" aria-label="Show lines">
               {FILTERS.map((f) => (
@@ -1030,36 +1218,6 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
                   <span className="count num">{counts[f]}</span>
                 </button>
               ))}
-            </div>
-          )}
-          {repeated > 0 && (
-            <div className="warn-box" id="repeats" role="note">
-              <h2>
-                {repeated} line{repeated === 1 ? " repeats" : "s repeat"} another line
-              </h2>
-              <p className="small">These lines have the same text, ignoring case and punctuation. The next rebuild merges them into one.</p>
-              <ul className="plain small repeat-list">
-                {repeats.map((g, i) => (
-                  <li key={i}>
-                    “{g[0]!.text}”:{" "}
-                    {g.map((l, j) => (
-                      <Fragment key={j}>
-                        {j > 0 && ", "}
-                        <a
-                          href={to(lineAnchor(l.id))}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            ui.openLines([l.id]);
-                          }}
-                        >
-                          <span className="mono">{l.id || "no id"}</span>
-                        </a>
-                        {l.by && l.kind !== "proof" ? ` (${l.by})` : ""}
-                      </Fragment>
-                    ))}
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
           {counts.all > 0 && (
@@ -1119,8 +1277,9 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
           )}
         </>
       )}
-      {/* Always the last thing on Record, with or without a page: every completed panel answer of this subject. */}
+      {/* Panel answers that lines link to, then Page upkeep: always the last thing on Record. */}
       <PanelAnswers m={m} />
+      <PageUpkeep m={m} />
     </section>
   );
 }
@@ -1190,7 +1349,7 @@ export function SourcesTab({ m }: { m: RecordModel }) {
                   {[
                     s.type || "source",
                     s.publisher ? `published by ${s.publisher}` : "",
-                    `read ${s.readAt || "at an unknown time"}`,
+                    s.readAt ? `read ${readDate(s.readAt)}` : "read at an unknown time",
                     s.couldOpen === false ? "could not open" : "",
                     s.outcome?.kind === "off" ? "not about this subject" : "",
                     s.addedBy ? `added by ${s.addedBy}` : "page job",

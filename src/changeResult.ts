@@ -120,18 +120,21 @@ const unquote = (s: string) => {
  * Kept rewordings replace their sentence. The sentence then rests on the lines its own verdict lists
  * (items[].lines, in `rewordLines`, read in the scope of `rewordJob`), not on the old sentence's lines.
  */
-export type Reworded<T> = T & { rewordedBy?: string; original?: string; rewordLines?: string[]; rewordJob?: Activity };
+export type Reworded<T> = T & { rewordedBy?: string; correctedBy?: string; original?: string; rewordLines?: string[]; rewordJob?: Activity };
 export function applyRewords<T extends SummarySentence>(summary: T[], after: Activity[]): Reworded<T>[] {
   let out: Reworded<T>[] = summary;
   for (const a of after) {
     if (!a.changes) continue;
     const sent = parseItems(a.req.bodyJson?.objective);
     for (const v of a.changes.items) {
-      if (!v.kept || v.type !== "reword" || !v.finalText.trim()) continue;
-      const item = sent.find((x) => x.n === v.n && x.type === "reword");
+      // A kept rewording, or a kept "This is wrong" on a summary sentence with its corrected final_text.
+      if (!v.kept || (v.type !== "reword" && v.type !== "wrong") || !v.finalText.trim()) continue;
+      const item = sent.find((x) => x.n === v.n && x.type === v.type);
+      if (v.type === "wrong" && !(item ? item.targetKind === "sentence" : /^\s*summary sentence/i.test(v.target))) continue;
       const was = norm(item?.text || unquote(v.target));
       if (!was) continue;
-      out = out.map((s) => (norm(s.text) === was || (s.original && norm(s.original) === was) ? { ...s, original: s.original ?? s.text, text: v.finalText.trim(), rewordedBy: payerName(a), rewordLines: v.lines, rewordJob: a } : s));
+      const who = v.type === "wrong" ? { correctedBy: payerName(a), rewordedBy: undefined } : { rewordedBy: payerName(a), correctedBy: undefined };
+      out = out.map((s) => (norm(s.text) === was || (s.original && norm(s.original) === was) ? { ...s, original: s.original ?? s.text, text: v.finalText.trim(), ...who, rewordLines: v.lines.length ? v.lines : s.rewordLines, rewordJob: a } : s));
     }
   }
   return out;

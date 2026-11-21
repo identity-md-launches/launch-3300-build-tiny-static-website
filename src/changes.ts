@@ -67,6 +67,8 @@ export interface Change {
   target: ChangeTarget;
   note: string;
   links: string[];
+  /** On "This is wrong" for a summary sentence: the visitor's corrected sentence, sent as a suggestion for final_text. */
+  suggest?: string;
   /** Set when Activity put the change back after it was not kept for lack of a source: the job's reason. */
   retry?: string;
 }
@@ -204,8 +206,11 @@ export function targetText(t: ChangeTarget, refOf: RefOf): string {
 /** One numbered item: `(1) type: wrong; target: F1:L3 "…"; note: "…"; links: https://a https://b`. */
 export function itemText(c: Change, n: number, refOf: RefOf): string {
   const note = cleanNote(c.note);
-  return `(${n}) type: ${c.type}; target: ${targetText(c.target, refOf)}; note: ${note ? q(note) : "none"}; links: ${c.links.length ? c.links.join(" ") : "none"}`;
+  const suggest = c.type === "wrong" && c.target.kind === "sentence" ? cleanNote(c.suggest ?? "") : "";
+  return `(${n}) type: ${c.type}; target: ${targetText(c.target, refOf)}; note: ${note ? q(note) : "none"}; links: ${c.links.length ? c.links.join(" ") : "none"}${suggest ? `; suggested final_text: ${q(suggest)}` : ""}`;
 }
+/** The longest corrected sentence a visitor may suggest. */
+export const SUGGEST_MAX = 300;
 export const itemsText = (changes: Change[], refOf: RefOf) => changes.map((c, i) => itemText(c, i + 1, refOf)).join(" ");
 
 export function changesObjective(changes: Change[], prior: Prior, channels: ChannelTie[], subject: SubjectRef, refOf: RefOf, moreChannels = 0): string {
@@ -396,9 +401,52 @@ export function useTray(subject: string) {
 
 /* ---------- "Ask a panel to check it": the Confirm a fact form, seeded from the row ---------- */
 
+/**
+ * A panel question seeded from one record line: the question type its source fits (an X post, another web page, or
+ * a contract call taken from its rerun), or "none" when it fits none of them, with the fields that type needs.
+ */
 export interface ConfirmSeed {
+  type: "post" | "page" | "contract" | "none";
   text: string;
   url: string;
+  handle: string;
+  chain: string;
+  address: string;
+  signature: string;
+  value: string;
+}
+
+const X_POST = /^https:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})\/status(?:es)?\/\d+/i;
+const ADDRESS_RE = /0x[0-9a-fA-F]{40}/;
+const CALL_RE = /\b([A-Za-z_][A-Za-z0-9_]*)\(([A-Za-z0-9_,\[\] ]*)\)/;
+const CHAIN_IDS: Record<string, number> = { ethereum: 1, mainnet: 1, base: 8453, optimism: 10, arbitrum: 42161, polygon: 137 };
+
+/** The chain id a proof names, from its fact or rerun ("Ethereum", "chain 8453", "eth_call on Base"). */
+function chainOfLine(fact: { chain?: string } | null, rerun: string): string {
+  const hay = `${fact?.chain ?? ""} ${rerun}`;
+  const id = /\bchain(?:\s*id)?\s*[:=]?\s*(\d{1,7})\b/i.exec(hay)?.[1];
+  if (id) return id;
+  for (const [name, n] of Object.entries(CHAIN_IDS)) if (new RegExp(`\\b${name}\\b`, "i").test(hay)) return String(n);
+  return "";
+}
+
+/** Builds the seed for "Ask a panel to check it" from a line and the URL of its first source. Pure, for tests. */
+export function seedFromLine(line: { text: string; kind?: string; by?: string; rerun?: string; fact?: { value: string; unit?: string; chain?: string } | null }, sourceUrl: string): ConfirmSeed {
+  const text = line.text.trim().replace(/[.?!]+$/, "").slice(0, 400);
+  const base: ConfirmSeed = { type: "none", text, url: "", handle: "", chain: "", address: "", signature: "", value: "" };
+  const url = /^https:\/\//i.test(sourceUrl) ? sourceUrl.trim() : "";
+  const rerun = line.rerun ?? "";
+  if (line.kind === "proof" && rerun) {
+    const address = ADDRESS_RE.exec(rerun)?.[0] ?? "";
+    const call = CALL_RE.exec(rerun.replace(ADDRESS_RE, " "));
+    const chain = chainOfLine(line.fact ?? null, rerun);
+    const value = line.fact?.value?.trim() ?? "";
+    if (address && call && chain && value) return { ...base, type: "contract", chain, address, signature: `${call[1]}(${call[2]!.replace(/\s+/g, "")})`, value };
+  }
+  const post = X_POST.exec(url);
+  if (post) return { ...base, type: "post", url, handle: post[1]! };
+  if (url && line.kind !== "proof") return { ...base, type: "page", url };
+  return base;
 }
 let seed: ConfirmSeed | null = null;
 export const setConfirmSeed = (s: ConfirmSeed | null) => {
