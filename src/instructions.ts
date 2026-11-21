@@ -6,7 +6,7 @@
 import rebuildText from "../templates/instructions/rebuild.txt?raw";
 import changesText from "../templates/instructions/changes.txt?raw";
 import manifest from "./instructions.json";
-import { INSTRUCTIONS_GATEWAY } from "./config";
+import { INSTRUCTIONS_FALLBACK_GATEWAY, INSTRUCTIONS_GATEWAY } from "./config";
 
 export type InstructionName = "rebuild" | "changes";
 export interface Instructions {
@@ -21,6 +21,8 @@ export interface Instructions {
    * never serve other bytes.
    */
   url: string;
+  /** The same content address at a second gateway (INSTRUCTIONS_FALLBACK_GATEWAY), for when the first fails. */
+  fallbackUrl: string;
   /** The same file on this site, relative to the page: ./instructions/<name>-<hash12>.txt. */
   path: string;
 }
@@ -49,7 +51,7 @@ export function rawCid(sha256: string): string {
 }
 
 /** The address a job fetches an instruction file from (see Instructions.url). */
-export const fetchUrlOf = (file: string, sha256: string) => `${INSTRUCTIONS_GATEWAY}${rawCid(sha256)}?filename=${file}`;
+export const fetchUrlOf = (file: string, sha256: string, gateway = INSTRUCTIONS_GATEWAY) => `${gateway}${rawCid(sha256)}?filename=${file}`;
 
 const of = (name: InstructionName, text: string): Instructions => ({
   name,
@@ -57,6 +59,7 @@ const of = (name: InstructionName, text: string): Instructions => ({
   file: manifest[name].file,
   sha256: manifest[name].sha256,
   url: fetchUrlOf(manifest[name].file, manifest[name].sha256),
+  fallbackUrl: fetchUrlOf(manifest[name].file, manifest[name].sha256, INSTRUCTIONS_FALLBACK_GATEWAY),
   path: `./instructions/${manifest[name].file}`,
 });
 
@@ -65,11 +68,47 @@ export const paragraphsOf = (text: string) => text.trim().split(/\n\s*\n/).map((
 
 export const INSTRUCTIONS: Record<InstructionName, Instructions> = { rebuild: of("rebuild", rebuildText), changes: of("changes", changesText) };
 
-/** The sentence every new objective names its instruction file in, and how it is read back. */
-const NAMED = /Your full instructions are the file at (\S+), sha256 ([0-9a-f]{64})\./;
+/**
+ * The sentence every new objective names its instruction file in, and how it is read back. Since 2026-11-21 it names
+ * a second address for the same file: "the file at <URL> or, if that fails, at <URL2>, sha256 <HASH>."
+ */
+const NAMED = /Your full instructions are the file at (\S+?)(?: or, if that fails, at (\S+?))?, sha256 ([0-9a-f]{64})\./;
 /** The instruction file an objective names, or null for an objective sent before instruction files. */
-export function instructionsOf(objective: unknown): { url: string; sha256: string } | null {
+export function instructionsOf(objective: unknown): { url: string; sha256: string; fallback?: string } | null {
   if (typeof objective !== "string") return null;
   const m = NAMED.exec(objective);
-  return m ? { url: m[1]!, sha256: m[2]! } : null;
+  return m ? { url: m[1]!, sha256: m[3]!, ...(m[2] ? { fallback: m[2] } : {}) } : null;
+}
+
+/** What a visitor is told when a job's instruction file cannot be fetched, in place of the pay dialog. */
+export const INSTRUCTIONS_UNREACHABLE = "The instructions for this job cannot be reached right now, so it would stop without doing the work. Try again later.";
+
+const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+/**
+ * Before a pay dialog opens for a rebuild or a set of changes: fetches the instruction file the objective names
+ * (its first address, then the "if that fails" one) and checks its sha256. True when one address gives the exact
+ * bytes, or when the objective names no instruction file. A job that could not read its file would stop without
+ * doing the work, so the site does not take payment for it.
+ */
+export async function instructionsReachable(objective: unknown, get: typeof fetch = (...a) => fetch(...a), timeoutMs = 15_000): Promise<boolean> {
+  const named = instructionsOf(objective);
+  if (!named) return true;
+  for (const url of [named.url, named.fallback]) {
+    if (!url || !/^https:\/\//.test(url)) continue;
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), timeoutMs);
+      try {
+        const res = await get(url, { signal: ctl.signal, cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" });
+        if (!res.ok) continue;
+        const digest = await crypto.subtle.digest("SHA-256", await res.arrayBuffer());
+        if (hex(digest) === named.sha256) return true;
+      } finally {
+        clearTimeout(t);
+      }
+    } catch {
+      /* unreachable here: try the next address */
+    }
+  }
+  return false;
 }

@@ -7,14 +7,16 @@
  *   Contradicted by the same settled-line rules as any proof.
  * - A link from a new statement or claim to an existing proof line or panel answer goes the other way: it says what
  *   that proof or answer does to the new line, so it stays on the new line and settles it.
- * - Its affects list marks, at once, every existing line, Key facts row and summary sentence a new line
- *   contradicts or outdates (disputesOf). Only the sentence the visitor targeted is rewritten.
+ * - Its affects list names every existing line, Key facts row and summary sentence a new line contradicts or
+ *   outdates. The same job repairs the rows and sentences: each patch gives a row's new value or a sentence's new
+ *   text with the lines it now rests on, shown on top of the page ("Updated by a change from <payer>"). Only parts
+ *   left without a patch, and record lines (which take no patch), are marked disputed (disputesOf).
  * - A kept reword replaces that summary sentence, marked "reworded by <payer>".
  */
 import { parsePrior } from "./bodies";
 import { parseItems } from "./changes";
 import { payerName } from "./format";
-import type { Affect, LineLink, Page, RecordRow, SummarySentence } from "./page";
+import type { Affect, ChangesResult, LineLink, Page, Patch, RecordRow, SummarySentence } from "./page";
 import type { Activity } from "./useActivity";
 
 /**
@@ -183,6 +185,8 @@ export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disp
     for (const f of a.changes.affects) {
       const by = `${key}:${f.byLine}`;
       if (!has(by)) continue;
+      // A row or sentence the same job patched is repaired, not disputed.
+      if (isPatched(a.changes, f)) continue;
       const d: Dispute = { type: f.type, by, job: key };
       if (f.kind === "line") {
         const t = resolveChangeTarget(f.target, a, scope, has);
@@ -227,6 +231,62 @@ export function disputedCount(d: Disputes, rowLabels: string[], sentences: { tex
   return d.lines.size + rows + sent;
 }
 
+/* ---------- Patches ---------- */
+
+const patchesOf = (c: Pick<ChangesResult, "patches"> | null | undefined): Patch[] => c?.patches ?? [];
+/** The patch a changes result gives for an affects entry on a Key facts row or summary sentence, or undefined. */
+export function patchFor(c: Pick<ChangesResult, "patches">, f: Pick<Affect, "kind" | "target">): Patch | undefined {
+  if (f.kind === "infobox") return patchesOf(c).find((p) => p.kind === "infobox" && p.target.trim().toLowerCase() === f.target.trim().toLowerCase());
+  if (f.kind === "summary") {
+    const t = norm(unquote(f.target));
+    return t ? patchesOf(c).find((p) => p.kind === "summary" && norm(unquote(p.target)) === t) : undefined;
+  }
+  return undefined;
+}
+export const isPatched = (c: Pick<ChangesResult, "patches">, f: Pick<Affect, "kind" | "target">) => !!patchFor(c, f);
+/**
+ * True when a changes result repaired everything its affects list names: it gave at least one patch and every entry
+ * is a Key facts row or summary sentence with a patch. Such a job does not make the page "out of date"; the next
+ * rebuild still folds it in with its patches.
+ */
+export function fullyPatched(c: Pick<ChangesResult, "patches" | "affects"> | null | undefined): boolean {
+  if (!c || !patchesOf(c).length) return false;
+  return c.affects.every((f) => f.kind !== "line" && isPatched(c, f));
+}
+
+/** A Key facts row patch as the page shows it: the job's patch, the job and who paid. The newest job wins. */
+export interface RowPatch {
+  patch: Patch;
+  job: Activity;
+  payer: string;
+}
+export function rowPatchesOf(after: Activity[]): Map<string, RowPatch> {
+  const out = new Map<string, RowPatch>();
+  for (const a of after) for (const p of patchesOf(a.changes)) if (p.kind === "infobox") out.set(p.target.trim().toLowerCase(), { patch: p, job: a, payer: payerName(a) });
+  return out;
+}
+
+/**
+ * Summary patches replace their sentence with the new text, marked "Updated by a change from <payer>" with the
+ * earlier text kept. The sentence then rests on the patch's lines, read in that job's scope (rewordLines, rewordJob).
+ */
+export function applySentencePatches<T extends SummarySentence>(summary: Reworded<T>[], after: Activity[]): Reworded<T>[] {
+  let out = summary;
+  for (const a of after)
+    for (const p of patchesOf(a.changes)) {
+      if (p.kind !== "summary") continue;
+      const was = norm(unquote(p.target));
+      if (!was) continue;
+      let hit = false;
+      out = out.map((s) => {
+        if (hit || norm(s.text) !== was) return s;
+        hit = true;
+        return { ...s, earlier: s.text, original: s.original ?? s.text, text: p.value, updatedBy: payerName(a), rewordedBy: undefined, correctedBy: undefined, rewordLines: p.lines, rewordJob: a };
+      });
+    }
+  return out;
+}
+
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").replace(/[.!?\s]+$/, "").trim();
 const unquote = (s: string) => {
   const t = s.replace(/^\s*summary sentence\s*/i, "").trim();
@@ -241,7 +301,7 @@ const unquote = (s: string) => {
  * Kept rewordings replace their sentence. The sentence then rests on the lines its own verdict lists
  * (items[].lines, in `rewordLines`, read in the scope of `rewordJob`), not on the old sentence's lines.
  */
-export type Reworded<T> = T & { rewordedBy?: string; correctedBy?: string; original?: string; rewordLines?: string[]; rewordJob?: Activity };
+export type Reworded<T> = T & { rewordedBy?: string; correctedBy?: string; updatedBy?: string; earlier?: string; original?: string; rewordLines?: string[]; rewordJob?: Activity };
 export function applyRewords<T extends SummarySentence>(summary: T[], after: Activity[]): Reworded<T>[] {
   let out: Reworded<T>[] = summary;
   for (const a of after) {

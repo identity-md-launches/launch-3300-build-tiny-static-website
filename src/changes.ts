@@ -217,6 +217,7 @@ export function changesObjective(changes: Change[], prior: Prior, channels: Chan
   return fillTemplate(CHANGES_TEMPLATE, {
     SUBJECT: describeSubject(subject),
     URL: INSTRUCTIONS.changes.url,
+    FALLBACK: INSTRUCTIONS.changes.fallbackUrl,
     HASH: INSTRUCTIONS.changes.sha256,
     PRIOR: priorText({ files: prior.files, answers: prior.answers }),
     CHANNELS: channelList(channels, moreChannels),

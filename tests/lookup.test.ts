@@ -129,7 +129,7 @@ describe("record: search, settled filter, repeat check", () => {
 
 describe("labels", () => {
   it("the Sources legend is the brief's sentence", () => {
-    expect(STATUS_LEGEND).toBe("Lines published on Own domain or Verified on chain channels show as statements; everything else is a claim.");
+    expect(STATUS_LEGEND).toBe("Lines published on Own domain, Verified on chain or Linked from own site channels show as statements; everything else is a claim.");
   });
 });
 

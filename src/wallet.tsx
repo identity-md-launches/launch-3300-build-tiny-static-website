@@ -5,6 +5,7 @@ import { coinbaseWallet, injected } from "wagmi/connectors";
 import { CHAIN, CHAIN_ID, RPCS, SITE_NAME } from "./config";
 import { WALLET_ICONS } from "./wallet-icons";
 import { holdFocus } from "./modal";
+import { forgetWallet } from "./walletFlag";
 
 export const config = createConfig({
   chains: [CHAIN],
@@ -75,7 +76,16 @@ export function ConnectSheet({ autoOpen = false }: { autoOpen?: boolean }) {
   const icon = (c: Connector) => c.icon ?? WALLET_ICONS[c.id];
 
   if (isConnected && address) {
-    const chip = <AccountChip address={address} onDisconnect={() => disconnect()} />;
+    // Disconnect in the site's own menu forgets the wallet: the next visit shows Connect and loads no wallet code.
+    const chip = (
+      <AccountChip
+        address={address}
+        onDisconnect={() => {
+          forgetWallet();
+          disconnect();
+        }}
+      />
+    );
     // On another chain the chip and its menu stay (who is connected, Copy address, Disconnect); Switch sits beside it.
     if (chainId !== CHAIN_ID)
       return (

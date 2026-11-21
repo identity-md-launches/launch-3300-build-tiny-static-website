@@ -1,9 +1,9 @@
 /** The record's tabs: Overview (key facts, summary), Record (filter, sections, one facts table) and Sources. */
-import { disputedCount, sentenceDispute, type Dispute, type Disputes } from "./changeResult";
+import { disputedCount, rowPatchesOf, sentenceDispute, type Dispute, type Disputes } from "./changeResult";
 import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
-import { keyFacts, splitAddresses, type KeyRow } from "./keyfacts";
+import { keyFacts, splitAddresses, withPatches, type KeyRow } from "./keyfacts";
 import { addHref, subjectHref, to } from "./route";
 import { SubjectLogo } from "./Logo";
 import { findSubject, parseLookup, rowMatches, type Findable } from "./lookup";
@@ -185,6 +185,10 @@ function ValueText({ text, url = "" }: { text: string; url?: string }) {
 
 /** Every full address a key facts row names, for its details: the table itself shows them shortened. */
 const rowAddresses = (r: KeyRow) => [...new Set([r.value, ...r.values, ...r.tokens.map((t) => t.address)].flatMap((v) => splitAddresses(v).filter((p) => p.address).map((p) => p.text)))];
+/** Every name, in full: "A", "A and B", "A, B and C". */
+const allNames = (n: string[]) => (n.length < 2 ? n[0] ?? "" : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`);
+/** A row opens details when it has full addresses, more speakers than its badge names, or a patch from a change. */
+const hasRowDetails = (r: KeyRow) => rowAddresses(r).length > 0 || (r.speakers?.length ?? 0) > 1 || !!r.updatedBy;
 
 function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
   const { rows } = useKeyFacts(m);
@@ -204,7 +208,7 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
               <Fragment key={i}>
                 <tr className="has-pencil">
                   <th scope="row">
-                    {rowAddresses(r).length ? (
+                    {hasRowDetails(r) ? (
                       <button type="button" className="kf-toggle" aria-expanded={openRow === r.label} aria-controls={`kf-d-${i}`} onClick={() => setOpenRow(openRow === r.label ? null : r.label)}>
                         <span className="chev" aria-hidden="true" />
                         {r.label}
@@ -224,10 +228,22 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                     <Pencil target={target} label={`Suggest a change`} />
                   </td>
                 </tr>
-                {openRow === r.label && rowAddresses(r).length > 0 && (
+                {openRow === r.label && hasRowDetails(r) && (
                   <tr className="kf-details" id={`kf-d-${i}`}>
                     <td colSpan={4}>
                       <dl className="facts">
+                        {r.updatedBy && (
+                          <>
+                            <dt>Updated by a change from <span className="mono">{r.updatedBy}</span></dt>
+                            <dd className="break">Earlier value: {r.earlier || "none"}</dd>
+                          </>
+                        )}
+                        {r.speakers && r.speakers.length > 1 && (
+                          <>
+                            <dt>{r.badge?.tone === "statement" ? "Stated by" : "Reported by"}</dt>
+                            <dd className="break">{allNames(r.speakers)}</dd>
+                          </>
+                        )}
                         {rowAddresses(r).map((a) => (
                           <Fragment key={a}>
                             <dt>Full address</dt>
@@ -304,7 +320,9 @@ export function useKeyFacts(m: RecordModel) {
   const all = m.sections.flatMap((s) => s.rows.map((r) => r.line));
   const sourceUrl = (l: Line) => (l.srcKeys[0] ? m.sourceList.find((s) => s.key === l.srcKeys[0])?.url ?? "" : "");
   const kf = keyFacts(m.page, m.resolve, all, sourceUrl);
-  return { ...kf, rows: withDisputes(kf.rows, m.disputes) };
+  // Patches from changes jobs not yet folded in: the row's new value rests on the patch's lines, in that job's scope.
+  const patches = new Map([...rowPatchesOf(m.after)].map(([k, p]) => [k, { value: p.patch.value, lines: m.editRefs(p.job, p.patch.lines, null), payer: p.payer }] as const));
+  return { ...kf, rows: withDisputes(withPatches(kf.rows, patches, all, sourceUrl), m.disputes) };
 }
 
 /** A Key facts row a newer source contradicts or outdates reads "Contradicted" or "Out of date" in place of its badge. */
@@ -408,11 +426,17 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
                     <DisputeDot d={sentenceDispute(s, m.disputes)} ui={ui} />
                     {s.rewordedBy && <span className="reworded small"> reworded by <span className="mono">{s.rewordedBy}</span></span>}
                     {s.correctedBy && <span className="reworded small"> corrected by <span className="mono">{s.correctedBy}</span></span>}
+                    {s.updatedBy && <span className="reworded small"> updated by a change from <span className="mono">{s.updatedBy}</span></span>}
                     <PendingTag targetKey={target.key} />{" "}
                   </Fragment>
                 );
               })}
             </p>
+            {openHere?.updatedBy && (
+              <p className="small sentence-updated" role="note">
+                Updated by a change from <span className="mono">{openHere.updatedBy}</span>. Earlier: “{openHere.earlier}”
+              </p>
+            )}
             {openHere && <ChangePanel key={openHere.text} target={sentenceTarget(openHere.text)} mode="sentence" evidence={evidenceOf(openHere.refs, allLines(m))} onOpenLines={ui.openLines} />}
           </Fragment>
         );
@@ -1448,7 +1472,7 @@ export function SourcesTab({ m }: { m: RecordModel }) {
             ))}
           </ul>
           <p className="small tie-key">
-            {STATUS_HELP.own} {STATUS_HELP.verified} {STATUS_HELP.unverified} {STATUS_LEGEND}
+            {STATUS_HELP.own} {STATUS_HELP.verified} {STATUS_HELP.linked} {STATUS_HELP.unverified} {STATUS_LEGEND}
           </p>
         </div>
       )}

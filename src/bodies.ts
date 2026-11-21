@@ -191,7 +191,7 @@ export const numberLinks = (urls: string[]) => urls.map((u, i) => `[${i + 1}] ${
 /** A channel as it replaces <CHANNELS>: its URL and tie. */
 export interface ChannelTie {
   url: string;
-  tie: "strong" | "weak" | "none";
+  tie: "strong" | "linked" | "weak" | "none";
 }
 /** The channels, as they replace <CHANNELS>: "https://imd.fun/ (tie: weak), https://api.imd.fun (tie: strong)". */
 export const channelList = (channels: ChannelTie[], more = 0) => {
@@ -369,7 +369,7 @@ export const MAX_OBJECTIVE = 7900;
 /** Whether a finished rebuild or changes objective fits. */
 export const fitsObjective = (length: number) => length <= MAX_OBJECTIVE;
 
-const TIE_RANK = { strong: 0, weak: 1, none: 2 } as const;
+const TIE_RANK = { strong: 0, linked: 1, weak: 2, none: 3 } as const;
 /**
  * The known channels an objective lists. Room is reserved first for the fixed text and F1 (`base`, the objective
  * with F1 and no channels); the channels may then take at most half of what is left, strong ties first, so results
@@ -391,6 +391,7 @@ export const rebuildObjective = (p: Prior, subject: SubjectRef, channels: Channe
   fillTemplate(REBUILD_TEMPLATE, {
     SUBJECT: describeSubject(subject),
     URL: INSTRUCTIONS.rebuild.url,
+    FALLBACK: INSTRUCTIONS.rebuild.fallbackUrl,
     HASH: INSTRUCTIONS.rebuild.sha256,
     PRIOR: priorText(p),
     CHANNELS: channelList(channels, moreChannels),

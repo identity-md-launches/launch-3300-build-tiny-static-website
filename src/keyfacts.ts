@@ -35,6 +35,14 @@ export interface KeyRow {
    * id of that newer line. The badge then reads "Contradicted" or "Out of date" in place of its usual one.
    */
   disputedBy?: string;
+  /**
+   * Every speaker the badge's lines name, strongest first, when there is more than one: the badge names only the
+   * first ("Stated by Documentation +1") and the row's details list them all.
+   */
+  speakers?: string[];
+  /** Set when a kept change patched this row: who paid for it, and the value the page shown had before. */
+  updatedBy?: string;
+  earlier?: string;
 }
 
 /** One token of a Tokens value: its symbol, what it is for, its contract address and chain ("" when the value gives none). */
@@ -181,7 +189,36 @@ export function badgeOf(lines: Line[], all: Line[] = lines, sourceUrl: (l: Line)
   const names = speakersOf(lines, sourceUrl);
   if (!names.length) return null;
   const tone = lines.some((l) => l.kind === "statement") ? "statement" : "claim";
-  return { text: `${tone === "statement" ? "Stated by" : "Reported by"} ${speakerList(names)}`, tone };
+  return { text: `${tone === "statement" ? "Stated by" : "Reported by"} ${speakerShort(names)}`, tone };
+}
+
+/** One short line: the strongest speaker, then "+N" for the rest ("Documentation +1"). */
+export function speakerShort(names: string[]): string {
+  return names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0] ?? "";
+}
+
+/** The full speaker list for a row's details, when its Stated by or Reported by badge names more than one. */
+export function speakersField(badge: Badge | null, lines: Line[], sourceUrl: (l: Line) => string = () => ""): { speakers?: string[] } {
+  if (!badge || (badge.tone !== "statement" && badge.tone !== "claim")) return {};
+  const names = speakersOf(lines, sourceUrl);
+  return names.length > 1 ? { speakers: names } : {};
+}
+
+/**
+ * A changes job's patches on top of the Key facts rows shown: the row shows the new value with its normal badge,
+ * worked out from the lines the patch rests on, and keeps the earlier value and who paid for its details.
+ * `patches` maps a lower-case row label to the new value, its resolved lines and the payer.
+ */
+export function withPatches(rows: KeyRow[], patches: Map<string, { value: string; lines: Line[]; payer: string }>, all: Line[], sourceUrl: (l: Line) => string = () => ""): KeyRow[] {
+  if (!patches.size) return rows;
+  return rows.map((r) => {
+    const p = patches.get(r.label.trim().toLowerCase());
+    if (!p) return r;
+    const tied = TIE_ROWS.test(r.label.trim());
+    const badge = tied ? null : badgeOf(p.lines, all, sourceUrl);
+    const { speakers: _drop, ...rest } = r;
+    return { ...rest, value: p.value, values: [], tokens: [], accounts: [], lines: p.lines, badge, updatedBy: p.payer, earlier: r.value || r.values.join("; "), ...speakersField(badge, p.lines, sourceUrl) };
+  });
 }
 
 /**
@@ -223,7 +260,7 @@ export const statusBadge = (c: Channel, domain: string): Badge => toBadge(channe
 const toBadge = (s: ChannelStatus): Badge => ({ text: STATUS_WORDS[s], tone: s });
 
 /** From most to least cautious: a row listing accounts takes the first label any of them has. */
-const CAUTION: ChannelStatus[] = ["unverified", "verified", "own"];
+const CAUTION: ChannelStatus[] = ["unverified", "linked", "verified", "own"];
 
 /**
  * The label of a URL or account name with no matching channel, or with one: on the subject's domain (or a
@@ -241,11 +278,32 @@ function statusOf(target: string, channel: Channel | null, domain: string): Chan
  * the most cautious of them (one Not verified account makes the row Not verified).
  */
 export function rowStatus(row: { label: string; value: string; url: string }, channel: Channel | null, accounts: Account[], domain: string): Badge {
+  if (/^official accounts?$/i.test(row.label.trim())) return toBadge(accountsStatus(row, channel, accounts, domain));
   if (accounts.length) {
     const each = accounts.map((a) => statusOf(a.name, a.channel, domain));
     return toBadge(CAUTION.find((s) => each.includes(s)) ?? "unverified");
   }
   return toBadge(statusOf(row.url || row.value, channel, domain));
+}
+
+/**
+ * An Official accounts row is judged by the accounts it names, never by a link to the project's own site: an
+ * account on another site (x.com, github.com) is "Linked from own site" when its channel has tie linked (the own
+ * domain links to it as its official account), "Verified on chain" for tie strong, else "Not verified". Only an
+ * account that is itself on the own domain is Own domain. Several accounts take the most cautious label.
+ */
+export function accountsStatus(row: { value: string; url: string }, channel: Channel | null, accounts: Account[], domain: string): ChannelStatus {
+  const one = (name: string, ch: Channel | null): ChannelStatus => {
+    const url = /^https?:\/\//i.test(name) ? name : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(name) ? `https://${name}` : "";
+    if (url && onDomain(url, domain)) return "own";
+    // A channel on the own domain matched to an off-site account (or a handle) never lends it Own domain.
+    if (ch && !onDomain(ch.url, domain)) return channelStatus(ch, domain);
+    return "unverified";
+  };
+  // One account: its name (the value), with the row's channel when the handle matched none; the row's URL only
+  // when the value names nothing else.
+  const each = accounts.length > 1 ? accounts.map((a) => one(a.name, a.channel)) : accounts.length ? [one(accounts[0]!.name, accounts[0]!.channel ?? channel)] : [one(row.url || row.value, channel)];
+  return CAUTION.find((s) => each.includes(s)) ?? "unverified";
 }
 
 /** The channel a row names by its URL, or by its value being the channel's label or URL. */
@@ -304,7 +362,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // Stated by or Reported by.
       // A Website or Official accounts row whose lines are all out of date says so in place of its channel label.
       const stale = tied && allOutdated(lines, all);
-      const status = tied ? (stale ? OUTDATED : rowStatus(r, channel, accounts, domain)) : null;
+      const status = tied ? (stale ? OUTDATED : rowStatus(r, channel, /^official accounts?$/i.test(r.label.trim()) ? listed : accounts, domain)) : null;
       const badge = tied ? null : badgeOf(lines, all, sourceUrl);
       // Tokens one per line only when the result gave them as a list (values); a text value stays one text value.
       const isTokens = TOKEN_ROWS.test(r.label.trim());
@@ -312,7 +370,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // "on <chain>" says nothing when the Chains row names a single chain.
       if (singleChain) for (const t of tokens) t.chain = "";
       const value = isTokens && singleChain && !tokens.length ? withoutChain(r.value, chainsRow!.values?.[0] ?? chainsRow!.value) : r.value;
-      return { label: r.label, value, url: r.url, note: "", lines, channel, badge, status, accounts, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [] };
+      return { label: r.label, value, url: r.url, note: "", lines, channel, badge, status, accounts, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...speakersField(badge, lines, sourceUrl) };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }

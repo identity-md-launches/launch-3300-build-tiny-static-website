@@ -13,7 +13,8 @@ export const SECTION_TITLES: Record<string, string> = {
 };
 
 export type Kind = "proof" | "statement" | "claim";
-export type Tie = "strong" | "weak" | "none";
+/** strong: on chain; linked: a channel on another site the own domain links to as its official account; weak; none. */
+export type Tie = "strong" | "linked" | "weak" | "none";
 
 /** An on-chain fact from a proof line: a short name, the value and its unit, and where it was read. */
 export interface Fact {
@@ -149,7 +150,7 @@ const kindOf = (v: unknown): Kind => {
 };
 export const tieOf = (v: unknown): Tie => {
   const t = str(v).toLowerCase();
-  return t === "strong" || t === "weak" ? t : "none";
+  return t === "strong" || t === "linked" || t === "weak" ? t : "none";
 };
 const levelOf = (v: unknown): Level => (str(v).toLowerCase() === "conflict" ? "conflict" : "question");
 /**
@@ -344,8 +345,8 @@ const norm = (url: string) => {
  * How a channel shows to visitors: Own domain when it is on the subject's domain or a subdomain of it, Verified
  * on chain for tie strong, Not verified otherwise. Only lines on Own domain or Verified on chain channels show as statements.
  */
-export type ChannelStatus = "own" | "verified" | "unverified";
-export const STATUS_WORDS: Record<ChannelStatus, string> = { own: "Own domain", verified: "Verified on chain", unverified: "Not verified" };
+export type ChannelStatus = "own" | "verified" | "linked" | "unverified";
+export const STATUS_WORDS: Record<ChannelStatus, string> = { own: "Own domain", verified: "Verified on chain", linked: "Linked from own site", unverified: "Not verified" };
 /**
  * True when url's host is the subject's own domain: the registrable domain of `domain` (public suffix rules, see
  * src/psl.ts) or any subdomain of it. A subject recorded as app.uniswap.org owns uniswap.org and *.uniswap.org; a
@@ -357,16 +358,19 @@ export function onDomain(url: string, domain: string): boolean {
 }
 export function channelStatus(c: Pick<Channel, "url" | "tie">, domain: string): ChannelStatus {
   if (onDomain(c.url, domain)) return "own";
-  return c.tie === "strong" ? "verified" : "unverified";
+  // A channel on another site that the own domain links to as its official account (tie linked): its lines count
+  // as statements, and it shows as "Linked from own site", never as Own domain.
+  return c.tie === "strong" ? "verified" : c.tie === "linked" ? "linked" : "unverified";
 }
 /** What each label means, for the key under the channels list and a badge's title. */
 export const STATUS_HELP: Record<ChannelStatus, string> = {
   own: "Own domain: on the subject's domain or a subdomain of it.",
   verified: "Verified on chain: a contract, ENS record or deployer wallet points to it.",
-  unverified: "Not verified: neither.",
+  linked: "Linked from own site: an account on another site that the project's own domain links to as its official account.",
+  unverified: "Not verified: none of these.",
 };
 /** The legend under the channels on Sources. */
-export const STATUS_LEGEND = "Lines published on Own domain or Verified on chain channels show as statements; everything else is a claim.";
+export const STATUS_LEGEND = "Lines published on Own domain, Verified on chain or Linked from own site channels show as statements; everything else is a claim.";
 export const statusWord = (c: Pick<Channel, "url" | "tie">, domain: string) => STATUS_WORDS[channelStatus(c, domain)];
 
 /** True when url is the channel's URL or a page under it. */
@@ -626,6 +630,25 @@ export interface SourceLines {
   sources: SourceRef[];
   lines: SourceLine[];
   differs: Differ[];
+  /**
+   * Set only when the file holds more lines, sources or items than MAX_RESULT_ENTRIES: how many it holds. The
+   * Activity row then says "This result is too large to show in full: N lines". Never set for an ordinary file.
+   */
+  tooLarge?: number;
+}
+
+/**
+ * The most lines (and sources, and changes items) one result file is read for. Every line and item is read, as page
+ * results are; this bound only stops a hostile or broken file from freezing the tab, and is far past any real result
+ * (a full record is a few hundred lines). A file past it is read up to it and its Activity row says so.
+ */
+export const MAX_RESULT_ENTRIES = 20_000;
+/** The words the Activity row shows for a file past MAX_RESULT_ENTRIES. */
+export const tooLargeText = (n: number) => `This result is too large to show in full: ${n.toLocaleString("en-US")} lines`;
+/** Every entry of an array up to MAX_RESULT_ENTRIES, and how many it held when it held more. */
+function bounded(v: unknown): { list: unknown[]; over: number | undefined } {
+  const all = arr(v);
+  return all.length > MAX_RESULT_ENTRIES ? { list: all.slice(0, MAX_RESULT_ENTRIES), over: all.length } : { list: all, over: undefined };
 }
 
 export function outcomeOf(data: SourceLines, s: SourceRef): Outcome {
@@ -646,7 +669,9 @@ export function outcomeText(o: Outcome): string {
  */
 export function parseLines(text: string, opts: { changes?: boolean } = {}): SourceLines {
   const j = obj(JSON.parse(text));
-  const sources: SourceRef[] = arr(j.sources).slice(0, 40).map((s) => {
+  const src = bounded(j.sources);
+  const rows = bounded(j.lines);
+  const sources: SourceRef[] = src.list.map((s) => {
     const o = obj(s);
     return {
       id: str(o.id, 64),
@@ -663,8 +688,8 @@ export function parseLines(text: string, opts: { changes?: boolean } = {}): Sour
     };
   });
   const byId = new Map(sources.map((s) => [s.id, s]));
-  const lines: SourceLine[] = arr(j.lines)
-    .slice(0, 200)
+  // Every line is read, as page results are: a link whose evidence is line 201 or later is kept.
+  const lines: SourceLine[] = rows.list
     .map((l) => {
       const o = obj(l);
       const sourceId = str(o.source, 64);
@@ -693,7 +718,8 @@ export function parseLines(text: string, opts: { changes?: boolean } = {}): Sour
       };
     })
     .filter((l) => l.text && l.source?.couldOpen !== false && l.source?.aboutSubject !== false);
-  return { sources, lines, differs: parseDiffers(j.differs) };
+  const over = Math.max(src.over ?? 0, rows.over ?? 0);
+  return { sources, lines, differs: parseDiffers(j.differs), ...(over ? { tooLarge: rows.over ?? over } : {}) };
 }
 
 /** A record row: a research line, or a line added by a source job (with who paid and where the job is). */
@@ -925,8 +951,32 @@ export function parseAffects(v: unknown): Affect[] {
       return [{ kind, type, target, byLine }];
     });
 }
+/**
+ * One patch of a changes result: the new value of a Key facts row (target: its label) or the new text of a summary
+ * sentence (target: its current text), with the line ids it now rests on, read in the changes job's own scope.
+ * The site shows it on top of the page; the next rebuild folds it in with the rest of the changes result.
+ */
+export interface Patch {
+  kind: "infobox" | "summary";
+  target: string;
+  value: string;
+  lines: string[];
+}
+/** Every valid patch: a row or sentence, a target and a new value. */
+export function parsePatches(v: unknown): Patch[] {
+  return bounded(v).list.flatMap((x): Patch[] => {
+    const o = obj(x);
+    const kind = str(o.kind, 16).toLowerCase();
+    const target = str(o.target, 600).trim();
+    const value = str(o.value ?? o.text, 600).trim();
+    if ((kind !== "infobox" && kind !== "summary") || !target || !value) return [];
+    return [{ kind, target, value, lines: arr(o.lines).map((l) => str(l, 64).trim()).filter(Boolean) }];
+  });
+}
 export interface ChangesResult {
   items: ChangeVerdict[];
+  /** New values for Key facts rows and summary sentences in affects (see Patch). */
+  patches: Patch[];
   /** What the new lines contradict or outdate elsewhere in the record. */
   affects: Affect[];
   /** The new sources and lines, read like an added-source result, with proofs (re-run steps given) and links. */
@@ -934,9 +984,12 @@ export interface ChangesResult {
 }
 export function parseChanges(text: string): ChangesResult {
   const j = obj(JSON.parse(text));
+  const items = bounded(j.items);
+  const data = parseLines(text, { changes: true });
+  const over = Math.max(items.over ?? 0, data.tooLarge ?? 0);
   return {
-    items: arr(j.items)
-      .slice(0, 200)
+    // Every item is read, as every line is (see MAX_RESULT_ENTRIES).
+    items: items.list
       .map((x, i) => {
         const o = obj(x);
         const n = typeof o.n === "number" && Number.isFinite(o.n) ? o.n : Number(str(o.n, 8)) || i + 1;
@@ -951,6 +1004,7 @@ export function parseChanges(text: string): ChangesResult {
         };
       }),
     affects: parseAffects(j.affects),
-    data: parseLines(text, { changes: true }),
+    patches: parsePatches(j.patches),
+    data: over ? { ...data, tooLarge: data.tooLarge ?? over } : data,
   };
 }

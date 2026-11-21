@@ -62,6 +62,24 @@ export function routeOf(hash: string): Route {
   return { subject: DEFAULT_SUBJECT, ...inSubject(h) };
 }
 
+/**
+ * The current address for an old subject link, or null when the link is already current: "#/s/app.uniswap.org/overview"
+ * becomes "#/s/uniswap.org/overview" (the registrable domain the record is kept under), keeping the tab or element.
+ */
+export function canonicalHash(hash: string): string | null {
+  let h: string;
+  try {
+    h = decodeURIComponent(hash.replace(/^#/, ""));
+  } catch {
+    return null;
+  }
+  const m = /^\/s\/([^/]+)(\/.*)?$/.exec(h);
+  if (!m || !isSubjectId(m[1]!.toLowerCase())) return null;
+  const id = canonicalId(m[1]!.toLowerCase());
+  if (id === m[1]) return null;
+  return `#/s/${id}${m[2] ?? ""}`;
+}
+
 /** Home with the bar filled in to add a project ("Add this project" under Related). */
 export const addHref = (id: string) => `#/add/${encodeURIComponent(id)}`;
 

@@ -2,7 +2,7 @@
 import { artifactUrl } from "./bodies";
 import { ACTIONS } from "./config";
 import { jobLink, lineAnchor, payerName } from "./format";
-import { outcomeOf, outcomeText, VERDICT_WORDS } from "./page";
+import { outcomeOf, outcomeText, tooLargeText, VERDICT_WORDS } from "./page";
 import { isInstructionsUnavailable, STANDING_WORDS, type RecordModel } from "./model";
 import { TEMPLATE_TITLES, type Template } from "./bodies";
 import { to } from "./route";
@@ -205,6 +205,7 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                   </ul>
                 )}
                 {isSourceJob(a.req) && a.sources && <p className="small">{onTop ? `${plural(a.sources.lines.length, "line")} added to the record` : `${plural(a.sources.lines.length, "line")} in result`}</p>}
+                {a.sources?.tooLarge ? <p className="warn" role="note">{tooLargeText(a.sources.tooLarge)}</p> : null}
                 {a.sourcesError && <p className="error">Unable to read the result: {a.sourcesError}</p>}
                 <p className="small">
                   Paid by <span className="mono">{payerName(a)}</span> ·{" "}

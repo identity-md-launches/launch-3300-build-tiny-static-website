@@ -30,11 +30,11 @@ import { rememberSent, useActivity } from "./useActivity";
 import { holdFocus } from "./modal";
 import { leftOutText, pendingRebuildOf, planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
 import { InstructionsBlock } from "./Instructions";
-import type { InstructionName } from "./instructions";
+import { INSTRUCTIONS_UNREACHABLE, instructionsReachable, type InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
 import { jobLink, lineAnchor, payerName } from "./format";
 import { readDate } from "./dates";
-import { TABS, routeOf, setLinkSubject, subjectHref, to } from "./route";
+import { TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, to } from "./route";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
 import { Home, StillReading } from "./Home";
 import { useDigests } from "./digest";
@@ -581,10 +581,22 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
 }
 /* ---------- Routes: home, and each subject's tabs ---------- */
 
+/** An old subject link (#/s/app.uniswap.org/overview) is replaced in the address bar by the current one, without a new history entry. */
+function fixAddress() {
+  const c = canonicalHash(location.hash);
+  if (c) history.replaceState(history.state, "", c);
+}
+
 function useRoute() {
-  const [route, setRoute] = useState(() => ({ ...routeOf(location.hash), n: 0 }));
+  const [route, setRoute] = useState(() => {
+    fixAddress();
+    return { ...routeOf(location.hash), n: 0 };
+  });
   useEffect(() => {
-    const on = () => setRoute((r) => ({ ...routeOf(location.hash), n: r.n + 1 }));
+    const on = () => {
+      fixAddress();
+      setRoute((r) => ({ ...routeOf(location.hash), n: r.n + 1 }));
+    };
     addEventListener("hashchange", on);
     return () => removeEventListener("hashchange", on);
   }, []);
@@ -678,6 +690,23 @@ export default function App() {
   const subject = route.subject;
   const activity = useActivity(subject ?? null);
   const [ask, setAsk] = useState<Ask | null>(null);
+  // A rebuild or a set of changes opens its pay dialog only after its instruction file was fetched and its sha256
+  // matched (instructionsReachable); otherwise the visitor is told, and nothing can be paid.
+  const [checking, setChecking] = useState(false);
+  const [unreachable, setUnreachable] = useState(false);
+  const openAsk = useCallback((a: Ask) => {
+    setUnreachable(false);
+    if (!a.instructions) {
+      setAsk(a);
+      return;
+    }
+    setChecking(true);
+    void instructionsReachable(a.body.objective).then((ok) => {
+      setChecking(false);
+      if (ok) setAsk(a);
+      else setUnreachable(true);
+    });
+  }, []);
   const researchQuote = usePrice(ACTIONS.research);
   const researchPrice = researchQuote.text;
   const { digests, logos, reading, failed, busy, retry } = useDigests(activity.items, subject ?? null, activity.readSubject);
@@ -711,7 +740,7 @@ export default function App() {
     if (!plan.ok) return `An earlier result of ${ref.id} could not be read yet. Open its page and use Refresh.`;
     const a = rebuildAsk(plan.prior, ref, plan.hasPage, plan.channels, plan.moreChannels);
     if (a.warning) return a.warning;
-    setAsk(a);
+    openAsk(a);
     return null;
   };
 
@@ -726,7 +755,7 @@ export default function App() {
       </header>
       <main id="root-main" tabIndex={-1}>
         {subject ? (
-          <SubjectView key={subject} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={setAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
+          <SubjectView key={subject} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={openAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
         ) : (
           <Home key={route.add ?? ""} items={activity.items} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
         )}
@@ -737,6 +766,19 @@ export default function App() {
           </p>
         </footer>
       </main>
+      {checking && (
+        <p className="toast" role="status">
+          Checking that this job can read its instructions…
+        </p>
+      )}
+      {unreachable && (
+        <div className="toast toast-error" role="alert">
+          <p>{INSTRUCTIONS_UNREACHABLE}</p>
+          <button type="button" className="btn" onClick={() => setUnreachable(false)}>
+            Close
+          </button>
+        </div>
+      )}
       {ask && (
         <PayDialog
           ask={ask}

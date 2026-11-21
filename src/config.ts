@@ -26,6 +26,13 @@ export const SITE_URL = "https://record-test-1.identitymd.eth.limo/";
  * The address can only ever serve those exact bytes, which suits files that never change.
  */
 export const INSTRUCTIONS_GATEWAY = "https://ipfs.filebase.io/ipfs/";
+/**
+ * A second HTTPS gateway for the same raw CID, named in the objective as "or, if that fails, at <URL2>". Checked on
+ * 2026-11-21: gateway.pinata.cloud answered the current instruction files' raw CIDs with HTTP 200, the exact bytes
+ * (sha256 matched) and Access-Control-Allow-Origin: *. Kept because IMD's free request check returned no blockers
+ * for objectives naming both addresses (README, "Where a job fetches the instruction files").
+ */
+export const INSTRUCTIONS_FALLBACK_GATEWAY = "https://gateway.pinata.cloud/ipfs/";
 
 export const CHAIN = mainnet; // Ethereum mainnet, chain 1, only
 export const CHAIN_ID = 1 as const;

@@ -37,7 +37,7 @@ describe("2a450f79: speakers in the order the result gives them", () => {
       ],
     });
     expect(speakersOf(p.lines)).toEqual(["Project news", "@colleague", "Outside Weekly", "@taylor"]);
-    expect(badgeOf(p.lines)!.text).toBe("Reported by Project news, @colleague and 2 more");
+    expect(badgeOf(p.lines)!.text).toBe("Reported by Project news +3");
   });
   it("a statement leads with its channel, then the other speakers its by names", () => {
     const p = page({
