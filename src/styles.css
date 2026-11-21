@@ -699,7 +699,9 @@ body.has-tray main { padding-bottom: 9rem; }
 .kf-tokens li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
 .tok-name { min-width: 0; }
 .tok-addr { display: inline-flex; align-items: baseline; gap: var(--space-1); white-space: nowrap; }
-.logo-small { object-fit: scale-down; }
+/* A logo under 64 px: its tile grows to the image's own size, and the image sits centred at that size. */
+.logo-frame { overflow: visible; }
+.logo-real { display: block; max-width: none; object-fit: none; flex: none; }
 .upkeep > summary { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; cursor: pointer; font-weight: 600; }
 .upkeep-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber-500); flex: none; }
 .upkeep-body { display: grid; gap: var(--space-2); overflow-wrap: anywhere; }

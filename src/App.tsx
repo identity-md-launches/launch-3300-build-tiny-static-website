@@ -28,7 +28,7 @@ import { Connect, loadWallet, useWalletAccount } from "./walletLazy";
 import { publicClient } from "./reads";
 import { rememberSent, useActivity } from "./useActivity";
 import { holdFocus } from "./modal";
-import { leftOutText, planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
+import { leftOutText, pendingRebuildOf, planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
 import { InstructionsBlock } from "./Instructions";
 import type { InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
@@ -78,6 +78,8 @@ export interface Ask {
   /** The instruction file the objective names, shown under the body. */
   instructions?: InstructionName;
   warning?: string;
+  /** A rebuild (or first page) of `subject`: one at a time, so the review checks for one already running. */
+  rebuild?: boolean;
   /** Runs once the request is paid and mined: the tray of changes is emptied. */
   afterSent?: () => void;
 }
@@ -95,6 +97,7 @@ export function rebuildAsk(prior: Prior, subject: SubjectRef, hasPage: boolean, 
     kind: "add",
     body,
     instructions: "rebuild",
+    rebuild: true,
     warning: fitsObjective(body.objective.length) ? undefined : `The objective is ${body.objective.length.toLocaleString("en-US")} characters, over the ${MAX_OBJECTIVE.toLocaleString("en-US")} this site allows (IMD refuses more than 8,000). It would be refused.`,
   };
 }
@@ -289,7 +292,7 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
       {mode === "none" && (
         <div className="seeded" role="status">
           <p>“{f.text}”</p>
-          <p className="warn">This line’s source is not an X post, a web page or a contract call, so no question can be filled in from it.</p>
+          <p className="warn">This line’s source is not an X post, a web page or a contract call whose re-run gives the call and its return, so no question can be filled in from it.</p>
           <p>
             <button type="button" className="linklike" onClick={scratch}>Write a question from scratch</button>
           </p>
@@ -305,8 +308,8 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
           </details>
           <div className="row-actions">
             <button type="button" className="btn" onClick={() => setMode("form")}>Edit</button>
-            <button type="button" className="btn btn-primary" onClick={() => submit()}>Review the question</button>
             {price}
+            <button type="button" className="btn btn-primary" onClick={() => submit()}>Review the question</button>
           </div>
         </div>
       )}
@@ -407,7 +410,7 @@ function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { o
 
 type Step = "review" | "approving" | "sending" | "sent" | "error";
 
-function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; onSent: () => void }) {
+function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () => void; onSent: () => void; running?: Activity | null }) {
   const { address, isConnected, chainId } = useWalletAccount();
   const [price, setPrice] = useState<bigint | null>(null);
   const [allowance, setAllowance] = useState<bigint | null>(null);
@@ -420,6 +423,11 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
   const opener = useRef<Element | null>(document.activeElement);
   const json = encodeBody(ask.body);
   const right = isConnected && chainId === CHAIN_ID && !!address;
+  // One rebuild at a time: a rebuild someone else started while this review was open blocks paying for another.
+  // The latest value is read again at the click, just before anything is sent to the wallet.
+  const blocked = !!running && running.req.transactionHash !== tx && (step === "review" || step === "approving");
+  const runningRef = useRef<Activity | null>(null);
+  runningRef.current = running && running.req.transactionHash !== tx ? running : null;
 
   const refresh = async () => {
     const p = await readPrice(ask.action);
@@ -465,6 +473,7 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
 
   const pay = async () => {
     if (!address || price === null) return;
+    if (runningRef.current) return;
     setMsg("");
     try {
       // The price is read again at the click; the amount sent is exactly that value.
@@ -481,6 +490,10 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
         const h = await w.write({ address: IMD, abi: ERC20_ABI, functionName: "approve", args: [INTAKE, p], chainId: CHAIN_ID });
         await w.waitFor(h, CHAIN_ID);
         setAllowance(p);
+      }
+      if (runningRef.current) {
+        setStep("review");
+        return;
       }
       setStep("sending");
       const w = await loadWallet();
@@ -539,7 +552,12 @@ function PayDialog({ ask, onClose, onSent }: { ask: Ask; onClose: () => void; on
               Retry price
             </button>
           )}
-          {!isConnected ? (
+          {blocked ? (
+            <p className="running" role="status">
+              A rebuild is running, started {startedAt(running!)} by <span className="mono">{payerName(running!)}</span>.{" "}
+              <a href={jobLink(running!.jobId, running!.req.transactionHash)} target="_blank" rel="noopener noreferrer">Follow it</a>
+            </p>
+          ) : !isConnected ? (
             <><Connect /><span className="small">Connect a wallet to pay.</span></>
           ) : !right ? (
             <Connect />
@@ -686,6 +704,8 @@ export default function App() {
     const mine = activity.items.filter((a) => a.req.subject === typed.id);
     const known = subjectRefFor(typed.id, mine, null);
     const ref: SubjectRef = typed.address ? typed : known;
+    const busyWith = pendingRebuildOf(mine);
+    if (busyWith) return `A rebuild of ${ref.id} is running, started ${startedAt(busyWith)} by ${payerName(busyWith)}. Open its page to follow it.`;
     const plan = planRebuild(mine, ref);
     if (plan.needsReads) return `The page of ${ref.id} dropped lines whose files must be read first. Open its page and rebuild it from Contribute.`;
     if (!plan.ok) return `An earlier result of ${ref.id} could not be read yet. Open its page and use Refresh.`;
@@ -720,6 +740,7 @@ export default function App() {
       {ask && (
         <PayDialog
           ask={ask}
+          running={ask.rebuild && ask.subject ? pendingRebuildOf((activity.items ?? []).filter((a) => a.req.subject === ask.subject)) : null}
           onClose={() => setAsk(null)}
           onSent={() => {
             void activity.reload();

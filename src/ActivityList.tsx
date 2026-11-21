@@ -1,7 +1,7 @@
 /** Every paid request of this site, newest first, with its state, refusal reason, panel answer, source outcomes or edit verdicts. */
 import { artifactUrl } from "./bodies";
 import { ACTIONS } from "./config";
-import { jobLink, kindName, lineAnchor, payerName } from "./format";
+import { jobLink, lineAnchor, payerName } from "./format";
 import { outcomeOf, outcomeText, VERDICT_WORDS } from "./page";
 import { isInstructionsUnavailable, STANDING_WORDS, type RecordModel } from "./model";
 import { TEMPLATE_TITLES, type Template } from "./bodies";
@@ -13,7 +13,8 @@ import { useSuggest } from "./Suggest";
 import { useState } from "react";
 
 function what(a: Activity) {
-  if (a.req.action !== ACTIONS.research) return `Question · ${TEMPLATE_TITLES[a.req.template as Template] ?? kindName(a.req.kind)}`;
+  // A panel request is named by its question type, never by a record kind (Proof, Statement, Claim).
+  if (a.req.action !== ACTIONS.research) return `Question · ${TEMPLATE_TITLES[a.req.template as Template] ?? "Panel answer"}`;
   if (isSourceJob(a.req)) return "Sources";
   if (isEditJob(a.req)) return "Edit";
   if (isChangesJob(a.req)) return "Changes";
@@ -54,13 +55,20 @@ export function retryTarget(item: SentItem, a: Activity, shown: Pick<Shown, "sco
 /** Every change of a changes job, with "Kept" or "Not kept: <why>"; one not kept for lack of a source can go back in the tray. */
 function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
   const s = useSuggest();
-  const [back, setBack] = useState<Set<number>>(() => new Set());
+  const [back, setBack] = useState<Map<number, "added" | "opened">>(() => new Map());
   const sent = parseItems(a.req.bodyJson?.objective);
   if (!sent.length) return null;
   const putBack = (item: SentItem, v: { why: string } | undefined) => {
     const target = retryTarget(item, a, shown);
-    s.tray.put({ id: newChangeId(), type: item.type, target, note: item.note, links: item.links, retry: v?.why || "no source supported it" });
-    setBack((b) => new Set([...b, item.n]));
+    // One pending change per row or sentence: a change already waiting for this target is opened to edit instead.
+    const existing = s.tray.list.find((x) => x.target.key === target.key && !target.lost);
+    if (existing) {
+      s.setOpen(target.key);
+      setBack((b) => new Map(b).set(item.n, "opened"));
+      return;
+    }
+    s.tray.put({ id: newChangeId(), type: item.type, target, note: item.note, links: item.links, retry: v?.why || "no source supported it", ...(item.suggest ? { suggest: item.suggest } : {}) });
+    setBack((b) => new Map(b).set(item.n, "added"));
   };
   return (
     <ul className="verdicts" aria-label="Each change and its verdict">
@@ -82,7 +90,9 @@ function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
             ) : null}
             {v && !v.kept && lackedSource(item, v.why) && (
               back.has(item.n) ? (
-                <span className="small" role="status">Back in your changes, at the bottom of the page.</span>
+                <span className="small" role="status">
+                  {back.get(item.n) === "opened" ? "You already have a change waiting for this; it is open to edit." : "Back in your changes, at the bottom of the page."}
+                </span>
               ) : (
                 <button type="button" className="linklike small" onClick={() => putBack(item, v)}>
                   Add a link and try again

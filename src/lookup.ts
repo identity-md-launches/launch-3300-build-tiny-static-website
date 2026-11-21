@@ -106,15 +106,23 @@ export const normText = (s: string) =>
     .trim();
 
 /**
- * Line text for the repeat check only: lower case, accents and punctuation removed (not turned into spaces, so
- * "1,000" and "1000" are the same), then runs of whitespace collapsed. The search keeps normText's word breaks.
+ * Line text for the repeat check only: lower case, accents and insignificant punctuation removed, then runs of
+ * whitespace collapsed. What changes a fact is kept: a sign before a number (+5 and −5 differ; U+2212 is "-"), a
+ * decimal point (1.5 and 15 differ), math symbols, currency signs and %. Grouping commas or spaces in thousands are
+ * dropped, so "1,000" and "1000" are the same. The search keeps normText's word breaks.
  */
 export const repeatKey = (s: string) =>
   s
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}\s]+/gu, "")
+    .replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, "-")
+    .replace(/(\d)[,\u00a0\u202f' ](?=\d{3}(?!\d))/g, "$1")
+    .replace(/(\d)\.(?=\d)/g, "$1\u0001")
+    .replace(/(^|[^\p{L}\p{N}])-(?=\d)/gu, "$1\u0002")
+    .replace(/[^\p{L}\p{N}\s\p{Sm}\p{Sc}%\u0001\u0002]+/gu, "")
+    .replace(/\u0001/g, ".")
+    .replace(/\u0002/g, "-")
     .replace(/\s+/g, " ")
     .trim();
 

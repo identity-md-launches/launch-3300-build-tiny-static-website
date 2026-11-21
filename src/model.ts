@@ -38,6 +38,8 @@ import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRe
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
 import { applyChangeLinks, applyRewords, carriedOf, lineInFile, type LineScope, type Reworded } from "./changeResult";
 import { mergeRepeats, type KnownContract } from "./lookup";
+import { dropUnresolvedAnswers, type UnresolvedRef } from "./settle";
+import { readDate } from "./dates";
 
 export interface Accounting {
   /** none: the shown page was not a rebuild from earlier files. */
@@ -149,6 +151,8 @@ export interface Core {
   alias: Map<string, string>;
   /** How many identical lines were shown as one. */
   merged: number;
+  /** Links to panel answers the record does not hold: listed under Page upkeep only. */
+  unresolved: UnresolvedRef[];
   counts: ReturnType<typeof countKinds>;
   /** Dropped entries of earlier pages whose files a rebuild was not given for space: owed to the next rebuild. */
   carried: CarriedDrop[];
@@ -174,11 +178,15 @@ export function coreOf(items: Activity[], history?: HistoryReads): Core {
   const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective) };
   // Lines with the same text show as one row (see mergeRepeats); counts and filters count it once.
   const repeats = mergeRepeats(applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), scope));
-  const sections = repeats.sections;
+  // A link to a panel answer the page's rebuild was not given settles nothing; Page upkeep lists it.
+  const known = new Set(parsePrior(latest?.req.bodyJson?.objective).answers.map((a) => a.n));
+  const checked = dropUnresolvedAnswers(repeats.sections, known);
+  const sections = checked.sections;
+  const unresolved = checked.unresolved;
   const alias = repeats.alias;
   const merged = repeats.merged;
   const carried = carriedDrops(done.filter((a) => isPageJob(a.req) && a.page), history);
-  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest, lineage), after, jobs, scope, sections, alias, merged, counts: countKinds(sections), carried };
+  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest, lineage), after, jobs, scope, sections, alias, merged, unresolved, counts: countKinds(sections), carried };
 }
 
 /** A completed panel request with an answer: one of the A1… a rebuild is given. */
@@ -648,6 +656,10 @@ export interface RecordModel {
   alias: Map<string, string>;
   /** How many identical lines were shown as one. */
   merged: number;
+  /** Links to panel answers the record does not hold: listed under Page upkeep only. */
+  unresolved: UnresolvedRef[];
+  /** A line's earlier origin ("F2:L14") in words: the job that wrote it, its payer and date. No ids. */
+  fromOrigin: (ref: string) => string;
   /** The newest page job for this subject that has not completed yet: while it runs, Rebuild is not offered. */
   pendingRebuild: Activity | null;
   sourceList: ListedSource[];
@@ -777,6 +789,15 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   // A kept rewording rests on the lines its own result lists (items[].lines), each in that job's scope.
   const summary: ShownSentence[] = withRewordRefs(applyRewords(written, after), (a, ids) => editRefs(a, ids, null));
 
+  const fromOrigin = (ref: string): string => {
+    const m = /^\s*F(\d+):/i.exec(ref);
+    const f = m ? given.files.find((x) => x.n === Number(m[1])) : undefined;
+    const a = f?.hash ? (items ?? []).find((x) => x.fileHash === f.hash) : undefined;
+    if (!a) return "carried over from an earlier version of the page";
+    const what = isPageJob(a.req) ? "an earlier page job" : isSourceJob(a.req) ? "a sources job" : isEditJob(a.req) ? "an edit job" : "a changes job";
+    return `carried over from ${what} paid by ${payerName(a)}${a.doneTime ? `, ${readDate(String(a.doneTime))}` : ""}`;
+  };
+
   const answerRef = (target: string) => {
     const m = /^A(\d+)$/i.exec(target.trim());
     if (!m) return null;
@@ -883,6 +904,8 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     sections,
     alias: core.alias,
     merged: core.merged,
+    unresolved: core.unresolved,
+    fromOrigin,
     pendingRebuild: pendingRebuildOf(items ?? []),
     sourceList,
     counts,

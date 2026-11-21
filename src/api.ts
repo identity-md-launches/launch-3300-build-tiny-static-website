@@ -3,7 +3,7 @@
  * artifacts, logos) are kept in IndexedDB (store.ts); only small values (job ids, times, names) use localStorage.
  */
 import { keccak256, type Hex } from "viem";
-import { API, IPFS_GATEWAYS } from "./config";
+import { API } from "./config";
 import type { Completion, TaggedRequest } from "./chain";
 import { kvGet, kvSet } from "./store";
 
@@ -181,7 +181,7 @@ export function pngDataUrl(b: Uint8Array): string {
 
 const resultMemo = new Map<string, Promise<{ files: ResultFile[] }>>();
 
-/** The completed job's result listing (its named files and their SHA-256), from api.imd.fun or the completion's IPFS uri. */
+/** The completed job's result listing (its named files and their SHA-256), from api.imd.fun only. */
 function jobResult(r: TaggedRequest, c: Completion, jobIdHint: string | null): Promise<{ files: ResultFile[] }> {
   const key = r.requestId;
   const hit = resultMemo.get(key);
@@ -196,19 +196,9 @@ function jobResult(r: TaggedRequest, c: Completion, jobIdHint: string | null): P
         firstError = e;
       }
     }
-    const m = /^ipfs:\/\/([A-Za-z0-9]+)\/result\.json$/.exec(c.uri);
-    if (m)
-      for (const gw of IPFS_GATEWAYS) {
-        try {
-          const res = await fetch(`${gw}${m[1]}/result.json`);
-          if (!res.ok) continue;
-          const bytes = new Uint8Array(await res.arrayBuffer());
-          if (keccak256(bytes).toLowerCase() !== c.resultHash.toLowerCase()) continue;
-          return { files: (JSON.parse(new TextDecoder().decode(bytes)) as JobResult).files ?? [] };
-        } catch (e) {
-          firstError ??= e;
-        }
-      }
+    // No public IPFS gateway is read on load (only this site, IMD's API and the public RPCs): an unread result stays
+    // unread and is tried again through IMD's API on Refresh.
+    void c;
     throw firstError instanceof Error ? firstError : new Error("The job result could not be read");
   })();
   p.catch(() => resultMemo.delete(key));
@@ -284,7 +274,7 @@ export interface PageFetch {
 /**
  * One named output file of a completed job request ("page" for research, "lines" for sources).
  * Primary: jobId from GET /intake/1/:tx, then GET /jobs/:id/result, the file named "page", GET /artifacts/{hash}.
- * Fallback: the completion's uri (ipfs://CID/result.json) through a gateway, checked against resultHash.
+ * No fallback to public IPFS gateways: the browser contacts only this site, IMD's API and the public RPCs on load.
  */
 export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHint: string | null, fileName = "page"): Promise<PageFetch> {
   const key = `${fileName}:${r.requestId}`;
@@ -306,25 +296,8 @@ export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHi
       firstError = e;
     }
   }
-  const m = /^ipfs:\/\/([A-Za-z0-9]+)\/result\.json$/.exec(c.uri);
-  if (m) {
-    for (const gw of IPFS_GATEWAYS) {
-      try {
-        const res = await fetch(`${gw}${m[1]}/result.json`);
-        if (!res.ok) continue;
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        if (keccak256(bytes).toLowerCase() !== c.resultHash.toLowerCase()) continue;
-        const result = JSON.parse(new TextDecoder().decode(bytes)) as JobResult;
-        const file = result.files?.find((f) => f.name === fileName);
-        if (!file) continue;
-        const out: PageFetch = { text: await fetchVerified(file), hash: file.hash, jobId: result.jobId ?? jobIdHint, path: "ipfs" };
-        await kvSet("files", key, out);
-        return out;
-      } catch (e) {
-        firstError ??= e;
-      }
-    }
-  }
+  // No public IPFS gateway is read on load: the page stays unread and is tried again through IMD's API on Refresh.
+  void c;
   throw firstError instanceof Error ? firstError : new Error("The page could not be read");
 }
 

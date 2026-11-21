@@ -21,6 +21,29 @@ export interface Settle {
 /** A panel answer as a rebuild was given it: A1, A2... */
 export const isAnswerRef = (target: string) => /^A\d+$/i.test(target.trim());
 
+/** A link to a panel answer the record does not hold: kept out of settling, listed under Page upkeep. */
+export interface UnresolvedRef {
+  lineId: string;
+  text: string;
+  type: LineLink["type"];
+  target: string;
+}
+
+/**
+ * Removes links to panel answers (A1…) that name no answer the page's rebuild was given, so an unresolved reference
+ * never settles a row (a row keeps its own kind) and never shows a raw id. Each one removed is returned for Page upkeep.
+ */
+export function dropUnresolvedAnswers<R extends { line: Line; same?: R[] }>(sections: { section: string; rows: R[] }[], known: Set<number>): { sections: { section: string; rows: R[] }[]; unresolved: UnresolvedRef[] } {
+  const unresolved: UnresolvedRef[] = [];
+  const fix = (r: R): R => {
+    const bad = r.line.links.filter((k) => isAnswerRef(k.target) && !known.has(Number(k.target.trim().slice(1))));
+    if (!bad.length) return r;
+    for (const k of bad) unresolved.push({ lineId: r.line.id, text: r.line.text, type: k.type, target: k.target.trim() });
+    return { ...r, line: { ...r.line, links: r.line.links.filter((k) => !bad.includes(k)) } };
+  };
+  return { sections: sections.map((s) => ({ section: s.section, rows: s.rows.map(fix) })), unresolved };
+}
+
 /** True when a link target settles a line: a proof line of the same record, or a panel answer. */
 export function settlesWith(target: string, proofIds: Set<string>): boolean {
   const t = target.trim();

@@ -139,6 +139,23 @@ export function accountsOf(channels: Channel[], value: string | string[], domain
   });
 }
 
+const OUTDATED: Badge = { text: "Out of date", tone: "outdated" };
+/** True when a row rests on lines and every one has a newer line showing it changed. */
+export function allOutdated(lines: Line[], all: Line[] = lines): boolean {
+  if (!lines.length) return false;
+  const proofs = proofIdsOf(all);
+  const ids = new Set(all.map((l) => l.id));
+  return lines.every((l) => settleOf(l, proofs, ids).state === "outdated");
+}
+
+/** A text value with " on <chain>" removed after each address, when that chain is the only one the Chains row names. */
+export function withoutChain(value: string, chain: string): string {
+  const c = chain.trim();
+  if (!c) return value;
+  const esc = c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(new RegExp(`(0x[0-9a-fA-F]{40})\\s*\\(?\\s*on\\s+${esc}\\s*\\)?`, "gi"), "$1");
+}
+
 /** The only rows that show a channel's tie. */
 export const TIE_ROWS = /^(website|official accounts?)$/i;
 
@@ -164,31 +181,26 @@ export function badgeOf(lines: Line[], all: Line[] = lines, sourceUrl: (l: Line)
 }
 
 /**
- * Every speaker of these lines, strongest first: the project on its own channels (statements); then an outside
- * publication or person named by name; then a bare handle (often a person speaking about themselves). A line's by
- * may list several speakers, separated by ";" or ",". Duplicates count once.
+ * Every speaker of these lines, strongest first, in the order the result gives them: a rebuild lists every speaker
+ * in by, strongest first (the project on its own channels; another person at the project; an outside publication;
+ * the person about themselves). A statement leads with its channel, then the other speakers its by names. Lines are
+ * read in order, statements first; a speaker named twice counts once, at its first (strongest) place.
  */
 export function speakersOf(lines: Line[], sourceUrl: (l: Line) => string = () => ""): string[] {
-  const out: { name: string; rank: number; at: number }[] = [];
-  lines.forEach((l, at) => {
-    if (l.kind === "proof") return;
-    const names =
-      l.kind === "statement"
-        ? [l.channel?.label || hostOf(l.channel?.url ?? "") || l.by || "the project"]
-        : l.by.split(/\s*[;,]\s*/).map((s) => s.trim()).filter((s) => s && !isGenericSpeaker(s));
-    for (const name of names) {
-      const rank = l.kind === "statement" ? 0 : /^@/.test(name) ? 2 : 1;
-      const had = out.find((x) => x.name.toLowerCase() === name.toLowerCase());
-      if (had) had.rank = Math.min(had.rank, rank);
-      else out.push({ name, rank, at });
-    }
-  });
+  const out: string[] = [];
+  const said = lines.filter((l) => l.kind !== "proof");
+  const ordered = [...said.filter((l) => l.kind === "statement"), ...said.filter((l) => l.kind !== "statement")];
+  for (const l of ordered) {
+    const by = l.by.split(/\s*[;,]\s*/).map((s) => s.trim()).filter((s) => s && !isGenericSpeaker(s));
+    const names = l.kind === "statement" ? [l.channel?.label || hostOf(l.channel?.url ?? "") || by[0] || "the project", ...by.slice(1)] : by;
+    for (const name of names) if (!out.some((x) => x.toLowerCase() === name.toLowerCase())) out.push(name);
+  }
   // A claim whose speaker is not named falls back to the host of its source, only when no one is named at all.
   if (!out.length) {
     const cl = lines.find((l) => l.kind === "claim");
     return cl ? [reporter(cl, sourceUrl)] : [];
   }
-  return out.sort((a, b) => a.rank - b.rank || a.at - b.at).map((x) => x.name);
+  return out;
 }
 /** "A", "A and B", or "A, B and 3 more". */
 export function speakerList(names: string[]): string {
@@ -286,12 +298,17 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // Exactly one badge per row: Website and Official accounts show only their channel label (worked out from
       // the URL and the subject's domain when no channel matches); every other row shows only Proven on chain,
       // Stated by or Reported by.
-      const status = tied ? rowStatus(r, channel, accounts, domain) : null;
+      // A Website or Official accounts row whose lines are all out of date says so in place of its channel label.
+      const stale = tied && allOutdated(lines, all);
+      const status = tied ? (stale ? OUTDATED : rowStatus(r, channel, accounts, domain)) : null;
       const badge = tied ? null : badgeOf(lines, all, sourceUrl);
-      const tokens = TOKEN_ROWS.test(r.label.trim()) ? tokensOf(r.value, safeHref(r.url) ? r.url : "", r.values ?? []) : [];
+      // Tokens one per line only when the result gave them as a list (values); a text value stays one text value.
+      const isTokens = TOKEN_ROWS.test(r.label.trim());
+      const tokens = isTokens && r.values?.length ? tokensOf(r.value, safeHref(r.url) ? r.url : "", r.values) : [];
       // "on <chain>" says nothing when the Chains row names a single chain.
       if (singleChain) for (const t of tokens) t.chain = "";
-      return { label: r.label, value: r.value, url: r.url, note: "", lines, channel, badge, status, accounts, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [] };
+      const value = isTokens && singleChain && !tokens.length ? withoutChain(r.value, chainsRow!.values?.[0] ?? chainsRow!.value) : r.value;
+      return { label: r.label, value, url: r.url, note: "", lines, channel, badge, status, accounts, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [] };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }

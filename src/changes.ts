@@ -299,11 +299,13 @@ export interface SentItem {
   ref: string;
   note: string;
   links: string[];
+  /** The corrected sentence a "This is wrong" change on a summary sentence suggested for final_text, or "". */
+  suggest: string;
 }
 
 const JSTR = String.raw`"(?:[^"\\]|\\.)*"`;
 const ITEM = new RegExp(
-  String.raw`\((\d+)\) type: (wrong|context|backing|reword|new_line|links); target: (none|summary sentence (${JSTR})|(?:(F\d+:\S+) )?(key fact |line )?(${JSTR})); note: (none|${JSTR}); links: (none|https:\/\/\S+(?: https:\/\/\S+)*)`,
+  String.raw`\((\d+)\) type: (wrong|context|backing|reword|new_line|links); target: (none|summary sentence (${JSTR})|(?:(F\d+:\S+) )?(key fact |line )?(${JSTR})); note: (none|${JSTR}); links: (none|https:\/\/\S+(?: https:\/\/\S+)*)(?:; suggested final_text: (${JSTR}))?`,
   "g",
 );
 const unq = (s: string) => {
@@ -334,6 +336,7 @@ export function parseItems(objective: unknown): SentItem[] {
       ref: m[5] ?? "",
       note: m[8] === "none" ? "" : unq(m[8]!),
       links: m[9] === "none" ? [] : m[9]!.split(" "),
+      suggest: m[10] ? unq(m[10]) : "",
     };
   });
 }
@@ -430,6 +433,38 @@ function chainOfLine(fact: { chain?: string } | null, rerun: string): string {
   return "";
 }
 
+/** The return a re-run states for its call ("Raw return 42000…", "returns 0x…", "Result: true"); "" when none or several. */
+function statedReturn(rerun: string): string {
+  const re = /\b(?:raw return(?: value)?|raw result|returns?|return value|result|output)\s*(?:is|was|of|:|=)?\s*(0x[0-9a-fA-F]+|-?\d[\d_]*|true|false|"[^"]*")/gi;
+  const found = [...new Set([...rerun.matchAll(re)].map((m) => m[1]!.replace(/_/g, "")))];
+  return found.length === 1 ? found[0]! : "";
+}
+
+/**
+ * The contract call a proof's re-run makes, read unambiguously: one contract address, one function with no
+ * arguments (the question form names no arguments, so a call such as balanceOf(address) is not filled in), its chain,
+ * and the value the call itself returns. That value is the return the re-run states; else the fact's value only when
+ * it has no unit and is written as a raw return (digits, 0x…, true, false or one word), never an amount in token units.
+ */
+export function contractCallOf(rerun: string, fact: { value: string; unit?: string; chain?: string } | null): { chain: string; address: string; signature: string; value: string } | null {
+  const addresses = [...new Set([...rerun.matchAll(new RegExp(ADDRESS_RE.source, "g"))].map((m) => m[0].toLowerCase()))];
+  if (addresses.length !== 1) return null;
+  const address = ADDRESS_RE.exec(rerun)![0];
+  const rest = rerun.replace(new RegExp(ADDRESS_RE.source, "g"), " ");
+  const calls = [...rest.matchAll(new RegExp(CALL_RE.source, "g"))].filter((m) => !/^(?:u?int\d*|bytes\d*|address|bool|string)$/.test(m[1]!));
+  const names = [...new Set(calls.map((m) => `${m[1]}(${m[2]!.replace(/\s+/g, "")})`))];
+  if (names.length !== 1) return null;
+  const signature = names[0]!;
+  if (!/\(\)$/.test(signature)) return null;
+  const chain = chainOfLine(fact, rerun);
+  if (!chain) return null;
+  const stated = statedReturn(rerun);
+  const v = fact?.value?.trim() ?? "";
+  const raw = !fact?.unit?.trim() && /^(?:-?\d+|0x[0-9a-fA-F]+|true|false|[A-Za-z0-9.$_-]{1,32})$/.test(v) ? v : "";
+  const value = stated || raw;
+  return value ? { chain, address, signature, value } : null;
+}
+
 /** Builds the seed for "Ask a panel to check it" from a line and the URL of its first source. Pure, for tests. */
 export function seedFromLine(line: { text: string; kind?: string; by?: string; rerun?: string; fact?: { value: string; unit?: string; chain?: string } | null }, sourceUrl: string): ConfirmSeed {
   const text = line.text.trim().replace(/[.?!]+$/, "").slice(0, 400);
@@ -437,11 +472,11 @@ export function seedFromLine(line: { text: string; kind?: string; by?: string; r
   const url = /^https:\/\//i.test(sourceUrl) ? sourceUrl.trim() : "";
   const rerun = line.rerun ?? "";
   if (line.kind === "proof" && rerun) {
-    const address = ADDRESS_RE.exec(rerun)?.[0] ?? "";
-    const call = CALL_RE.exec(rerun.replace(ADDRESS_RE, " "));
-    const chain = chainOfLine(line.fact ?? null, rerun);
-    const value = line.fact?.value?.trim() ?? "";
-    if (address && call && chain && value) return { ...base, type: "contract", chain, address, signature: `${call[1]}(${call[2]!.replace(/\s+/g, "")})`, value };
+    const call = contractCallOf(rerun, line.fact ?? null);
+    // A proof whose re-run cannot be read as one call with its expected return is not filled in: the visitor
+    // writes that question from scratch rather than ask about a value the call does not return.
+    if (!call) return base;
+    return { ...base, type: "contract", ...call };
   }
   const post = X_POST.exec(url);
   if (post) return { ...base, type: "post", url, handle: post[1]! };

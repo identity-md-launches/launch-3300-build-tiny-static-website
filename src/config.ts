@@ -59,7 +59,6 @@ export const RPCS: ReadonlyArray<{ url: string; span: bigint }> = [
 export const API = "https://api.imd.fun";
 export const EXPLORER = "https://explorer.imd.fun";
 export const ETHERSCAN = "https://etherscan.io";
-export const IPFS_GATEWAYS = ["https://dweb.link/ipfs/", "https://ipfs.io/ipfs/"];
 
 /** keccak256 of the Intake's event signatures, read from its logs on mainnet. */
 export const TOPIC_REQUESTED =

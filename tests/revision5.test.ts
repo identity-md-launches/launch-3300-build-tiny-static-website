@@ -217,7 +217,17 @@ describe("Tokens values (436ed92e, 11a41834)", () => {
     );
     const k = keyFacts(p, () => undefined, p.lines);
     expect(k.rows[0]).toMatchObject({ label: "Token", tokens: [], url: "https://etherscan.io/token/0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7" });
-    expect(k.rows[1]!.tokens.map((t) => t.symbol)).toEqual(["GOV", "PAY"]);
+    // A text value is never split (A2): without values it is one text value, every address shortened with a copy button.
+    expect(k.rows[1]!.tokens).toEqual([]);
+    const q = parsePage(
+      JSON.stringify({
+        subject: { name: "IMD", channels: [], contracts: [] },
+        infobox: [{ label: "Tokens", value: "x", values: ["GOV: votes, 0x1111111111111111111111111111111111111111 on Ethereum", "PAY: fees, 0x2222222222222222222222222222222222222222 on Base"], lines: [] }],
+        lines: [],
+      }),
+      "imd.fun",
+    );
+    expect(keyFacts(q, () => undefined, q.lines).rows[0]!.tokens.map((t) => t.symbol)).toEqual(["GOV", "PAY"]);
     const src = readFileSync("src/Record.tsx", "utf8");
     expect(src).toContain("<strong>{t.symbol}</strong>");
     expect(src).toContain("<Copy value={t.address} />");

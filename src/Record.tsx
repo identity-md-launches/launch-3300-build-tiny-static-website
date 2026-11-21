@@ -156,13 +156,29 @@ function KeyValue({ row }: { row: KeyRow }) {
 function ValueText({ text, url = "" }: { text: string; url?: string }) {
   const parts = splitAddresses(text);
   const body = parts.map((p, i) => (p.address ? <span key={i} className="mono">{shortHex(p.text)}</span> : <Fragment key={i}>{formatNumbers(p.text)}</Fragment>));
+  if (safeHref(url))
+    return (
+      <>
+        <ExtLink url={url} className="break">{body}</ExtLink>
+        {parts.filter((p) => p.address).map((p, i) => (
+          <Copy key={i} value={p.text} />
+        ))}
+      </>
+    );
+  // Unlinked: each shortened address is followed by its own copy button, kept together on narrow screens.
   return (
-    <>
-      {safeHref(url) ? <ExtLink url={url} className="break">{body}</ExtLink> : <span className="break">{body}</span>}
-      {parts.filter((p) => p.address).map((p, i) => (
-        <Copy key={i} value={p.text} />
-      ))}
-    </>
+    <span className="break">
+      {parts.map((p, i) =>
+        p.address ? (
+          <span key={i} className="tok-addr">
+            <span className="mono">{shortHex(p.text)}</span>
+            <Copy value={p.text} />
+          </span>
+        ) : (
+          <Fragment key={i}>{formatNumbers(p.text)}</Fragment>
+        ),
+      )}
+    </span>
   );
 }
 
@@ -587,6 +603,8 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
       : line.kind === "statement"
         ? `Statement: published on ${line.channel?.label || line.channel?.url || "a channel of the subject"}, labelled “${line.channel ? statusWord(line.channel, ctx.m.page?.domain ?? ctx.m.subject.domain) : STATUS_WORDS.unverified}”.`
         : `Claim: said by ${line.by || "someone other than the subject"}, not on an Own domain or Verified on chain channel of the subject.`;
+  // This row's own earlier origins: those of the lines folded into it are listed with each of them.
+  const ownFrom = line.from.filter((f) => !(row.same ?? []).some((o) => o.line.from.includes(f)));
   const job = origin ? { what: origin.raised ? "A changes job a visitor raised" : "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
   return (
     <div className="details" id={id}>
@@ -686,7 +704,11 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
                 {row.same.map((o, i) => {
                   const nums = o.line.srcKeys.map((k) => ctx.numbers.get(k)?.n).filter((n): n is number => n !== undefined);
                   const who = o.line.kind === "proof" ? "A proof" : speakerText(o.line);
-                  const added = o.origin ? `added by ${o.origin.raised ? "a changes job" : "a sources or edit job"} paid by ${o.origin.payer}` : "from the page job";
+                  const added = o.origin
+                    ? `added by ${o.origin.raised ? "a changes job" : "a sources or edit job"} paid by ${o.origin.payer}`
+                    : o.line.from.length
+                      ? [...new Set(o.line.from.map(ctx.m.fromOrigin))].join("; ")
+                      : "from the page job";
                   return (
                     <li key={i}>
                       {who}, {added}
@@ -708,6 +730,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
           ) : (
             "Unknown"
           )}
+          {!origin && ownFrom.length > 0 && <span className="block small">{[...new Set(ownFrom.map(ctx.m.fromOrigin))].join("; ")}</span>}
         </dd>
         <dt>Links</dt>
         <dd>
@@ -820,7 +843,7 @@ function shownBy(t: string, ctx: Ctx): { who: string; text: string } {
   const proof = ctx.m.resolve(t);
   if (proof) return { who: "The proof shows", text: proof.text };
   const a = ctx.m.answerRef(t);
-  return { who: "The panel answered", text: a?.text || `answer ${t}` };
+  return { who: "The panel answered", text: a?.text || "an answer not shown in this record" };
 }
 
 /** "Newer: <the newer line>" under an Out of date row, each opening that line. */
@@ -871,6 +894,31 @@ function alsoSaidBy(row: RecordRow, ctx: Ctx): { who: string; id: string }[] {
   for (const o of row.same ?? []) add(o.line, line.id);
   for (const l of allLines(ctx.m)) if (l.id !== line.id && l.links.some((k) => (k.type === "confirms" || k.type === "partly") && k.target.trim() === line.id)) add(l, l.id);
   return out;
+}
+
+/** "Also said by <speaker>" under a line, each opening the line that says it. */
+function AlsoSaid({ also, lineId, open, toggle, ctx }: { also: { who: string; id: string }[]; lineId: string; open: boolean; toggle: () => void; ctx: Ctx }) {
+  if (!also.length) return null;
+  return (
+    <ul className="settled also">
+      {also.map((a, i) => (
+        <li key={i}>
+          <span className="settled-word">Also said by</span>{" "}
+          <a
+            href={to(lineAnchor(a.id))}
+            onClick={(e) => {
+              e.preventDefault();
+              if (a.id === lineId) {
+                if (!open) toggle();
+              } else ctx.ui.openLines([a.id]);
+            }}
+          >
+            {a.who}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<string> }) {
@@ -934,26 +982,7 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
       </div>
       <PendingTag targetKey={target.key} />
       {settled?.state === "outdated" && <NewerNotes ids={settled.outdates} ctx={ctx} />}
-      {also.length > 0 && (
-        <ul className="settled also">
-          {also.map((a, i) => (
-            <li key={i}>
-              <span className="settled-word">Also said by</span>{" "}
-              <a
-                href={to(lineAnchor(a.id))}
-                onClick={(e) => {
-                  e.preventDefault();
-                  if (a.id === line.id) {
-                    if (!open) toggle();
-                  } else ctx.ui.openLines([a.id]);
-                }}
-              >
-                {a.who}
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
+      <AlsoSaid also={also} lineId={line.id} open={open} toggle={toggle} ctx={ctx} />
       <LinkNotes line={line} ctx={ctx} />
       {open && <Details row={row} ctx={ctx} id={`${anchor}-d`} />}
       {sg.open === target.key && <ChangePanel target={target} mode="line" sourceUrl={srcUrl} line={line} evidence={evidenceOf([line], allLines(ctx.m))} onOpenLines={ctx.ui.openLines} />}
@@ -981,13 +1010,19 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
           const open = ctx.ui.openSet.has(row.line.id);
           const toggle = () => ctx.ui.toggle(row.line.id);
           const target = lineTarget(row.line.id || f.name, `${f.name}: ${f.value}${f.unit ? ` ${f.unit}` : ""}`, row.line.id ? originOfLine(row.line.id, ctx.m.scope) : null);
+          const st = ctx.settled.by.get(row.line.id);
+          const stale = st?.state === "outdated" ? st : null;
+          const also = alsoSaidBy(row, ctx);
           return (
             <Fragment key={row.line.id || f.name}>
-              <tr id={anchor} className={`fact-row has-pencil${open ? " is-open" : ""}`} onClick={onRowClick(toggle)}>
+              <tr id={anchor} className={`fact-row has-pencil${stale ? " row-outdated" : ""}${open ? " is-open" : ""}`} onClick={onRowClick(toggle)}>
                 <th scope="row">
                   <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={toggle}>
                     <span className="chev" aria-hidden="true" />
-                    <span className="row-text">{f.name}</span>
+                    <span className="row-text">
+                      {stale && <SettleMark s={stale} ctx={ctx} />}
+                      <span className="block">{f.name}</span>
+                    </span>
                   </button>
                   {row.origin?.raised && <span className="by small block">raised by {row.origin.payer}</span>}
                   <PendingTag targetKey={target.key} />
@@ -1012,6 +1047,14 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                 <tr className="fact-details">
                   <td colSpan={3}>
                     <ChangePanel target={target} mode="line" sourceUrl={ctx.numbers.get(row.line.srcKeys[0] ?? "")?.url ?? ""} line={row.line} evidence={evidenceOf([row.line], allLines(ctx.m))} onOpenLines={ctx.ui.openLines} />
+                  </td>
+                </tr>
+              )}
+              {(stale || also.length > 0) && (
+                <tr className="fact-links">
+                  <td colSpan={3}>
+                    {stale && <NewerNotes ids={stale.outdates} ctx={ctx} />}
+                    <AlsoSaid also={also} lineId={row.line.id} open={open} toggle={toggle} ctx={ctx} />
                   </td>
                 </tr>
               )}
@@ -1093,6 +1136,21 @@ function PageUpkeep({ m }: { m: RecordModel }) {
               {missing.map((x) => (
                 <li key={x.ref}>
                   <span className="mono">{x.ref}</span> {x.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {m.unresolved.length > 0 && (
+          <div id="unresolved">
+            <h3>
+              {m.unresolved.length} link{m.unresolved.length === 1 ? "" : "s"} to a panel answer the record does not hold
+            </h3>
+            <p>These lines keep their own kind until the next rebuild links them to an answer it was given.</p>
+            <ul className="plain">
+              {m.unresolved.map((x, i) => (
+                <li key={i}>
+                  <span className="mono">{x.lineId}</span> {x.type} <span className="mono">{x.target}</span>: {x.text}
                 </li>
               ))}
             </ul>
