@@ -410,7 +410,7 @@ function channelAtUrl(channels: Channel[], url: string): Channel | null {
 
 /**
  * A line shows as a statement only when it was published on one of the record's channels that is Own domain (on
- * the subject's domain or a subdomain) or Verified on chain (tie strong). Otherwise a marked statement is shown as a
+ * the subject's domain or a subdomain), Verified on chain (tie strong) or Linked from own site (tie linked). Otherwise a marked statement is shown as a
  * claim. Proof and claim stay as marked.
  *
  * Where the line was published is read from its cited URLs first. When it cites any http(s) URL, at least one of

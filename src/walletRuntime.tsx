@@ -33,7 +33,10 @@ export function watch(cb: (a: WalletAccount) => void): () => void {
   return watchAccount(config, { onChange: () => cb(snap()) });
 }
 
-/** Reconnects a wallet this site was already allowed to use; true when one is connected afterwards. */
+/**
+ * Reconnects a wallet this site was already allowed to use; true when one is connected afterwards. wagmi keeps no
+ * storage (wallet.tsx), so each connector asks its wallet for already-authorized accounts (eth_accounts).
+ */
 export async function tryReconnect(): Promise<boolean> {
   try {
     await reconnect(config);

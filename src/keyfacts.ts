@@ -209,7 +209,13 @@ export function speakersField(badge: Badge | null, lines: Line[], sourceUrl: (l:
  * worked out from the lines the patch rests on, and keeps the earlier value and who paid for its details.
  * `patches` maps a lower-case row label to the new value, its resolved lines and the payer.
  */
-export function withPatches(rows: KeyRow[], patches: Map<string, { value: string; lines: Line[]; payer: string }>, all: Line[], sourceUrl: (l: Line) => string = () => ""): KeyRow[] {
+export function withPatches(
+  rows: KeyRow[],
+  patches: Map<string, { value: string; lines: Line[]; payer: string }>,
+  all: Line[],
+  sourceUrl: (l: Line) => string = () => "",
+  ctx: { channels: Channel[]; domain: string } = { channels: [], domain: "" },
+): KeyRow[] {
   if (!patches.size) return rows;
   return rows.map((r) => {
     const p = patches.get(r.label.trim().toLowerCase());
@@ -217,8 +223,31 @@ export function withPatches(rows: KeyRow[], patches: Map<string, { value: string
     const tied = TIE_ROWS.test(r.label.trim());
     const badge = tied ? null : badgeOf(p.lines, all, sourceUrl);
     const { speakers: _drop, ...rest } = r;
-    return { ...rest, value: p.value, values: [], tokens: [], accounts: [], lines: p.lines, badge, updatedBy: p.payer, earlier: r.value || r.values.join("; "), ...speakersField(badge, p.lines, sourceUrl) };
+    // A row's link and channel label belong to its value: a patched Website or Official accounts row is linked and
+    // labelled from the new value and the channels, never from the value it replaced. No identifiable URL: plain text.
+    const link = tied ? patchedLink(r.label, p.value, p.lines, all, ctx) : { url: "", channel: null, status: null };
+    return { ...rest, ...link, value: p.value, values: [], tokens: [], accounts: [], lines: p.lines, badge, updatedBy: p.payer, earlier: r.value || r.values.join("; "), ...speakersField(badge, p.lines, sourceUrl) };
   });
+}
+
+/** The URL a value names on its own: a whole http(s) address, or a bare host with an optional path; else "". */
+export function urlOfValue(value: string): string {
+  const v = value.trim();
+  const url = /^https?:\/\/\S+$/i.test(v) ? v : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(v) ? `https://${v}` : "";
+  return url && safeHref(url) ? url : "";
+}
+
+/** The link, channel and channel label of a patched Website or Official accounts row, from its new value only. */
+function patchedLink(label: string, value: string, lines: Line[], all: Line[], ctx: { channels: Channel[]; domain: string }): Pick<KeyRow, "url" | "channel" | "status"> {
+  const url = urlOfValue(value);
+  const row = { label, value, url };
+  const isAccounts = /^official accounts?$/i.test(label.trim());
+  const listed = isAccounts ? accountsOf(ctx.channels, value, ctx.domain) : [];
+  const channel = (listed.length === 1 ? listed[0]!.channel : null) ?? channelOfRow(ctx.channels, row);
+  // A channel the value names by label or handle gives the row its link when the value is not an address itself.
+  const href = url || (channel && safeHref(channel.url) ? channel.url : "");
+  const status = allOutdated(lines, all) ? OUTDATED : rowStatus({ label, value, url: href }, channel, listed, ctx.domain);
+  return { url: href, channel, status };
 }
 
 /**

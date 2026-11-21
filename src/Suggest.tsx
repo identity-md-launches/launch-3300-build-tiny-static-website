@@ -62,6 +62,8 @@ export interface ChangesAsk {
   action: string;
   kind: string;
   body: Record<string, unknown>;
+  /** The instruction file the objective names: the pay dialog opens only after it was fetched with a matching sha256. */
+  instructions?: "changes";
   warning?: string;
   afterSent?: () => void;
 }
@@ -688,7 +690,7 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
     if (!ready || plan.over || held) return;
     const clear = s.tray.clear;
     onClose();
-    onAsk({ title: `Submit ${plural(n, "change")}`, subject: rec.subject.id, action: ACTIONS.research, kind: "changes", body: plan.body, afterSent: clear });
+    onAsk({ title: `Submit ${plural(n, "change")}`, subject: rec.subject.id, action: ACTIONS.research, kind: "changes", body: plan.body, instructions: "changes", afterSent: clear });
   };
   return (
     <div className="sheet-bg" onClick={onClose}>

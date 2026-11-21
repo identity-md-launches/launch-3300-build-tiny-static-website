@@ -584,7 +584,8 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-5c84552b327e.txt` and `changes-275c3c26682c.txt`; still served: `rebuild-ede1a5e23b01.txt`,
+Current files: `rebuild-77f7165b2051.txt` and `changes-059436ca0814.txt`; still served: `rebuild-5c84552b327e.txt`,
+`changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`,
 `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`, `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`,
 `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and `changes-8400e6bf9d85.txt`. The current rebuild file adds,
 to the scope, key facts, size and uncertainty rules, the `linked` channel tie ("A channel on another site that the
@@ -607,15 +608,15 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreic4qrkswmt6qgpnynng6gnxpbolwncqo3qyoxeecfsj3kvi5vkogm?filename=rebuild-5c84552b327e.txt`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreibhlq6cm2bm72ungaohzokga4ul6wqmsflw7c3yovpiouibbx7mge?filename=changes-275c3c26682c.txt`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreidx64lfwicrshizked26o55fukjisodh3ktwktrgu3uwlqvopkkvm?filename=rebuild-77f7165b2051.txt`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreiafsq3mucau43wyfz32zgsb5t23qxkcozevejxgdz6wnh5lnaru3q?filename=changes-059436ca0814.txt`
 
 Since this revision the objective names a **second address** for the same raw CID, at `gateway.pinata.cloud`
 (`INSTRUCTIONS_FALLBACK_GATEWAY` in `src/config.ts`, `Instructions.fallbackUrl`): "Your full instructions are the
 file at <URL> or, if that fails, at <URL2>, sha256 <HASH>." (`instructionsOf` reads both back.) For example:
-`https://gateway.pinata.cloud/ipfs/bafkreic4qrkswmt6qgpnynng6gnxpbolwncqo3qyoxeecfsj3kvi5vkogm?filename=rebuild-5c84552b327e.txt`.
+`https://gateway.pinata.cloud/ipfs/bafkreidx64lfwicrshizked26o55fukjisodh3ktwktrgu3uwlqvopkkvm?filename=rebuild-77f7165b2051.txt`.
 It was kept because IMD's request check returned no blockers for both objectives naming it (see "Free request
-check", 2026-11-21T23:09Z). On the same day both gateways served the published `rebuild-ede1a5e23b01.txt` at its
+check", 2026-11-21T23:09Z, and again for the revision 12 files at 23:38Z). On the same day both gateways served the published `rebuild-ede1a5e23b01.txt` at its
 raw CID (`bafkreihn4gs6…w6iem`) with HTTP 200, `text/plain`, `Access-Control-Allow-Origin: *` and the exact bytes
 (sha256 `ede1a5e23b01…`).
 
@@ -636,8 +637,8 @@ job), so their raw CIDs time out until then. Once this version is pinned, check 
 
 ```sh
 for g in https://ipfs.filebase.io/ipfs/ https://gateway.pinata.cloud/ipfs/; do
-  curl -sSL -o rebuild.txt "${g}bafkreic4qrkswmt6qgpnynng6gnxpbolwncqo3qyoxeecfsj3kvi5vkogm" -w '%{http_code}\n' && sha256sum rebuild.txt  # 200, 5c84552b…ed54e33
-  curl -sSL -o changes.txt "${g}bafkreibhlq6cm2bm72ungaohzokga4ul6wqmsflw7c3yovpiouibbx7mge" -w '%{http_code}\n' && sha256sum changes.txt  # 200, 275c3c26…dfec31
+  curl -sSL -o rebuild.txt "${g}bafkreidx64lfwicrshizked26o55fukjisodh3ktwktrgu3uwlqvopkkvm" -w '%{http_code}\n' && sha256sum rebuild.txt  # 200, 77f7165b…573d4aab
+  curl -sSL -o changes.txt "${g}bafkreiafsq3mucau43wyfz32zgsb5t23qxkcozevejxgdz6wnh5lnaru3q" -w '%{http_code}\n' && sha256sum changes.txt  # 200, 059436ca…68234dc
 done
 ```
 
@@ -669,8 +670,10 @@ https://gateway.pinata.cloud/ipfs/<cid>?filename=<file>, sha256 <hash>."
 
 | Body | `<PRIOR>` | Objective | HTTP | Result (at, UTC) |
 | --- | --- | --- | --- | --- |
-| Rebuild (`rebuild-5c84552b327e.txt`) | 68 files | 7,891 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-21T23:09:18Z) |
-| Changes (`changes-275c3c26682c.txt`) | 66 files | 7,860 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-21T23:09:19Z) |
+| Rebuild (`rebuild-77f7165b2051.txt`) | 68 files | 7,891 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-21T23:38:21Z, revision 12) |
+| Changes (`changes-059436ca0814.txt`) | 66 files | 7,860 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-21T23:38:21Z, revision 12) |
+| Rebuild (`rebuild-5c84552b327e.txt`, revision 11) | 68 files | 7,891 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-21T23:09:18Z) |
+| Changes (`changes-275c3c26682c.txt`, revision 11) | 66 files | 7,860 chars | 200 | `judged: true`, `blockers: []`, `suggestions: []` (2026-11-21T23:09:19Z) |
 
 Blockers are empty for both, so the second address is kept. The second address makes each objective longer, so it
 fits one fewer `<PRIOR>` file than before.

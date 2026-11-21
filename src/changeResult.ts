@@ -181,6 +181,15 @@ export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disp
   for (const a of scope.after) {
     if (!a.changes) continue;
     const key = a.req.requestId;
+    // A patch repairs its row or sentence: a dispute an earlier job left on it is superseded. Jobs that complete
+    // after this one are read later in this loop and can dispute it again.
+    for (const p of patchesOf(a.changes)) {
+      if (p.kind === "infobox") out.infobox.delete(p.target.trim().toLowerCase());
+      else if (p.kind === "summary") {
+        const t = norm(unquote(p.target));
+        if (t) out.summary.delete(t);
+      }
+    }
     let any = false;
     for (const f of a.changes.affects) {
       const by = `${key}:${f.byLine}`;
@@ -254,6 +263,27 @@ export function fullyPatched(c: Pick<ChangesResult, "patches" | "affects"> | nul
   return c.affects.every((f) => f.kind !== "line" && isPatched(c, f));
 }
 
+/**
+ * The changes jobs (of `after`, in completion order) whose disputes are all repaired: every affects entry is a Key
+ * facts row or summary sentence patched by the same job or by a job that completed later. Like fullyPatched jobs,
+ * they do not make the page "out of date"; the rebuild still folds them in.
+ */
+export function repairedJobs(after: Activity[]): Set<Activity> {
+  const out = new Set<Activity>();
+  after.forEach((a, i) => {
+    const c = a.changes;
+    if (!c) return;
+    if (fullyPatched(c)) {
+      out.add(a);
+      return;
+    }
+    if (!c.affects.length) return;
+    const later = after.slice(i).map((x) => x.changes).filter((x): x is ChangesResult => !!x);
+    if (c.affects.every((f) => f.kind !== "line" && later.some((x) => isPatched(x, f)))) out.add(a);
+  });
+  return out;
+}
+
 /** A Key facts row patch as the page shows it: the job's patch, the job and who paid. The newest job wins. */
 export interface RowPatch {
   patch: Patch;
@@ -272,18 +302,41 @@ export function rowPatchesOf(after: Activity[]): Map<string, RowPatch> {
  */
 export function applySentencePatches<T extends SummarySentence>(summary: Reworded<T>[], after: Activity[]): Reworded<T>[] {
   let out = summary;
-  for (const a of after)
-    for (const p of patchesOf(a.changes)) {
-      if (p.kind !== "summary") continue;
-      const was = norm(unquote(p.target));
-      if (!was) continue;
-      let hit = false;
-      out = out.map((s) => {
-        if (hit || norm(s.text) !== was) return s;
-        hit = true;
-        return { ...s, earlier: s.text, original: s.original ?? s.text, text: p.value, updatedBy: payerName(a), rewordedBy: undefined, correctedBy: undefined, rewordLines: p.lines, rewordJob: a };
-      });
-    }
+  for (const a of after) out = patchSentences(out, a).out;
+  return out;
+}
+
+/** One job's summary patches; also the earlier texts (normalised) of the sentences they replaced. */
+function patchSentences<T extends SummarySentence>(summary: Reworded<T>[], a: Activity): { out: Reworded<T>[]; replaced: Set<string> } {
+  let out = summary;
+  const replaced = new Set<string>();
+  for (const p of patchesOf(a.changes)) {
+    if (p.kind !== "summary") continue;
+    const was = norm(unquote(p.target));
+    if (!was) continue;
+    let hit = false;
+    out = out.map((s) => {
+      if (hit || norm(s.text) !== was) return s;
+      hit = true;
+      replaced.add(was);
+      if (s.original) replaced.add(norm(s.original));
+      return { ...s, earlier: s.text, original: s.original ?? s.text, text: p.value, updatedBy: payerName(a), rewordedBy: undefined, correctedBy: undefined, rewordLines: p.lines, rewordJob: a };
+    });
+  }
+  return { out, replaced };
+}
+
+/**
+ * Every kept rewording, correction and summary patch, one job at a time in completion order. Within a job its patch
+ * comes first: a result that gives both a patch and a legacy final_text for the same sentence shows the patch, with
+ * its lines, its payer ("Updated by a change from") and the earlier wording; the final_text is then not applied.
+ */
+export function applySentenceChanges<T extends SummarySentence>(summary: T[], after: Activity[]): Reworded<T>[] {
+  let out: Reworded<T>[] = summary;
+  for (const a of after) {
+    const patched = patchSentences(out, a);
+    out = rewordWith(patched.out, a, patched.replaced);
+  }
   return out;
 }
 
@@ -304,19 +357,24 @@ const unquote = (s: string) => {
 export type Reworded<T> = T & { rewordedBy?: string; correctedBy?: string; updatedBy?: string; earlier?: string; original?: string; rewordLines?: string[]; rewordJob?: Activity };
 export function applyRewords<T extends SummarySentence>(summary: T[], after: Activity[]): Reworded<T>[] {
   let out: Reworded<T>[] = summary;
-  for (const a of after) {
-    if (!a.changes) continue;
-    const sent = parseItems(a.req.bodyJson?.objective);
-    for (const v of a.changes.items) {
+  for (const a of after) out = rewordWith(out, a, new Set());
+  return out;
+}
+
+/** One job's kept rewordings and corrections; a sentence in `skip` (patched by the same job) is left as patched. */
+function rewordWith<T extends SummarySentence>(summary: Reworded<T>[], a: Activity, skip: Set<string>): Reworded<T>[] {
+  let out = summary;
+  if (!a.changes) return out;
+  const sent = parseItems(a.req.bodyJson?.objective);
+  for (const v of a.changes.items) {
       // A kept rewording, or a kept "This is wrong" on a summary sentence with its corrected final_text.
       if (!v.kept || (v.type !== "reword" && v.type !== "wrong") || !v.finalText.trim()) continue;
       const item = sent.find((x) => x.n === v.n && x.type === v.type);
       if (v.type === "wrong" && !(item ? item.targetKind === "sentence" : /^\s*summary sentence/i.test(v.target))) continue;
       const was = norm(item?.text || unquote(v.target));
-      if (!was) continue;
+      if (!was || skip.has(was)) continue;
       const who = v.type === "wrong" ? { correctedBy: payerName(a), rewordedBy: undefined } : { rewordedBy: payerName(a), correctedBy: undefined };
       out = out.map((s) => (norm(s.text) === was || (s.original && norm(s.original) === was) ? { ...s, original: s.original ?? s.text, text: v.finalText.trim(), ...who, rewordLines: v.lines.length ? v.lines : s.rewordLines, rewordJob: a } : s));
-    }
   }
   return out;
 }

@@ -36,7 +36,7 @@ import {
 } from "./page";
 import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
-import { applyChangeLinks, applyRewords, applySentencePatches, carriedOf, disputesOf, fullyPatched, lineInFile, type Disputes, type LineScope, type Reworded } from "./changeResult";
+import { applyChangeLinks, applySentenceChanges, carriedOf, disputesOf, repairedJobs, lineInFile, type Disputes, type LineScope, type Reworded } from "./changeResult";
 import { mergeRepeats, type KnownContract } from "./lookup";
 import { dropUnresolvedAnswers, type UnresolvedRef } from "./settle";
 import { readDate } from "./dates";
@@ -583,7 +583,8 @@ export function digestOf(id: string, list: Activity[]): Digest | null {
 /** Results and panel answers still to fold into the page shown: the number the out-of-date note gives. */
 export const unfoldedCount = (core: Pick<Core, "unfolded" | "unfoldedAnswers">) =>
   // A changes job whose patches repaired every part it disputes leaves the page current; the rebuild still folds it in.
-  core.unfolded.filter((a) => !fullyPatched(a.changes)).length + core.unfoldedAnswers.length;
+  // So does one whose disputes a later job's patches repaired (the earlier dispute is superseded).
+  ((repaired) => core.unfolded.filter((a) => !repaired.has(a)).length)(repairedJobs(core.unfolded)) + core.unfoldedAnswers.length;
 
 /** Why a subject's digest should be read again on this visit although nothing new completed: a read that failed. */
 export const needsRetry = (d: Digest | undefined) => !!d && (d.failedReads > 0 || d.logo === "failed");
@@ -843,7 +844,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     : (page?.summary ?? []).map((s) => ({ ...s, refs: s.lines.flatMap((id) => (byId.has(id.trim()) ? [byId.get(id.trim())!] : [])) }));
   // A kept rewording rests on the lines its own result lists (items[].lines), each in that job's scope.
   // A patch from a changes job then replaces its sentence, resting on the patch's lines in that job's scope.
-  const summary: ShownSentence[] = withRewordRefs(applySentencePatches(applyRewords(written, after), after), (a, ids) => editRefs(a, ids, null));
+  const summary: ShownSentence[] = withRewordRefs(applySentenceChanges(written, after), (a, ids) => editRefs(a, ids, null));
 
   const fromOrigin = (ref: string): string => {
     const m = /^\s*F(\d+):/i.exec(ref);

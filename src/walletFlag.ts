@@ -28,3 +28,24 @@ export const forgetWallet = (): void => {
     /* nothing to clear */
   }
 };
+
+/**
+ * Removes what wagmi persisted before the site stopped letting it (wagmi.store held each connection with its
+ * accounts, plus wagmi.recentConnectorId, wagmi.injected.connected and the like). Run once on every page load; the
+ * site's own flag is kept.
+ */
+export const dropWalletSnapshots = (): number => {
+  const s = store();
+  if (!s) return 0;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < s.length; i++) {
+      const k = s.key(i);
+      if (k && /^wagmi\./.test(k)) keys.push(k);
+    }
+    for (const k of keys) s.removeItem(k);
+    return keys.length;
+  } catch {
+    return 0;
+  }
+};

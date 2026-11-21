@@ -7,12 +7,25 @@ import { WALLET_ICONS } from "./wallet-icons";
 import { holdFocus } from "./modal";
 import { forgetWallet } from "./walletFlag";
 
+/**
+ * The browser's own injected wallet (window.ethereum), as a targeted connector: it is authorized by asking the
+ * wallet (eth_accounts), not by a flag wagmi would keep in storage. Same id and name as wagmi's plain injected().
+ */
+const browserWallet = injected({
+  target: () => ({ id: "injected", name: "Injected", provider: ((w?: unknown) => (w as { ethereum?: unknown } | undefined)?.ethereum) as never }),
+});
+
 export const config = createConfig({
   chains: [CHAIN],
   // EIP-6963 discovery lists every installed extension under its own name
   multiInjectedProviderDiscovery: true,
   // Coinbase Smart Wallet with its telemetry off: the SDK sends no analytics (cca-lite.coinbase.com).
-  connectors: [injected(), coinbaseWallet({ appName: SITE_NAME, preference: { options: "all", telemetry: false } })],
+  connectors: [browserWallet, coinbaseWallet({ appName: SITE_NAME, preference: { options: "all", telemetry: false } })],
+  // Nothing about the wallet is persisted by wagmi (its default keeps connections, with their addresses, in
+  // localStorage under wagmi.store). The site remembers a connection with its one flag (walletFlag.ts) and a silent
+  // reconnect asks the already-authorized wallet for the account. Without storage, mounting WagmiProvider with
+  // reconnectOnMount={false} also leaves a connection made just before it in place.
+  storage: null,
   transports: { [CHAIN.id]: http(RPCS[0]!.url) },
 });
 

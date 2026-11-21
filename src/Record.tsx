@@ -322,7 +322,7 @@ export function useKeyFacts(m: RecordModel) {
   const kf = keyFacts(m.page, m.resolve, all, sourceUrl);
   // Patches from changes jobs not yet folded in: the row's new value rests on the patch's lines, in that job's scope.
   const patches = new Map([...rowPatchesOf(m.after)].map(([k, p]) => [k, { value: p.patch.value, lines: m.editRefs(p.job, p.patch.lines, null), payer: p.payer }] as const));
-  return { ...kf, rows: withDisputes(withPatches(kf.rows, patches, all, sourceUrl), m.disputes) };
+  return { ...kf, rows: withDisputes(withPatches(kf.rows, patches, all, sourceUrl, { channels: m.page?.channels ?? [], domain: m.page?.domain ?? "" }), m.disputes) };
 }
 
 /** A Key facts row a newer source contradicts or outdates reads "Contradicted" or "Out of date" in place of its badge. */

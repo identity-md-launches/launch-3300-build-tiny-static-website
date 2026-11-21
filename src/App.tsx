@@ -30,7 +30,7 @@ import { rememberSent, useActivity } from "./useActivity";
 import { holdFocus } from "./modal";
 import { leftOutText, pendingRebuildOf, planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
 import { InstructionsBlock } from "./Instructions";
-import { INSTRUCTIONS_UNREACHABLE, instructionsReachable, type InstructionName } from "./instructions";
+import { INSTRUCTIONS_UNREACHABLE, instructionsOf, instructionsReachable, type InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
 import { jobLink, lineAnchor, payerName } from "./format";
 import { readDate } from "./dates";
@@ -84,6 +84,23 @@ export interface Ask {
   afterSent?: () => void;
 }
 
+
+/**
+ * Whether a request must pass the instruction preflight before its pay dialog opens: a rebuild, a set of changes,
+ * or any request whose objective names an instruction file.
+ */
+export const needsInstructionCheck = (a: Pick<Ask, "instructions" | "kind" | "rebuild" | "body">): boolean =>
+  !!a.instructions || !!a.rebuild || a.kind === "changes" || instructionsOf(a.body.objective) !== null;
+
+/**
+ * The preflight: true only when the instruction file the objective names was fetched with a matching sha256. A rebuild
+ * or a set of changes whose objective names no file cannot read its instructions either, so it is never offered.
+ */
+export async function askInstructionsReachable(a: Pick<Ask, "instructions" | "kind" | "rebuild" | "body">, get?: typeof fetch): Promise<boolean> {
+  if (!needsInstructionCheck(a)) return true;
+  if (!instructionsOf(a.body.objective)) return false;
+  return instructionsReachable(a.body.objective, get);
+}
 
 /* ---------- Actions ---------- */
 
@@ -696,12 +713,12 @@ export default function App() {
   const [unreachable, setUnreachable] = useState(false);
   const openAsk = useCallback((a: Ask) => {
     setUnreachable(false);
-    if (!a.instructions) {
+    if (!needsInstructionCheck(a)) {
       setAsk(a);
       return;
     }
     setChecking(true);
-    void instructionsReachable(a.body.objective).then((ok) => {
+    void askInstructionsReachable(a).then((ok) => {
       setChecking(false);
       if (ok) setAsk(a);
       else setUnreachable(true);

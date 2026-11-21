@@ -94,9 +94,10 @@ export function Connect() {
     setBusy(true);
     setFailed(false);
     try {
-      const m = await loadWallet();
-      const connected = await m.tryReconnect();
-      setAuto(!connected);
+      // A press with no flag set opens the sheet: the visitor picks the wallet (wagmi keeps no "disconnected" note,
+      // so a silent reconnect here could bring back a wallet they disconnected from our menu).
+      await loadWallet();
+      setAuto(true);
     } catch {
       setFailed(true);
     } finally {
