@@ -61,6 +61,11 @@ export interface ShownSentence extends SummarySentence {
   /** Set when a kept "This is wrong" from a changes job replaced this sentence with its final_text. */
   correctedBy?: string;
   original?: string;
+  /**
+   * The changes job whose kept reword or correction the sentence shows: a later source's affects entry for the new
+   * wording is told from an earlier one by it (changeResult.ts sentenceDispute).
+   */
+  rewordJob?: Activity;
 }
 
 /**
@@ -79,7 +84,8 @@ export function lineOfFileRef(files: { n: number; hash: string | null }[], n: nu
 }
 
 export function withRewordRefs(summary: Reworded<ShownSentence>[], refsOf: (a: Activity, ids: string[]) => Line[]): ShownSentence[] {
-  return summary.map(({ rewordLines, rewordJob, ...s }) => (rewordJob ? { ...s, refs: refsOf(rewordJob, rewordLines ?? []) } : s));
+  // The reword's job stays on the sentence shown: without it a later dispute of the new wording could not be ordered.
+  return summary.map(({ rewordLines, ...s }) => (s.rewordJob ? { ...s, refs: refsOf(s.rewordJob, rewordLines ?? []) } : s));
 }
 
 /** Whether every input of <PRIOR> was read: the chain, the page shown, each result not folded in and each panel answer. */
@@ -179,12 +185,19 @@ export function coreOf(items: Activity[], history?: HistoryReads): Core {
   const shownAnswers = shownAnswersOf(items, latest);
   const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective), pageAnswers: shownAnswers };
   // Lines with the same text show as one row (see mergeRepeats); counts and filters count it once.
-  const repeats = mergeRepeats(applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), scope));
-  // A link to a panel answer the page's rebuild was not given settles nothing; Page upkeep lists it.
+  // A page line's A<n> names an answer of the rebuild that wrote it: it is checked against that rebuild's own
+  // Earlier results only, before any later answer is numbered on, so an answer completed since never becomes the
+  // evidence of a line that did not cite it. A link to an answer the rebuild was not given settles nothing; Page
+  // upkeep lists it. Lines of jobs not folded in (a changes job's links already resolved to the record's
+  // numbering by their own answer URLs) are checked against every answer the record names.
+  const rebuildAnswers = new Set(parsePrior(latest?.req.bodyJson?.objective).answers.map((a) => a.n));
+  const pageIds = new Set((page?.lines ?? []).map((l) => l.id));
+  const own = dropUnresolvedAnswers(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), (id, n) => !pageIds.has(id) || rebuildAnswers.has(n));
+  const repeats = mergeRepeats(applyChangeLinks(own.sections, scope));
   const known = new Set(shownAnswers.map((a) => a.n));
   const checked = dropUnresolvedAnswers(repeats.sections, known);
   const sections = checked.sections;
-  const unresolved = checked.unresolved;
+  const unresolved = [...own.unresolved, ...checked.unresolved];
   const alias = repeats.alias;
   const merged = repeats.merged;
   const carried = carriedDrops(done.filter((a) => isPageJob(a.req) && a.page), history);

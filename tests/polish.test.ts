@@ -142,7 +142,8 @@ describe("a kept rewording's dots", () => {
     const out = withRewordRefs(summary, (a, ids) => (a === job && ids[0] === "N1" ? [fresh] : []));
     expect(out[0]!.refs).toEqual([fresh]);
     expect(out[1]!.refs).toEqual([old]);
-    expect(out[0]).not.toHaveProperty("rewordJob");
+    // The reword's job stays on the sentence shown, so a later source's dispute of the new wording can be ordered (36faaca9).
+    expect(out[0]!.rewordJob).toBe(job);
     expect(withRewordRefs([{ ...summary[0]!, rewordLines: [] }], () => [])[0]!.refs).toEqual([]);
   });
 });

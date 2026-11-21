@@ -1,5 +1,5 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
-import { channelFor, channelStatus, hostOf, onDomain, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page } from "./page";
+import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page } from "./page";
 import { chainIdOf, chainName } from "./subject";
 import { proofIdsOf, settleOf } from "./settle";
 
@@ -265,7 +265,7 @@ const same = (a: string, b: string) => a.trim().toLowerCase().replace(/\/+$/, ""
 export function websiteOf(channels: Channel[], domain: string): Channel | null {
   const d = domain.trim().toLowerCase();
   return (
-    channels.find((c) => !!d && hostOf(c.url).toLowerCase() === d) ??
+    channels.find((c) => !!d && siteHost(fullHostOf(c.url)) === siteHost(d)) ??
     channels.find((c) => onDomain(c.url, d)) ??
     channels.find((c) => /^(web ?site|site|home ?page)$/i.test(c.label.trim())) ??
     null

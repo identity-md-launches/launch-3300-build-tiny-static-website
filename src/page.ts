@@ -1,6 +1,6 @@
 /** Turns untrusted page.json and lines.json into plain strings. Nothing here is ever rendered as HTML. */
 import { countLines, type Counts } from "./settle";
-import { sameSite } from "./psl";
+import { registrableDomain, sameSite } from "./psl";
 
 export const SECTIONS = ["what_it_does", "how_it_works", "money", "people", "on_chain", "history"] as const;
 export const SECTION_TITLES: Record<string, string> = {
@@ -152,7 +152,23 @@ export const tieOf = (v: unknown): Tie => {
   return t === "strong" || t === "weak" ? t : "none";
 };
 const levelOf = (v: unknown): Level => (str(v).toLowerCase() === "conflict" ? "conflict" : "question");
-/** A host name from a URL or a bare host, for "read via <host>". */
+/**
+ * The full hostname of a URL or a bare host, "www." kept: what the ownership check compares (on a shared host,
+ * www.github.io is the tenant "www", not github.io). "" when it is not a URL.
+ */
+export function fullHostOf(v: string): string {
+  try {
+    return new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    return "";
+  }
+}
+/**
+ * A host without a leading "www." when that label is not itself the registrable part: www.uniswap.org reads as
+ * uniswap.org, while www.github.io (a tenant of a shared host) stays www.github.io.
+ */
+export const siteHost = (host: string) => (/^www\./.test(host) && registrableDomain(host) !== host ? host.slice(4) : host);
+/** A host name from a URL or a bare host, for "read via <host>": display only, never an ownership check. */
 export function hostOf(v: string): string {
   try {
     return new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`).hostname.replace(/^www\./, "");
@@ -179,9 +195,9 @@ export function parseSummary(v: unknown): SummarySentence[] {
     .filter((s) => s.text);
 }
 
+/** Every valid link of a line, however many: a whole-record comparison may link one line to many. */
 function parseLinks(v: unknown): LineLink[] {
   return arr(v)
-    .slice(0, 10)
     .flatMap((x) => {
       const o = obj(x);
       const t = str(o.type, 32).toLowerCase();
@@ -319,7 +335,7 @@ function parseFact(v: unknown, text: string, rerun: string): Fact | null {
 const norm = (url: string) => {
   try {
     const u = new URL(url);
-    return { host: u.hostname.toLowerCase().replace(/^www\./, ""), path: u.pathname.replace(/\/+$/, "").toLowerCase() };
+    return { host: siteHost(u.hostname.toLowerCase()), path: u.pathname.replace(/\/+$/, "").toLowerCase() };
   } catch {
     return null;
   }
@@ -336,7 +352,8 @@ export const STATUS_WORDS: Record<ChannelStatus, string> = { own: "Own domain", 
  * project on a shared host (me.github.io) owns only its own subdomain.
  */
 export function onDomain(url: string, domain: string): boolean {
-  return sameSite(hostOf(url), domain);
+  // The full hostname, before any "www." handling: a www tenant of a shared host owns www.github.io itself.
+  return sameSite(fullHostOf(url), domain);
 }
 export function channelStatus(c: Pick<Channel, "url" | "tie">, domain: string): ChannelStatus {
   if (onDomain(c.url, domain)) return "own";
@@ -748,15 +765,11 @@ export function mergeRecord(page: Page | null, jobs: SourceJob[], domain = page?
 }
 
 /**
- * How many rows of each class, for the filter, section counts and Home: a settled row counts once, as Proven or
- * Contradicted, and the proof it shows is not counted again (see settle.ts).
+ * How many rows of each class, for the filter, section counts and Home: every line once. A settled row counts as
+ * Proven or Contradicted, and each proof line counts as its own Proven row too (see settle.ts countLines).
  */
-export function countKinds(sections: { rows: { line: Line; origin?: { raised?: boolean } | null }[] }[]): Counts {
-  const rows = sections.flatMap((s) => s.rows);
-  const lines = rows.map((r) => r.line);
-  // A proof with a fact keeps its own row in the On-chain facts table even when a settled row shows it too.
-  const alone = new Set(rows.filter((r) => r.line.kind === "proof" && !!r.line.fact && (!r.origin || !!r.origin.raised)).map((r) => r.line.id));
-  return countLines(lines, undefined, alone);
+export function countKinds(sections: { rows: { line: Line }[] }[]): Counts {
+  return countLines(sections.flatMap((s) => s.rows.map((r) => r.line)));
 }
 
 /* ---------- Edits (artifacts/edit.json) ---------- */
@@ -899,9 +912,9 @@ export interface Affect {
   type: "contradicts" | "outdates";
   byLine: string;
 }
+/** Every valid affects entry, however many: each part it names is marked at once. */
 export function parseAffects(v: unknown): Affect[] {
   return arr(v)
-    .slice(0, 200)
     .flatMap((x): Affect[] => {
       const o = obj(x);
       const kind = str(o.kind, 16).toLowerCase();

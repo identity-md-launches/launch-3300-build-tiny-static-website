@@ -104,8 +104,8 @@ describe("ba8e9a2e and f28551d7: Proven counts the rows it renders; a contradict
   const lines = [P("P1", true), P("P2", false), P("P3", true), { id: "C1", kind: "claim", links: [{ type: "confirms", target: "P1" }] } as unknown as Line];
   it("counts the table check and the confirmed claim alike", () => {
     const s = settleAll(lines);
-    expect(countLines(lines, s, new Set(["P1", "P3"])).proven).toBe(4);
-    expect(countLines(lines, s, new Set(["P3"])).proven).toBe(3);
+    // Every check counts once, with or without fact fields (revision 10, 5c38d3a8), and the confirmed claim once.
+    expect(countLines(lines, s).proven).toBe(4);
   });
   it("an affects contradiction moves a check into Contradicted", () => {
     const p3 = { kind: "proof" as const, links: [{ type: "contradicts" as const, target: "0xc1:N1", affects: true }] };

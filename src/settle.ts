@@ -33,10 +33,14 @@ export interface UnresolvedRef {
  * Removes links to panel answers (A1…) that name no answer the page's rebuild was given, so an unresolved reference
  * never settles a row (a row keeps its own kind) and never shows a raw id. Each one removed is returned for Page upkeep.
  */
-export function dropUnresolvedAnswers<R extends { line: Line; same?: R[] }>(sections: { section: string; rows: R[] }[], known: Set<number>): { sections: { section: string; rows: R[] }[]; unresolved: UnresolvedRef[] } {
+export function dropUnresolvedAnswers<R extends { line: Line; same?: R[] }>(
+  sections: { section: string; rows: R[] }[],
+  known: Set<number> | ((lineId: string, n: number) => boolean),
+): { sections: { section: string; rows: R[] }[]; unresolved: UnresolvedRef[] } {
   const unresolved: UnresolvedRef[] = [];
+  const isKnown = typeof known === "function" ? known : (_: string, n: number) => known.has(n);
   const fix = (r: R): R => {
-    const bad = r.line.links.filter((k) => isAnswerRef(k.target) && !known.has(Number(k.target.trim().slice(1))));
+    const bad = r.line.links.filter((k) => isAnswerRef(k.target) && !isKnown(r.line.id, Number(k.target.trim().slice(1))));
     if (!bad.length) return r;
     for (const k of bad) unresolved.push({ lineId: r.line.id, text: r.line.text, type: k.type, target: k.target.trim() });
     return { ...r, line: { ...r.line, links: r.line.links.filter((k) => !bad.includes(k)) } };
@@ -117,15 +121,14 @@ export type Counts = Record<Group | "all" | "checks" | "confirmed", number>;
 export const emptyCounts = (): Counts => ({ all: 0, proven: 0, stated: 0, claimed: 0, contradicted: 0, outdated: 0, checks: 0, confirmed: 0 });
 
 /**
- * The counts Record, the filter, Home and Key facts share, over exactly the rows the Record renders. A settled row
- * counts once; a proof that a settled row already shows is not counted again, unless it also has its own row
- * (`alone`: the On-chain facts table lists every proof with a fact, so such a check counts there, once, as a proof).
- * all = proven + stated + claimed + contradicted + outdated.
+ * The counts Record, the filter, Home and Key facts share, over exactly the rows the Record renders: every line once.
+ * Proven is the proof lines plus the statements and claims with a confirming link. A proof keeps its own row (in
+ * its section, or in the On-chain facts table when it has a fact) even when a settled row also shows it as the
+ * evidence, so it counts once, as a check, and the row it confirms counts once, as confirmed.
  */
-export function countLines(lines: Pick<Line, "id" | "kind" | "links">[], settled = settleAll(lines), alone: Set<string> = new Set()): Counts {
+export function countLines(lines: Pick<Line, "id" | "kind" | "links">[], settled = settleAll(lines)): Counts {
   const c = emptyCounts();
   for (const l of lines) {
-    if (l.kind === "proof" && settled.absorbed.has(l.id) && !alone.has(l.id)) continue;
     const k = rowClass(l, settled.by.get(l.id));
     c[groupOf(k)]++;
     if (k === "proof") c.checks++;

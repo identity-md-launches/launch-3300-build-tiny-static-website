@@ -245,7 +245,7 @@ try {
     check(`${W} panel answers list at the bottom of Record`, (await page.locator("#panel-answers").count()) === 1);
     check(`${W} Record shows its sections`, /What it does|Money|On chain/.test(rec));
     const toggles = await page.$$eval(".section-toggle", (bs) => bs.map((b) => [b.getAttribute("aria-expanded"), b.textContent]));
-    check(`${W} sections start closed, each with its name and counts of proofs, statements and claims`, toggles.length > 0 && toggles.every(([x, s]) => x === "false" && /^\D+(\d+ proven, )?(\d+ contradicted, )?\d+ proofs?, \d+ statements?, \d+ claims?$/.test(s ?? "")) && (await page.locator(".lines .row").count()) === 0, JSON.stringify(toggles));
+    check(`${W} sections start closed, each with its name and counts: proven, stated, claimed, and contradicted or out of date only above zero`, toggles.length > 0 && toggles.every(([x, s]) => x === "false" && /^\D+\d+ proven, \d+ stated, \d+ claimed(, [1-9]\d* contradicted)?(, [1-9]\d* out of date)?$/.test(s ?? "")) && (await page.locator(".lines .row").count()) === 0, JSON.stringify(toggles));
     // Item 4/6: no repeat box; identical lines are one row, counted under Page upkeep, a closed row at the bottom.
     const upk = await page.evaluate(() => { const d = document.querySelector("#upkeep"); return { repeats: !!document.querySelector("#upkeep #repeats") && document.querySelectorAll("#repeats").length === 1, open: d?.open ?? null, last: d ? !d.nextElementSibling : false, title: d?.querySelector("summary")?.textContent ?? "" }; });
     check(`${W} no repeat box; Page upkeep is one closed row at the bottom`, upk.repeats && upk.open === false && upk.title.startsWith("Page upkeep") && !/\bL\d+\b|F\d+-/.test(await page.locator("main").innerText().then((t) => t.replace(/Page upkeep[\s\S]*$/, ""))), JSON.stringify(upk));
@@ -257,7 +257,8 @@ try {
     await page.locator(".section-toggle", { hasText: "What it does" }).click();
     // Job 8: a contradicted line is ONE row led by a red Contradicted marker, with both sentences and its speaker.
     const filters = await page.$$eval(".filter .btn-filter", (bs) => bs.map((b) => b.textContent?.replace(/\s+/g, " ").trim()));
-    check(`${W} filter buttons All, Proven, Contradicted, Out of date, Proof, Statement, Claim, Only said with counts`, filters.length === 8 && /^All\d+$/.test(filters[0]) && /^Proven0$/.test(filters[1]) && /^Contradicted1$/.test(filters[2]) && /^Out of date\d+$/.test(filters[3]) && /^Only said\d+$/.test(filters[7]), JSON.stringify(filters));
+    // Brief C: All, Proven, Stated, Claimed always; Contradicted and Out of date only above zero; no Proof or Only said.
+    check(`${W} filter buttons All, Proven, Stated, Claimed and Contradicted (above zero) with counts; no Proof or Only said`, filters.length === 5 && /^All\d+$/.test(filters[0]) && /^Proven\d+$/.test(filters[1]) && /^Stated\d+$/.test(filters[2]) && /^Claimed\d+$/.test(filters[3]) && /^Contradicted1$/.test(filters[4]) && !filters.some((f) => /^(Proof|Only said)/.test(f)), JSON.stringify(filters));
     await page.click(".filter .btn-filter >> text=Contradicted");
     const contra = await page.$$eval(".section .lines .row", (rs) => rs.map((r) => ({ text: r.querySelector(".row-toggle")?.textContent?.replace(/\s+/g, " ").trim(), lead: r.querySelector(".row-text > .kind")?.textContent?.trim(), color: r.querySelector(".row-text > .kind") ? getComputedStyle(r.querySelector(".row-text > .kind")).color : "" })));
     check(`${W} Contradicted: one row, red marker first, what was said and what the panel answer shows, then who said it`, contra.length === 1 && contra[0].lead === "Contradicted" && contra[0].color === "rgb(161, 35, 27)" && /Said: A post says a job costs 5 IMD\./.test(contra[0].text) && /The panel answered: /.test(contra[0].text) && /Claimed by someone$/.test(contra[0].text), JSON.stringify(contra));
@@ -265,7 +266,7 @@ try {
     const det = await page.locator(".section .lines .details").innerText().catch(() => "");
     check(`${W} its details show the original quote and the panel answer`, /Original quote\s*“5 IMD”/.test(det) && /Panel answer/.test(det), det.replace(/\n/g, " | "));
     await page.locator(".section .lines .row .row-toggle").first().click();
-    await page.click(".filter .btn-filter >> text=Proof");
+    await page.click(".filter .btn-filter >> text=Proven");
     await page.locator(".fact-table .row-toggle").first().click();
     check(`${W} a line with history shows its earlier readings`, /Earlier readings\s*Block 26,400,000: 1,500/.test(await page.locator(".fact-details").innerText().catch(() => "")), (await page.locator(".fact-details").innerText().catch(() => "no .fact-details")).replace(/\n/g, " | ").slice(0, 500));
     check(`${W} no horizontal scroll on Record`, (await overflow(page)) <= 0, await wideOf(page));
@@ -276,7 +277,7 @@ try {
     await page.goto(base + "#/");
     await page.waitForSelector(".subjects .subject", { timeout: 30000 });
     const item2 = await page.locator(".subjects .subject").first().innerText();
-    check(`${W} after opening it, Home shows the digest: name, one_line, counts and when it changed`, /IMD/.test(item2) && /imd\.fun/.test(item2) && /\d+ contradicted/.test(item2) && /\d+ proofs?/.test(item2) && /\d+ statements?/.test(item2) && /\d+ claims?/.test(item2) && /Changed /.test(item2), item2.replace(/\n/g, " | "));
+    check(`${W} after opening it, Home shows the digest: name, one_line, counts and when it changed`, /IMD/.test(item2) && /imd\.fun/.test(item2) && /\d+ contradicted/.test(item2) && /\d+ proven/.test(item2) && /\d+ stated/.test(item2) && /\d+ claimed/.test(item2) && !/proofs?\b/.test(item2) && /Changed /.test(item2), item2.replace(/\n/g, " | "));
     check(`${W} the digest's logo, kept by hash and shown as a data: URL at 28 pixels (or its real size if smaller than 64)`, await page.evaluate(() => { const i = document.querySelector(".subjects .subject img.logo, .subjects .subject img.logo-real"); if (!i || !i.getAttribute("src")?.startsWith("data:image/png;base64,")) return false; const r = i.getBoundingClientRect(); return i.classList.contains("logo-real") ? r.width === i.naturalWidth && r.height === i.naturalHeight && i.parentElement.getBoundingClientRect().width >= 28 : r.width === 28; }));
     const idb = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open("imd-record"); r.onsuccess = () => { const db = r.result; const t = db.transaction(["scan", "files", "digests"]); const n = {}; let left = 3; for (const s of ["scan", "files", "digests"]) { const q = t.objectStore(s).count(); q.onsuccess = () => { n[s] = q.result; if (!--left) res(n); }; } }; r.onerror = () => res(null); }));
     const ls = await page.evaluate(() => Object.keys(localStorage).filter((k) => /:(page|lines|edit|artifact|logo):/.test(k)).length);

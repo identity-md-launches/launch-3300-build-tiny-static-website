@@ -1287,14 +1287,15 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const shown = order
     .map((section) => {
       const every = sections.find((s) => s.section === section)?.rows ?? [];
-      // A proof a settled row already shows is not shown again as its own row; the facts table still lists it.
-      const rows = every.filter((r) => !facts.has(r.line.id) && !settled.absorbed.has(r.line.id) && keep(r));
+      // Every proof keeps its own row, also when a settled row shows it as its evidence: in the facts table when it
+      // has a fact, else here. Proven lists both kinds; each row says which it is.
+      const rows = every.filter((r) => !facts.has(r.line.id) && keep(r));
       const table = section === "on_chain" ? shownFacts : [];
       const inSection = [...rows, ...table].map((r) => r.line);
       const hasOpen = inSection.some((l) => ui.openSet.has(l.id));
       const open = narrowing ? narrowState[section] ?? true : sectionOpen[section] ?? hasOpen;
-      // The rows shown, counted by the shared rule: a settled row once, a proof it already shows not again.
-      return { section, rows, table, counts: countLines(inSection, settled, facts), open };
+      // The rows shown, counted by the shared rule: every row once.
+      return { section, rows, table, counts: countLines(inSection, settled), open };
     })
     .filter((s) => s.rows.length > 0 || s.table.length > 0);
   // A link to one line opens it, and its section, when the tab is reached by that link; a search or the
@@ -1305,15 +1306,6 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
     if (folded) return ui.openLines([folded[1]]);
     const row = sections.flatMap((s) => s.rows).find((r) => lineAnchor(r.line.id) === ui.target);
     if (!row) return;
-    // A proof that a settled row shows (and that is not in the facts table) has no row of its own: open that row.
-    if (settled.absorbed.has(row.line.id) && !facts.has(row.line.id)) {
-      const host = all.find((r) => {
-        const st = settled.by.get(r.line.id);
-        return !!st && (st.state === "proven" ? st.confirms : st.state === "contradicted" ? st.contradicts : []).includes(row.line.id);
-      });
-      if (host) ui.openLines([host.line.id]);
-      return;
-    }
     if (!ui.openSet.has(row.line.id)) ui.toggle(row.line.id);
     setQuery("");
     setSectionOpen((s) => Object.fromEntries(Object.entries(s).filter(([, v]) => v)));

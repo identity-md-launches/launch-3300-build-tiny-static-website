@@ -93,10 +93,10 @@ const LINES = [L("P1", "proof"), L("P2", "proof"), L("S1", "statement", [{ type:
 describe("C. counts read at a glance", () => {
   it("groups Proven (proofs and confirmed lines), Stated, Claimed; Contradicted and Out of date only above zero", () => {
     const c = countLines(LINES);
-    // P1 is shown inside S1's row and P2 inside C2's, so neither counts again.
-    expect(c).toMatchObject({ all: 4, proven: 1, stated: 1, claimed: 1, contradicted: 1, outdated: 0 });
+    // Revision 10 (5c38d3a8): P1 and P2 keep their own Proof rows although S1 and C2 show them as evidence.
+    expect(c).toMatchObject({ all: 6, proven: 3, stated: 1, claimed: 1, contradicted: 1, outdated: 0, checks: 2, confirmed: 1 });
     expect(shownGroups(c)).toEqual(["proven", "stated", "claimed", "contradicted"]);
-    expect(countsWords(c)).toBe("1 proven, 1 stated, 1 claimed, 1 contradicted");
+    expect(countsWords(c)).toBe("3 proven, 1 stated, 1 claimed, 1 contradicted");
     expect(filtersFor(c)).toEqual(["all", "proven", "stated", "claimed", "contradicted"]);
     const plain = countLines([L("P9", "proof"), L("S9", "statement")]);
     expect(plain).toMatchObject({ proven: 1, checks: 1, confirmed: 0 });

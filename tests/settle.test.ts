@@ -48,15 +48,15 @@ describe("settled lines", () => {
     expect(speakerText({ kind: "statement", by: "Docs", channel: { label: "Docs", url: "https://example.com/docs", tie: "none" } })).toBe("Stated by Docs");
   });
 
-  it("counts a settled row once and does not count the proof it shows again", () => {
+  it("counts a settled row once and each proof it shows once, as its own row", () => {
     const s = settleAll(lines);
     expect([...s.absorbed].sort()).toEqual(["P1", "P2"]);
     const c = countLines(lines);
-    expect(c).toEqual({ all: 5, proven: 2, stated: 0, claimed: 2, contradicted: 1, outdated: 0, checks: 0, confirmed: 2 });
-    // Revision 9: a proof with fact keeps its own row in the On-chain facts table, so the record counts it there
-    // once, as Proven, even though a settled row shows it too: the count matches the rows the Proven filter renders.
-    expect(countKinds(mergeRecord(p, []))).toEqual({ ...c, all: c.all + 1, proven: c.proven + 1, checks: c.checks + 1 });
-    expect(countsWords(c)).toBe("2 proven, 0 stated, 2 claimed, 1 contradicted");
+    // Revision 10: Proven is the proof lines plus the confirmed statements and claims; a proof a settled row shows
+    // keeps its own row (in the facts table or its section) and counts there once.
+    expect(c).toEqual({ all: 7, proven: 4, stated: 0, claimed: 2, contradicted: 1, outdated: 0, checks: 2, confirmed: 2 });
+    expect(countKinds(mergeRecord(p, []))).toEqual(c);
+    expect(countsWords(c)).toBe("4 proven, 0 stated, 2 claimed, 1 contradicted");
     // A partly-confirmed line keeps its own kind and is still only said.
     expect(rowClass(byId("C3"), s.by.get("C3"))).toBe("claim");
   });
@@ -88,7 +88,7 @@ describe("settled lines", () => {
 
   it("the Record tab renders one row per settled line, led by its marker, with the speaker after", () => {
     const src = readFileSync("src/Record.tsx", "utf8");
-    expect(src).toContain("!settled.absorbed.has(r.line.id)");
+    expect(src).toContain("const rows = every.filter((r) => !facts.has(r.line.id) && keep(r));");
     expect(src).toContain("Confirmed by a panel, ");
     expect(src).toContain('"Partly confirmed by"');
     expect(src).toContain("speakerText(line)");

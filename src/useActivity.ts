@@ -200,6 +200,22 @@ export interface ActivityState {
   readSubject: (id: string) => Promise<Activity[]>;
 }
 
+/**
+ * A finished request's read, kept for the visit. A read that failed is not kept: a rejected promise, or a result
+ * whose file could not be read (sourcesError), is evicted once it settles, so Try again fetches the file again.
+ */
+export function memoRead<T extends { sourcesError: string | null }>(memo: Map<string, Promise<T>>, key: string, run: () => Promise<T>): Promise<T> {
+  const was = memo.get(key);
+  if (was) return was;
+  const p = run();
+  const evict = () => {
+    if (memo.get(key) === p) memo.delete(key);
+  };
+  p.then((a) => (a.sourcesError ? evict() : undefined), evict);
+  memo.set(key, p);
+  return p;
+}
+
 /** `subject`: the subject whose page is open; its requests are read with their result files. */
 export function useActivity(subject: string | null = null): ActivityState {
   const [items, setItems] = useState<Activity[] | null>(null);
@@ -218,13 +234,7 @@ export function useActivity(subject: string | null = null): ActivityState {
     const state = stateOf(c);
     const key = `${r.requestId}|${state}|${withFiles}`;
     if (state === "pending") return follow(r, c, withFiles);
-    let p = memo.current.get(key);
-    if (!p) {
-      p = follow(r, c, withFiles);
-      p.catch(() => memo.current.delete(key));
-      memo.current.set(key, p);
-    }
-    return p;
+    return memoRead(memo.current, key, () => follow(r, c, withFiles));
   }, []);
 
   const build = useCallback(async () => {
