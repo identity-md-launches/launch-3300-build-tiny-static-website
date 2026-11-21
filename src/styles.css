@@ -205,17 +205,26 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .offer-chain { display: grid; gap: var(--space-2); }
 .offer-chain label { font-size: var(--text-small); font-weight: 600; }
 .nowrap { white-space: nowrap; }
-/* The three labels stay one row of three at every width; on phones the copy wraps inside narrower cards. */
+/*
+ * The three labels: one row of three cards. On phones each card's marker (dot and word) sits whole on its own line,
+ * without the colon, and the copy wraps below it; where three cards would split the word (under 24rem), each label
+ * takes one full-width row with the copy flowing beside its marker. Phone rules follow the base ones so they win.
+ */
 .label-cards { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); width: 100%; max-width: 60rem; }
+.label-card { border-radius: var(--radius-control); padding: var(--space-3) var(--space-4); font-size: var(--text-small); line-height: 1.45; color: var(--color-text); }
+.label-card .kind { margin-inline-end: 2px; }
 @media (max-width: 43.99rem) {
   .label-cards { gap: var(--space-2); }
   .label-card { padding: var(--space-2); overflow-wrap: break-word; hyphens: auto; }
-  .label-card .kind { display: inline; white-space: normal; }
-  .label-card .kind .dot { display: inline-block; margin-inline-end: 4px; vertical-align: 1px; }
+  .label-card .kind { display: flex; white-space: nowrap; margin: 0 0 2px; }
+  .label-colon { display: none; }
 }
-@media (max-width: 24rem) { .label-cards { width: calc(100% + 2 * var(--space-2)); margin-inline: calc(-1 * var(--space-2)); } }
-.label-card { border-radius: var(--radius-control); padding: var(--space-3) var(--space-4); font-size: var(--text-small); line-height: 1.45; color: var(--color-text); }
-.label-card .kind { margin-inline-end: 2px; }
+@media (max-width: 23.99rem) {
+  .label-cards { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .label-card { padding: var(--space-1) var(--space-2); }
+  .label-card .kind { display: inline-flex; margin: 0 2px 0 0; }
+  .label-colon { display: inline; }
+}
 .label-proof { background: var(--green-50); }
 .label-statement { background: var(--blue-50); }
 .label-claim { background: var(--orange-50); }
@@ -718,8 +727,9 @@ body.has-tray main { padding-bottom: 9rem; }
 .disputed-note { font-size: var(--text-small); color: var(--amber-800); background: var(--amber-50); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); margin: 0; }
 .disputed-note a { color: inherit; font-weight: 600; }
 .dispute-dot { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-block: -6px; }
-.dispute-dot .dot { width: 9px; height: 9px; border-radius: 50%; }
-.dispute-outdates .dot { background: var(--amber-500); }
+.dispute-dot .dot { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; }
+/* Two shapes as well as two colours: out of date is a dark amber ring, contradicted a solid red dot (both past 3:1). */
+.dispute-outdates .dot { background: transparent; border: 2.5px solid var(--amber-800); }
 .dispute-contradicts .dot { background: var(--red-800); }
 @media (hover: hover) { .dispute-dot:hover { background: var(--color-bg-hover); } }
 .settled-agrees { color: var(--color-text-secondary); }

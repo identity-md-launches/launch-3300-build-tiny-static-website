@@ -175,11 +175,13 @@ export function coreOf(items: Activity[], history?: HistoryReads): Core {
     .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash), raised: isChangesJob(a.req) }));
   // A changes result's new lines point at the line they are about; the target row shows what each does to it,
   // also when a rebuild has since carried that line forward under another id.
-  const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective), pageAnswers: parsePrior(latest?.req.bodyJson?.objective).answers };
+  // The panel answers the record can name: the rebuild's own A1… and, after them, answers completed since.
+  const shownAnswers = shownAnswersOf(items, latest);
+  const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective), pageAnswers: shownAnswers };
   // Lines with the same text show as one row (see mergeRepeats); counts and filters count it once.
   const repeats = mergeRepeats(applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), scope));
   // A link to a panel answer the page's rebuild was not given settles nothing; Page upkeep lists it.
-  const known = new Set(parsePrior(latest?.req.bodyJson?.objective).answers.map((a) => a.n));
+  const known = new Set(shownAnswers.map((a) => a.n));
   const checked = dropUnresolvedAnswers(repeats.sections, known);
   const sections = checked.sections;
   const unresolved = checked.unresolved;
@@ -187,6 +189,38 @@ export function coreOf(items: Activity[], history?: HistoryReads): Core {
   const merged = repeats.merged;
   const carried = carriedDrops(done.filter((a) => isPageJob(a.req) && a.page), history);
   return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest, lineage), after, jobs, scope, sections, alias, merged, unresolved, counts: countKinds(sections), carried };
+}
+
+/** An answer as the record shown numbers it: A<n>, its text, the URL it was listed under, and keys that identify its request. */
+export interface ShownAnswer {
+  n: number;
+  text: string;
+  url: string;
+  keys: string[];
+}
+const answerKeys = (a: Activity) => [a.req.transactionHash, a.jobId].filter((k): k is string => typeof k === "string" && k.length > 0);
+/** True when a listed answer URL names this panel request (its job link, transaction or job id). */
+export const answerUrlIs = (url: string, a: Activity) => !!url && (url === jobLink(a.jobId, a.req.transactionHash) || answerKeys(a).some((k) => url.includes(k)));
+
+/**
+ * The panel answers the record shown can name: A1… as the page's rebuild was given them, then every completed panel
+ * answer that rebuild did not list (completed after it), numbered on from there. A changes job may compare its new
+ * lines with such an answer before any rebuild has listed it; its link then still resolves and settles.
+ */
+export function shownAnswersOf(items: Activity[], latest: Activity | undefined): ShownAnswer[] {
+  const given = parsePrior(latest?.req.bodyJson?.objective).answers;
+  const panel = items.filter(isAnswer).sort(completionOrder);
+  const out: ShownAnswer[] = given.map((g) => {
+    const a = panel.find((p) => answerUrlIs(g.url, p));
+    return { n: g.n, text: g.text, url: g.url, keys: a ? answerKeys(a) : [] };
+  });
+  let n = Math.max(0, ...given.map((g) => g.n));
+  for (const a of panel) {
+    if (given.some((g) => answerUrlIs(g.url, a))) continue;
+    const title = a.req.title || String(a.req.bodyJson?.question ?? "").slice(0, 120);
+    out.push({ n: ++n, text: `${title} = ${a.oracle!.answer}, ${a.oracle!.agreed ?? "?"} of ${a.oracle!.panelSize ?? "?"}`, url: jobLink(a.jobId, a.req.transactionHash), keys: answerKeys(a) });
+  }
+  return out;
 }
 
 /** A completed panel request with an answer: one of the A1… a rebuild is given. */
@@ -804,10 +838,10 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   const answerRef = (target: string) => {
     const m = /^A(\d+)$/i.exec(target.trim());
     if (!m) return null;
-    const a = given.answers.find((x) => x.n === Number(m[1]));
+    const a = (scope.pageAnswers ?? given.answers).find((x) => x.n === Number(m[1]));
     if (!a) return null;
-    const activity = panel.find((p) => a.url && (a.url === jobLink(p.jobId, p.req.transactionHash) || a.url.includes(p.req.transactionHash) || (!!p.jobId && a.url.includes(p.jobId))));
-    return { text: a.text, activity };
+    const activity = panel.find((p) => answerUrlIs(a.url, p));
+    return { text: a.text ?? "", activity };
   };
 
   // A failed read is retried when the record is read again (Refresh).

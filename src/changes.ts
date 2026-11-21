@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import changesTemplate from "../templates/changes.txt?raw";
 import { channelList, fillTemplate, fitsObjective, jobTag, linkProblem, MAX_OBJECTIVE, priorText, type ChannelTie, type Prior } from "./bodies";
 import { INSTRUCTIONS } from "./instructions";
-import { describeSubject, type SubjectRef } from "./subject";
+import { canonicalId, describeSubject, type SubjectRef } from "./subject";
 
 export const CHANGES_TEMPLATE = changesTemplate.trim();
 
@@ -346,8 +346,49 @@ export function parseItems(objective: unknown): SentItem[] {
 const KEY = (subject: string) => `imd-record:v1:changes:${subject}`;
 const EVENT = "imd-tray";
 
+/**
+ * Moves drafts saved under an older subject id (app.uniswap.org) into the tray of the subject id it now stands for
+ * (uniswap.org): drafts already under the canonical id are kept, a draft in both is kept once (by id), and the
+ * legacy key is removed. Returns how many legacy keys were merged.
+ */
+export function migrateTrays(subject: string, storage: Pick<Storage, "length" | "key" | "getItem" | "setItem" | "removeItem"> | undefined = typeof localStorage === "undefined" ? undefined : localStorage): number {
+  if (!storage) return 0;
+  try {
+    const prefix = KEY("");
+    const legacy: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i);
+      if (k && k.startsWith(prefix) && k !== KEY(subject) && canonicalId(k.slice(prefix.length)) === subject) legacy.push(k);
+    }
+    if (!legacy.length) return 0;
+    const read = (k: string): unknown[] => {
+      try {
+        const v = JSON.parse(storage.getItem(k) ?? "[]");
+        return Array.isArray(v) ? v : [];
+      } catch {
+        return [];
+      }
+    };
+    const merged = read(KEY(subject));
+    const ids = new Set(merged.map((c) => (c && typeof c === "object" ? (c as { id?: unknown }).id : undefined)));
+    for (const k of legacy)
+      for (const c of read(k)) {
+        const id = c && typeof c === "object" ? (c as { id?: unknown }).id : undefined;
+        if (typeof id !== "string" || ids.has(id)) continue;
+        ids.add(id);
+        merged.push(c);
+      }
+    if (merged.length) storage.setItem(KEY(subject), JSON.stringify(merged));
+    for (const k of legacy) storage.removeItem(k);
+    return legacy.length;
+  } catch {
+    return 0;
+  }
+}
+
 export function loadTray(subject: string): Change[] {
   try {
+    migrateTrays(subject);
     const raw = JSON.parse(localStorage.getItem(KEY(subject)) ?? "[]");
     if (!Array.isArray(raw)) return [];
     return raw.filter(

@@ -146,7 +146,8 @@ describe("13ce86fb: out of date on fact rows and channel badges", () => {
   });
   it("the facts table shows the amber mark, Newer and Also said by", () => {
     const src = readFileSync("src/Record.tsx", "utf8");
-    expect(src).toContain("{stale && <SettleMark s={stale} ctx={ctx} />}");
+    // Revision 9: every check is marked (Proof), a disputed one Contradicted, a stale one Out of date.
+    expect(src).toContain("stale ? <SettleMark s={stale} ctx={ctx} /> : <KindMark kind=\"proof\" />");
     expect(src).toContain("{stale && <NewerNotes ids={stale.outdates} ctx={ctx} />}");
     expect(src).toContain('<AlsoSaid also={also} lineId={row.line.id}');
   });

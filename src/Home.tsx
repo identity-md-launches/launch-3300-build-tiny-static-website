@@ -370,7 +370,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
       <ul className="label-cards" aria-label="The three labels">
         {LABELS.map((l) => (
           <li key={l.kind} className={`label-card label-${l.kind}`}>
-            <span className={`kind kind-${l.kind}`}><span className="dot" aria-hidden="true" />{l.word}:</span> {l.text}
+            <span className={`kind kind-${l.kind}`}><span className="dot" aria-hidden="true" />{l.word}<span className="label-colon">:</span></span> {l.text}
           </li>
         ))}
       </ul>

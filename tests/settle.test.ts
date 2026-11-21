@@ -53,7 +53,9 @@ describe("settled lines", () => {
     expect([...s.absorbed].sort()).toEqual(["P1", "P2"]);
     const c = countLines(lines);
     expect(c).toEqual({ all: 5, proven: 2, stated: 0, claimed: 2, contradicted: 1, outdated: 0, checks: 0, confirmed: 2 });
-    expect(countKinds(mergeRecord(p, []))).toEqual(c);
+    // Revision 9: a proof with fact keeps its own row in the On-chain facts table, so the record counts it there
+    // once, as Proven, even though a settled row shows it too: the count matches the rows the Proven filter renders.
+    expect(countKinds(mergeRecord(p, []))).toEqual({ ...c, all: c.all + 1, proven: c.proven + 1, checks: c.checks + 1 });
     expect(countsWords(c)).toBe("2 proven, 0 stated, 2 claimed, 1 contradicted");
     // A partly-confirmed line keeps its own kind and is still only said.
     expect(rowClass(byId("C3"), s.by.get("C3"))).toBe("claim");

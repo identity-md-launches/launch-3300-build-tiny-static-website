@@ -392,10 +392,11 @@ function channelAtUrl(channels: Channel[], url: string): Channel | null {
  * the subject's domain or a subdomain) or Verified on chain (tie strong). Otherwise a marked statement is shown as a
  * claim. Proof and claim stay as marked.
  *
- * Where the line was published is read from its cited URLs first: when it cites any http(s) URL, every one of them
- * must be on the subject's domain (or a subdomain) or at or under such a listed channel. A name match on `by` can
- * never turn an outside URL into a statement. Only a line that cites no URL at all is matched by its publisher's
- * name or handle.
+ * Where the line was published is read from its cited URLs first. When it cites any http(s) URL, at least one of
+ * them must be the publication that made it: a page on the subject's domain (or a subdomain), or at or under one
+ * of those listed channels. Further outside URLs are corroborating references and do not downgrade the line; a
+ * line that cites only outside publications is shown as a claim. A name match on `by` can never turn an outside URL
+ * into a statement. Only a line that cites no URL at all is matched by its publisher's name or handle.
  */
 export function applyLabel(line: Line, channels: Channel[], publisher: string, urls: string[], domain = ""): Line {
   if (line.marked !== "statement") return { ...line, kind: line.marked, labelNote: "", channel: null };
@@ -405,12 +406,16 @@ export function applyLabel(line: Line, channels: Channel[], publisher: string, u
       const ch = channelAtUrl(channels, u);
       return { u, ch, ok: onDomain(u, domain) || (!!ch && channelStatus(ch, domain) !== "unverified") };
     });
-    const outside = each.find((e) => !e.ok);
-    const shown = each.find((e) => e.ch)?.ch ?? null;
-    if (!outside) return { ...line, kind: "statement", labelNote: "", channel: shown ?? channelFor(channels, publisher, []) };
+    const own = each.find((e) => e.ok);
+    if (own) {
+      const byName = channelFor(channels, publisher, []);
+      const channel = each.find((e) => e.ok && e.ch)?.ch ?? (byName && channelStatus(byName, domain) !== "unverified" ? byName : null);
+      return { ...line, kind: "statement", labelNote: "", channel };
+    }
+    const outside = each[0]!;
     const labelNote = outside.ch
       ? `Marked a statement by the job. Shown as a claim because its source ${outside.u} is on the channel ${outside.ch.label || outside.ch.url}, which is not verified: it is not on the subject's domain and no contract, ENS record or deployer wallet points to it.`
-      : `Marked a statement by the job. Shown as a claim because its source ${outside.u} is not on the subject's domain or one of the record's verified channels.`;
+      : `Marked a statement by the job. Shown as a claim because ${published.length > 1 ? "none of its sources is" : `its source ${outside.u} is not`} on the subject's domain or one of the record's verified channels.`;
     return { ...line, kind: "claim", labelNote, channel: outside.ch };
   }
   const ch = channelFor(channels, publisher, []);
@@ -746,8 +751,12 @@ export function mergeRecord(page: Page | null, jobs: SourceJob[], domain = page?
  * How many rows of each class, for the filter, section counts and Home: a settled row counts once, as Proven or
  * Contradicted, and the proof it shows is not counted again (see settle.ts).
  */
-export function countKinds(sections: { rows: { line: Line }[] }[]): Counts {
-  return countLines(sections.flatMap((s) => s.rows.map((r) => r.line)));
+export function countKinds(sections: { rows: { line: Line; origin?: { raised?: boolean } | null }[] }[]): Counts {
+  const rows = sections.flatMap((s) => s.rows);
+  const lines = rows.map((r) => r.line);
+  // A proof with a fact keeps its own row in the On-chain facts table even when a settled row shows it too.
+  const alone = new Set(rows.filter((r) => r.line.kind === "proof" && !!r.line.fact && (!r.origin || !!r.origin.raised)).map((r) => r.line.id));
+  return countLines(lines, undefined, alone);
 }
 
 /* ---------- Edits (artifacts/edit.json) ---------- */

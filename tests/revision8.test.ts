@@ -211,11 +211,11 @@ describe("D. a new source is checked against the whole record", () => {
     const { scope, byId } = shown();
     const d = disputesOf(scope, (x) => byId.has(x));
     expect(d.fromKept).toBe(true);
-    expect(d.lines.get("L1")).toEqual({ type: "outdates", by: "0xc1:N1" });
+    expect(d.lines.get("L1")).toMatchObject({ type: "outdates", by: "0xc1:N1" });
     const rows = withDisputes([{ label: "Supply", badge: { text: "Stated by Example", tone: "statement" }, status: null } as KeyRow, { label: "Website", badge: null, status: { text: "Own domain", tone: "own" } } as KeyRow], d);
     expect(rows[0]).toMatchObject({ badge: { text: "Out of date", tone: "outdated" }, disputedBy: "0xc1:N1" });
     expect(rows[1]!.disputedBy).toBeUndefined();
-    expect(sentenceDispute({ text: "Example has about 1 million tokens" }, d)).toEqual({ type: "outdates", by: "0xc1:N1" });
+    expect(sentenceDispute({ text: "Example has about 1 million tokens" }, d)).toMatchObject({ type: "outdates", by: "0xc1:N1" });
     // The sentence the visitor targeted was rewritten: it is not marked again.
     expect(sentenceDispute({ text: "Example has about 1 million tokens.", original: "x" }, d)).toBeNull();
     // One line, one Key facts row and one summary sentence; the sentence the page lacks is not counted.

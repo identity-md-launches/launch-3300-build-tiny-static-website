@@ -62,8 +62,12 @@ export function settleOf(line: Pick<Line, "kind" | "links">, proofIds: Set<strin
   const partly = pick("partly");
   // Out of date: a newer line of any kind (or a panel answer) shows that what this line reported has since changed.
   const outdates = line.links.filter((k) => k.type === "outdates" && (isAnswerRef(k.target) || lineIds.has(k.target.trim()))).map((k) => k.target.trim());
-  // A proof read at an older block can be out of date too; it is never proven or contradicted.
-  if (line.kind === "proof") return { state: outdates.length ? "outdated" : "none", confirms: [], contradicts: [], partly: [], outdates };
+  // A proof is never proven. A proof read at an older block can be out of date, and a newer line an affects list
+  // names (or a newer proof) can contradict it: it then leaves Proven for Contradicted, like any disputed line.
+  if (line.kind === "proof") {
+    const against = line.links.filter((k) => k.type === "contradicts" && (k.affects || proofIds.has(k.target.trim()))).map((k) => k.target.trim());
+    return { state: against.length ? "contradicted" : outdates.length ? "outdated" : "none", confirms: [], contradicts: against, partly: [], outdates };
+  }
   const state: SettleState = contradicts.length ? "contradicted" : outdates.length ? "outdated" : confirms.length ? "proven" : partly.length ? "partly" : "none";
   return { state, confirms, contradicts, partly, outdates };
 }
@@ -113,13 +117,15 @@ export type Counts = Record<Group | "all" | "checks" | "confirmed", number>;
 export const emptyCounts = (): Counts => ({ all: 0, proven: 0, stated: 0, claimed: 0, contradicted: 0, outdated: 0, checks: 0, confirmed: 0 });
 
 /**
- * The counts Record, the filter, Home and Key facts share. A settled row counts once; a proof that a settled row
- * already shows is not counted again. all = proven + stated + claimed + contradicted + outdated.
+ * The counts Record, the filter, Home and Key facts share, over exactly the rows the Record renders. A settled row
+ * counts once; a proof that a settled row already shows is not counted again, unless it also has its own row
+ * (`alone`: the On-chain facts table lists every proof with a fact, so such a check counts there, once, as a proof).
+ * all = proven + stated + claimed + contradicted + outdated.
  */
-export function countLines(lines: Pick<Line, "id" | "kind" | "links">[], settled = settleAll(lines)): Counts {
+export function countLines(lines: Pick<Line, "id" | "kind" | "links">[], settled = settleAll(lines), alone: Set<string> = new Set()): Counts {
   const c = emptyCounts();
   for (const l of lines) {
-    if (l.kind === "proof" && settled.absorbed.has(l.id)) continue;
+    if (l.kind === "proof" && settled.absorbed.has(l.id) && !alone.has(l.id)) continue;
     const k = rowClass(l, settled.by.get(l.id));
     c[groupOf(k)]++;
     if (k === "proof") c.checks++;

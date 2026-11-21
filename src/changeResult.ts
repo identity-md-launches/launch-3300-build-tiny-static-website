@@ -27,8 +27,11 @@ export interface LineScope {
   after: Activity[];
   /** "<artifact hash>|<line id>" of each carried-forward origin, to the page line that carries it now. */
   carried: Map<string, string>;
-  /** The panel answers (A1…) the page shown was rebuilt with, so an answer a changes job names is found by its URL. */
-  pageAnswers?: { n: number; url: string }[];
+  /**
+   * The panel answers (A1…) the record shown names: those the page shown was rebuilt with, then those completed
+   * since (model.ts shownAnswersOf), so an answer a changes job names is found by its URL or its request's keys.
+   */
+  pageAnswers?: { n: number; url: string; text?: string; keys?: string[] }[];
 }
 
 /** The carried-forward map of the page shown: every from origin, resolved to its file's artifact hash. */
@@ -86,7 +89,7 @@ function answerInPage(raw: string, a: Activity, scope: LineScope): string | null
   const m = /^\s*A(\d+)\s*$/i.exec(raw);
   if (!m) return null;
   const url = parsePrior(a.req.bodyJson?.objective).answers.find((x) => x.n === Number(m[1]))?.url;
-  const hit = url ? scope.pageAnswers?.find((x) => x.url === url) : undefined;
+  const hit = url ? scope.pageAnswers?.find((x) => x.url === url) ?? scope.pageAnswers?.find((x) => (x.keys ?? []).some((k) => url.includes(k))) : undefined;
   return hit ? `A${hit.n}` : null;
 }
 
@@ -147,6 +150,8 @@ export function applyChangeLinks(sections: { section: string; rows: RecordRow[] 
 export interface Dispute {
   type: Affect["type"];
   by: string;
+  /** The request id of the changes job whose affects list named it, so a later rewrite can be told from an earlier one. */
+  job?: string;
 }
 export interface Disputes {
   /** Record line ids marked Contradicted or Out of date by an affects entry. */
@@ -157,6 +162,8 @@ export interface Disputes {
   summary: Map<string, Dispute>;
   /** True when a changes job with a kept change listed anything in affects. */
   fromKept: boolean;
+  /** Each changes job's place in the order the jobs completed (request id to index). */
+  order: Map<string, number>;
 }
 
 /**
@@ -164,7 +171,7 @@ export interface Disputes {
  * newer job's entry for the same target wins; contradicts wins over outdates within one job.
  */
 export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disputes {
-  const out: Disputes = { lines: new Map(), infobox: new Map(), summary: new Map(), fromKept: false };
+  const out: Disputes = { lines: new Map(), infobox: new Map(), summary: new Map(), fromKept: false, order: new Map(scope.after.map((a, i) => [a.req.requestId, i] as const)) };
   const put = (m: Map<string, Dispute>, k: string, d: Dispute) => {
     const was = m.get(k);
     if (!was || was.type !== "contradicts" || d.type === "contradicts") m.set(k, d);
@@ -176,7 +183,7 @@ export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disp
     for (const f of a.changes.affects) {
       const by = `${key}:${f.byLine}`;
       if (!has(by)) continue;
-      const d = { type: f.type, by };
+      const d: Dispute = { type: f.type, by, job: key };
       if (f.kind === "line") {
         const t = resolveChangeTarget(f.target, a, scope, has);
         if (!t || t === by) continue;
@@ -194,14 +201,26 @@ export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disp
   return out;
 }
 
-/** The dispute on a summary sentence shown now, unless that sentence was itself rewritten by a kept change. */
-export function sentenceDispute(s: { text: string; original?: string }, d: Disputes): Dispute | null {
-  if (s.original) return null;
-  return d.summary.get(norm(s.text)) ?? null;
+/**
+ * The dispute on a summary sentence as it is shown now. An affects entry names the sentence by its text, so it is
+ * matched against the displayed text. An entry for a sentence a kept change rewrote counts only when its job came
+ * after that rewrite (it saw the new wording); one from before the rewrite was superseded by it.
+ */
+export function sentenceDispute(s: { text: string; original?: string; rewordJob?: Activity }, d: Disputes): Dispute | null {
+  const hit = d.summary.get(norm(s.text));
+  if (!hit) return null;
+  if (s.original !== undefined) {
+    // A rewrite whose job is unknown cannot be ordered: treat every entry as from before it.
+    if (!s.rewordJob) return null;
+    const rewrite = d.order.get(s.rewordJob.req.requestId) ?? -1;
+    const by = hit.job !== undefined ? d.order.get(hit.job) ?? -1 : -1;
+    if (by <= rewrite) return null;
+  }
+  return hit;
 }
 
 /** How many parts of the page shown the disputes mark: lines, Key facts rows and summary sentences. */
-export function disputedCount(d: Disputes, rowLabels: string[], sentences: { text: string; original?: string }[]): number {
+export function disputedCount(d: Disputes, rowLabels: string[], sentences: { text: string; original?: string; rewordJob?: Activity }[]): number {
   const labels = new Set(rowLabels.map((l) => l.trim().toLowerCase()));
   const rows = [...d.infobox.keys()].filter((k) => labels.has(k)).length;
   const sent = sentences.filter((s) => sentenceDispute(s, d)).length;

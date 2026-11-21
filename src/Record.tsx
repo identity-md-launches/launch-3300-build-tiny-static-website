@@ -702,10 +702,10 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
           if (proof)
             return (
               <Fragment key={t}>
-                <dt>{st!.state === "proven" ? "Proof" : "The proof shows"}</dt>
+                <dt>{st!.state === "proven" ? "Proof" : disputeWho(proof)}</dt>
                 <dd>
                   {proof.text}
-                  {proof.rerun ? <span className="block">Re-run: {proof.rerun}</span> : <span className="block small">The proof gives no re-run steps.</span>}
+                  {proof.kind === "proof" && (proof.rerun ? <span className="block">Re-run: {proof.rerun}</span> : <span className="block small">The proof gives no re-run steps.</span>)}
                 </dd>
               </Fragment>
             );
@@ -899,16 +899,19 @@ export function SettleMark({ s, ctx }: { s: Settle; ctx: Ctx }) {
   );
 }
 
-/** What the proof or panel answer shows, for a contradicted row: the proof line's text, else the answer's. */
+/** Who disputes a line, by the evidence it is: a proof, a newer claim or statement, or a panel answer. */
+const disputeWho = (l: Pick<Line, "kind">) => (l.kind === "proof" ? "The proof shows" : l.kind === "claim" ? "A newer claim says" : "A newer statement says");
+
+/** What the disputing line or panel answer says, for a contradicted row, introduced by what kind of evidence it is. */
 function shownBy(t: string, ctx: Ctx): { who: string; text: string } {
   const proof = ctx.m.resolve(t);
-  if (proof) return { who: "The proof shows", text: proof.text };
+  if (proof) return { who: disputeWho(proof), text: proof.text };
   const a = ctx.m.answerRef(t);
   return { who: "The panel answered", text: a?.text || "an answer not shown in this record" };
 }
 
 /** "Newer: <the newer line>" under an Out of date row, each opening that line. */
-function NewerNotes({ ids, ctx }: { ids: string[]; ctx: Ctx }) {
+function NewerNotes({ ids, ctx, contradicted }: { ids: string[]; ctx: Ctx; contradicted?: boolean }) {
   return (
     <ul className="settled">
       {ids.map((t) => {
@@ -916,8 +919,8 @@ function NewerNotes({ ids, ctx }: { ids: string[]; ctx: Ctx }) {
         const a = newer ? null : ctx.m.answerRef(t);
         if (!newer && !a) return null;
         return (
-          <li key={t} className="settled-outdates">
-            <span className="settled-word">Newer:</span>{" "}
+          <li key={t} className={contradicted ? "settled-contradicts" : "settled-outdates"}>
+            <span className="settled-word">{contradicted ? `${newer ? disputeWho(newer) : "The panel answered"}:` : "Newer:"}</span>{" "}
             {newer ? (
               <a
                 href={to(lineAnchor(newer.id))}
@@ -1004,7 +1007,7 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
             <span className="row-text">
               <SettleMark s={settled} ctx={ctx} />
               <span className="block">
-                <span className="said-word">Said:</span> {formatNumbers(line.text)}
+                <span className="said-word">{line.kind === "proof" ? "Checked:" : "Said:"}</span> {formatNumbers(line.text)}
               </span>
               {settled.contradicts.map((t) => {
                 const b = shownBy(t, ctx);
@@ -1074,15 +1077,17 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
           const target = lineTarget(row.line.id || f.name, `${f.name}: ${f.value}${f.unit ? ` ${f.unit}` : ""}`, row.line.id ? originOfLine(row.line.id, ctx.m.scope) : null);
           const st = ctx.settled.by.get(row.line.id);
           const stale = st?.state === "outdated" ? st : null;
+          const disputed = st?.state === "contradicted" ? st : null;
           const also = alsoSaidBy(row, ctx);
           return (
             <Fragment key={row.line.id || f.name}>
-              <tr id={anchor} className={`fact-row has-pencil${stale ? " row-outdated" : ""}${open ? " is-open" : ""}`} onClick={onRowClick(toggle)}>
+              <tr id={anchor} className={`fact-row has-pencil${stale ? " row-outdated" : ""}${disputed ? " row-contradicted" : ""}${open ? " is-open" : ""}`} onClick={onRowClick(toggle)}>
                 <th scope="row">
                   <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={toggle}>
                     <span className="chev" aria-hidden="true" />
                     <span className="row-text">
-                      {stale && <SettleMark s={stale} ctx={ctx} />}
+                      {/* Each check says what it is, as a standalone proof row does; a disputed one says so instead. */}
+                      {disputed ? <SettleMark s={disputed} ctx={ctx} /> : stale ? <SettleMark s={stale} ctx={ctx} /> : <KindMark kind="proof" />}
                       <span className="block">{f.name}</span>
                     </span>
                   </button>
@@ -1112,9 +1117,10 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                   </td>
                 </tr>
               )}
-              {(stale || also.length > 0) && (
+              {(stale || disputed || also.length > 0) && (
                 <tr className="fact-links">
                   <td colSpan={3}>
+                    {disputed && <NewerNotes ids={disputed.contradicts} ctx={ctx} contradicted />}
                     {stale && <NewerNotes ids={stale.outdates} ctx={ctx} />}
                     <AlsoSaid also={also} lineId={row.line.id} open={open} toggle={toggle} ctx={ctx} />
                   </td>
@@ -1288,7 +1294,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
       const hasOpen = inSection.some((l) => ui.openSet.has(l.id));
       const open = narrowing ? narrowState[section] ?? true : sectionOpen[section] ?? hasOpen;
       // The rows shown, counted by the shared rule: a settled row once, a proof it already shows not again.
-      return { section, rows, table, counts: countLines(inSection, settled), open };
+      return { section, rows, table, counts: countLines(inSection, settled, facts), open };
     })
     .filter((s) => s.rows.length > 0 || s.table.length > 0);
   // A link to one line opens it, and its section, when the tab is reached by that link; a search or the

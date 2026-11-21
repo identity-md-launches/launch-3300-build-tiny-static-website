@@ -23,8 +23,8 @@ export const chainName = (id: number | string) => CHAIN_CHOICES.find((c) => Stri
 const HOST = /^(?=.{3,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}[a-z0-9]$/;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
-/** A domain from what a visitor typed: a bare host or a URL. Lowercase, no "www.", no port or path. "" when not a domain. */
-export function normDomain(raw: string): string {
+/** The full hostname of what a visitor typed (a bare host or a URL): lowercase, no port, path or trailing dot. "" when not a host. */
+function hostOfInput(raw: string): string {
   const t = raw.trim().toLowerCase();
   if (!t) return "";
   let host = "";
@@ -33,21 +33,32 @@ export function normDomain(raw: string): string {
   } catch {
     return "";
   }
-  host = host.replace(/^www\./, "").replace(/\.$/, "");
+  host = host.replace(/\.$/, "");
+  return HOST.test(host) ? host : "";
+}
+
+/** A domain from what a visitor typed: a bare host or a URL. Lowercase, no "www.", no port or path. "" when not a domain. */
+export function normDomain(raw: string): string {
+  const host = hostOfInput(raw).replace(/^www\./, "");
   return HOST.test(host) ? host : "";
 }
 
 /**
- * The project's own domain from what a visitor typed: the registrable domain of its host, by the public suffix
- * rules (src/psl.ts). "app.uniswap.org" and "docs.uniswap.org" give "uniswap.org"; on a shared host such as
- * github.io, vercel.app or imd.site a project owns only its own subdomain ("me.github.io"). "" when not a domain.
+ * The project's own domain from what a visitor typed: the registrable domain of its full hostname, by the Public
+ * Suffix List (src/psl.ts), resolved before any "www." handling. "app.uniswap.org" and "docs.uniswap.org" give
+ * "uniswap.org"; on a shared host such as github.io, vercel.app or imd.site a project owns only its own subdomain
+ * ("me.github.io"); "app.test.k12.ak.us" gives "test.k12.ak.us". "" when not a domain, and for a bare public suffix
+ * such as "github.io" or "k12.ak.us": no one project owns it.
  */
 export function subjectDomain(raw: string): string {
-  const host = normDomain(raw);
+  const host = hostOfInput(raw);
   if (!host) return "";
   const d = registrableDomain(host);
-  return HOST.test(d) ? d : host;
+  return d && HOST.test(d) ? d : "";
 }
+
+/** True when what a visitor typed is a host that is itself a public suffix (github.io, co.uk): not a project's domain. */
+export const isBareSuffix = (raw: string) => !!hostOfInput(raw) && !subjectDomain(raw);
 
 /**
  * The subject id a stored or linked id now stands for: a domain id becomes its registrable domain, so an older
@@ -67,7 +78,7 @@ export const isAddress = (a: string) => ADDRESS.test(a.trim());
 export function isSubjectId(id: unknown): id is string {
   if (typeof id !== "string") return false;
   if (/^\d{1,12}:0x[0-9a-f]{40}$/.test(id)) return true;
-  return normDomain(id) === id;
+  return normDomain(id) === id || subjectDomain(id) === id;
 }
 
 export interface SubjectInput {
@@ -90,6 +101,7 @@ export function validateSubject(s: SubjectInput): { domain?: string; address?: s
   const domain = s.domain.trim();
   const address = s.address.trim();
   if (domain && !normDomain(domain)) e.domain = "Write a domain such as example.com.";
+  else if (domain && isBareSuffix(domain)) e.domain = `${normDomain(domain)} is shared by many sites. Write the project's own address on it, such as name.${normDomain(domain)}.`;
   if (address && !isAddress(address)) e.address = "Use a contract address: 0x and 40 hex characters.";
   if (address && (!/^\d{1,12}$/.test(s.chain.trim()) || Number(s.chain) < 1)) e.chain = "Choose the chain the contract is on, or write its chain ID as a number, such as 137.";
   else if (!address && s.chain.trim() && !/^\d{1,12}$/.test(s.chain.trim())) e.chain = "Write the chain ID as a number, such as 137.";

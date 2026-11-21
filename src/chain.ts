@@ -279,7 +279,9 @@ export function fromStored(v: unknown): ScanState | null {
     if (!s || s.v !== 1 || s.intake !== INTAKE.toLowerCase() || !Array.isArray(s.requests) || !Array.isArray(s.completions)) return null;
     return {
       lastBlock: BigInt(s.lastBlock),
-      requests: s.requests.map((r) => ({ ...r, amount: BigInt(r.amount), blockNumber: BigInt(r.blockNumber) })),
+      // A request stored before subjects were registrable domains keeps the id it was read with (app.uniswap.org):
+      // canonicalise it here, before grouping or an incremental refresh, so it joins its record (uniswap.org).
+      requests: s.requests.map((r) => ({ ...r, subject: typeof r.subject === "string" ? canonicalId(r.subject) : r.subject, amount: BigInt(r.amount), blockNumber: BigInt(r.blockNumber) })),
       completions: new Map(s.completions.map((c) => [c.requestId.toLowerCase(), { ...c, blockNumber: BigInt(c.blockNumber) }] as const)),
     };
   } catch {

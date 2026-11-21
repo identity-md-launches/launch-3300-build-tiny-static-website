@@ -10,10 +10,12 @@ and reads.
 
 A subject is one project, never a person and never a name:
 
-- by its **domain**: its registrable domain in lowercase, such as `imd.fun` or `uniswap.org`. The public suffix
-  rules decide it (`app.uniswap.org`, `www.uniswap.org` and `docs.uniswap.org` are all `uniswap.org`), and shared
-  hosts such as `github.io`, `vercel.app`, `netlify.app`, `pages.dev` and `imd.site` count as suffixes, so a
-  project on one of them owns only its own subdomain (`me.github.io`). A subject's **own domain** is that
+- by its **domain**: its registrable domain in lowercase, such as `imd.fun` or `uniswap.org`. The whole Public
+  Suffix List decides it, ICANN and private rules with their wildcards and exceptions, resolved from the full
+  hostname (`app.uniswap.org`, `www.uniswap.org` and `docs.uniswap.org` are all `uniswap.org`;
+  `app.test.k12.ak.us` is `test.k12.ak.us`), and shared hosts such as `github.io`, `vercel.app`, `netlify.app`,
+  `pages.dev` and `imd.site` count as suffixes, so a project on one of them owns only its own subdomain
+  (`me.github.io`). A bare public suffix (`github.io`, `co.uk`) is never a subject. A subject's **own domain** is that
   registrable domain and every subdomain of it. A project added by a subdomain gets the registrable domain as its
   id; requests tagged with an older subdomain id (`app.uniswap.org`) belong to the registrable domain's record, and
   `#/s/app.uniswap.org` opens `uniswap.org`;
