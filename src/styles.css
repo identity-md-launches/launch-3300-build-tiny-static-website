@@ -713,3 +713,13 @@ body.has-tray main { padding-bottom: 9rem; }
 .plain-q { font-size: var(--text-body); font-weight: 600; overflow-wrap: anywhere; }
 .running { font-size: var(--text-small); color: var(--amber-800); background: var(--amber-50); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); }
 .running a { color: inherit; font-weight: 600; }
+
+/* A newer source a kept change found disputes parts of the page (its affects list). */
+.disputed-note { font-size: var(--text-small); color: var(--amber-800); background: var(--amber-50); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); margin: 0; }
+.disputed-note a { color: inherit; font-weight: 600; }
+.dispute-dot { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-block: -6px; }
+.dispute-dot .dot { width: 9px; height: 9px; border-radius: 50%; }
+.dispute-outdates .dot { background: var(--amber-500); }
+.dispute-contradicts .dot { background: var(--red-800); }
+@media (hover: hover) { .dispute-dot:hover { background: var(--color-bg-hover); } }
+.settled-agrees { color: var(--color-text-secondary); }

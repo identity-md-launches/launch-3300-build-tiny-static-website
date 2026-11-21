@@ -40,7 +40,13 @@ and reads.
 
 A subject is one project, never a person and never a name:
 
-- by its **domain**: the lowercase host without \`www.\`, such as \`imd.fun\`;
+- by its **domain**: its registrable domain in lowercase, such as \`imd.fun\` or \`uniswap.org\`. The public suffix
+  rules decide it (\`app.uniswap.org\`, \`www.uniswap.org\` and \`docs.uniswap.org\` are all \`uniswap.org\`), and shared
+  hosts such as \`github.io\`, \`vercel.app\`, \`netlify.app\`, \`pages.dev\` and \`imd.site\` count as suffixes, so a
+  project on one of them owns only its own subdomain (\`me.github.io\`). A subject's **own domain** is that
+  registrable domain and every subdomain of it. A project added by a subdomain gets the registrable domain as its
+  id; requests tagged with an older subdomain id (\`app.uniswap.org\`) belong to the registrable domain's record, and
+  \`#/s/app.uniswap.org\` opens \`uniswap.org\`;
 - or, when it has no domain, by **chain id and contract address**: \`<chain id>:<address in lowercase>\`,
   such as \`1:0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7\`. Any chain id: when an address has no page yet, the
   home bar's chain picker names six chains and takes any other as a number under "Other chain ID" (such as \`137:0x…\`).
@@ -248,13 +254,26 @@ The whole objective may be at most ${MAX_OBJECTIVE.toLocaleString("en-US")} char
 
 A changes job writes \`artifacts/changes.json\`: \`items[{n,type,target,verdict,why,lines[],final_text}]\` (verdict
 \`kept\` or \`not_kept\`), \`sources[{id,url,type,publisher,published_at,read_at,could_open,read_via,about_subject}]\`,
-\`lines[{id,source,section,text,kind,by,quote,rerun,fact{name,value,unit},links[{type,target}]}]\` and \`notes\`. The
+\`lines[{id,source,section,text,kind,by,quote,rerun,fact{name,value,unit},links[{type,target}]}]\`,
+\`affects[{kind,target,type,by_line}]\` (kind \`line\`, \`infobox\` or \`summary\`; type \`contradicts\` or \`outdates\`) and \`notes\`. The
 site shows its new lines in the record, "raised by <payer>", labelled by the same rule as added-source lines (a proof
 only with re-run steps). Each new line's link names its target; the target row shows "Contradicted by", "Confirmed by",
 "Partly confirmed by" or "Context:" with the new line under it, and a new proof settles the target as Proven or
 Contradicted by the settled-line rules. A kept \`reword\` replaces that summary sentence with \`final_text\`, marked
 "reworded by <payer>". Activity lists every change with "Kept" or "Not kept: <why>". A rebuild folds changes results
-in like sources results, keeping their links (link types \`confirms\`, \`partly\`, \`contradicts\`, \`context\`).
+in like sources results, keeping their links (link types \`confirms\`, \`partly\`, \`contradicts\`, \`context\`,
+\`outdates\`, \`agrees\`).
+
+**A new source is checked against the whole record.** The job compares each new line with every existing line, not
+only its target, and links clear cases: \`confirms\`, \`partly\`, \`contradicts\`, \`outdates\`, or \`agrees\` (the same
+thing said by another speaker; shown as "Also said by another speaker"). A link from a new statement or claim to an
+existing proof line or panel answer says what that proof or answer does to the new line, and stays on it (it can
+make the new line Proven or Contradicted). Everything a new line contradicts or outdates is listed in \`affects\`,
+and the site marks it all at once: a line with its Contradicted or Out of date status; a Key facts row (by label)
+with "Contradicted" or "Out of date" in place of its badge; a summary sentence (by its exact text) with a small red
+or amber dot that opens the new line. Only the sentence the visitor targeted is rewritten; the rest wait for the
+rebuild. When a changes job with a kept change lists anything in \`affects\`, Overview says "A newer source disputes
+N parts of this page. Rebuild to update them." until a rebuild folds that job in.
 
 ## Suggest an edit body (older: no longer offered; its results still show and fold in)
 
@@ -400,10 +419,13 @@ Its details show the proof's re-run steps and the original quote. The proof is n
 (proofs with \`fact\` stay in the On-chain facts table). With a \`contradicts\` link the row leads with a red
 "Contradicted" marker and shows both sentences: what was said, and what the proof or panel answer shows.
 Contradicts wins over confirms. A \`partly\` link keeps the line's own kind marker, with "Partly confirmed by: ..."
-under it. Section counts, the filter buttons (All, Proven, Contradicted, Proof, Statement, Claim, Only said), the
-home list and the Key facts badges ("Proven", "Contradicted", else "Proven on chain" / "Stated by" / "Reported by")
-all count a settled row once, as Proven or Contradicted; "Only said" is every statement and claim with no
-confirms or contradicts link. The speaker always stays on the row.
+under it. Every count (the home list, section headers and the filter buttons) uses the same groups: **Proven** =
+proof lines plus statements and claims with a confirming link; **Stated** = statements with no confirming link;
+**Claimed** = claims with no confirming link; **Contradicted** and **Out of date** only when above zero. A settled
+row counts once, and a proof a settled row already shows is not counted again. The Record filter's Proven button
+shows both kinds; each row still says which it is: a proof row reads "Proof, a check in its own right", a confirmed
+row "Proven" with "Stated by <channel>, then confirmed" or "Claimed by <who>, then confirmed". The Key facts badges
+read "Proven", "Contradicted", else "Proven on chain" / "Stated by" / "Reported by". The speaker always stays on the row.
 
 **Loading.** The site keeps the last block it scanned and the requests and completions it found in the browser's
 IndexedDB (database \`imd-record\`, store \`scan\`), shows them at once on a return visit, then reads only

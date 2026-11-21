@@ -1,5 +1,5 @@
 /** The home list, each subject's five tabs, and which tab a link opens. Hash routes only: the export is static. */
-import { DEFAULT_SUBJECT, isSubjectId } from "./subject";
+import { canonicalId, DEFAULT_SUBJECT, isSubjectId } from "./subject";
 
 export const TABS = [
   { id: "overview", label: "Overview" },
@@ -55,7 +55,8 @@ export function routeOf(hash: string): Route {
   if (m) {
     const id = m[1]!.toLowerCase();
     if (!isSubjectId(id)) return { subject: null, tab: "overview", target: null, bad: m[1]! };
-    return { subject: id, ...inSubject(m[2] ?? "") };
+    // An older link to a subdomain id (#/s/app.uniswap.org) opens the registrable domain's record (uniswap.org).
+    return { subject: canonicalId(id), ...inSubject(m[2] ?? "") };
   }
   if (h.startsWith("/")) return { subject: null, tab: "overview", target: null };
   return { subject: DEFAULT_SUBJECT, ...inSubject(h) };

@@ -2,7 +2,7 @@
  * The home bar, which both searches and adds, and the record view's search and repeat check. Pure, for tests.
  */
 import type { Kind, Line } from "./page";
-import { isAddress, normDomain } from "./subject";
+import { isAddress, subjectDomain } from "./subject";
 
 export type Lookup =
   | { kind: "empty" }
@@ -23,7 +23,8 @@ export function parseLookup(raw: string): Lookup {
   if (pair && Number(pair[1]) > 0) return { kind: "address", address: pair[2]!.toLowerCase(), chainId: Number(pair[1]) };
   if (isAddress(t)) return { kind: "address", address: t.toLowerCase(), chainId: null };
   if (/\s/.test(t)) return { kind: "invalid" };
-  const domain = normDomain(t);
+  // A subdomain (app., www., docs.) names the project of its registrable domain.
+  const domain = subjectDomain(t);
   return domain ? { kind: "domain", domain } : { kind: "invalid" };
 }
 

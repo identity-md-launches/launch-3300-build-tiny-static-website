@@ -1,5 +1,6 @@
 /** Turns untrusted page.json and lines.json into plain strings. Nothing here is ever rendered as HTML. */
 import { countLines, type Counts } from "./settle";
+import { sameSite } from "./psl";
 
 export const SECTIONS = ["what_it_does", "how_it_works", "money", "people", "on_chain", "history"] as const;
 export const SECTION_TITLES: Record<string, string> = {
@@ -67,8 +68,13 @@ export interface LogoSource {
 }
 export interface LineLink {
   /** confirms: establishes the whole sentence as written; partly: only part of it; contradicts: shows it wrong. */
-  type: "confirms" | "contradicts" | "partly" | "context" | "outdates";
+  type: "confirms" | "contradicts" | "partly" | "context" | "outdates" | "agrees";
   target: string;
+  /**
+   * Set on a link a changes result's affects list put on an existing line: the newer line it names marks this one
+   * Contradicted or Out of date at once, whatever its kind, until a rebuild folds the change in.
+   */
+  affects?: boolean;
 }
 /** A row of the key facts box: label, value, an optional link and the line ids it rests on. */
 export interface InfoRow {
@@ -180,7 +186,7 @@ function parseLinks(v: unknown): LineLink[] {
       const o = obj(x);
       const t = str(o.type, 32).toLowerCase();
       const target = str(o.target, 64).trim();
-      return (t === "confirms" || t === "contradicts" || t === "partly" || t === "context" || t === "outdates") && target ? [{ type: t as LineLink["type"], target }] : [];
+      return (t === "confirms" || t === "contradicts" || t === "partly" || t === "context" || t === "outdates" || t === "agrees") && target ? [{ type: t as LineLink["type"], target }] : [];
     });
 }
 
@@ -324,11 +330,13 @@ const norm = (url: string) => {
  */
 export type ChannelStatus = "own" | "verified" | "unverified";
 export const STATUS_WORDS: Record<ChannelStatus, string> = { own: "Own domain", verified: "Verified on chain", unverified: "Not verified" };
-/** True when url's host is the domain or a subdomain of it. */
+/**
+ * True when url's host is the subject's own domain: the registrable domain of `domain` (public suffix rules, see
+ * src/psl.ts) or any subdomain of it. A subject recorded as app.uniswap.org owns uniswap.org and *.uniswap.org; a
+ * project on a shared host (me.github.io) owns only its own subdomain.
+ */
 export function onDomain(url: string, domain: string): boolean {
-  const d = domain.trim().toLowerCase().replace(/^www\./, "");
-  const h = hostOf(url).toLowerCase();
-  return !!d && !!h && (h === d || h.endsWith(`.${d}`));
+  return sameSite(hostOf(url), domain);
 }
 export function channelStatus(c: Pick<Channel, "url" | "tie">, domain: string): ChannelStatus {
   if (onDomain(c.url, domain)) return "own";
@@ -872,8 +880,33 @@ export interface ChangeVerdict {
   lines: string[];
   finalText: string;
 }
+/**
+ * One entry of a changes result's affects list: an existing line (as file and id, such as F1:L3), an infobox row
+ * (its label) or a summary sentence (its text) that a new line contradicts or outdates.
+ */
+export interface Affect {
+  kind: "line" | "infobox" | "summary";
+  target: string;
+  type: "contradicts" | "outdates";
+  byLine: string;
+}
+export function parseAffects(v: unknown): Affect[] {
+  return arr(v)
+    .slice(0, 200)
+    .flatMap((x): Affect[] => {
+      const o = obj(x);
+      const kind = str(o.kind, 16).toLowerCase();
+      const type = str(o.type, 16).toLowerCase();
+      const target = str(o.target, 600).trim();
+      const byLine = str(o.by_line ?? o.byLine, 64).trim();
+      if ((kind !== "line" && kind !== "infobox" && kind !== "summary") || (type !== "contradicts" && type !== "outdates") || !target || !byLine) return [];
+      return [{ kind, type, target, byLine }];
+    });
+}
 export interface ChangesResult {
   items: ChangeVerdict[];
+  /** What the new lines contradict or outdate elsewhere in the record. */
+  affects: Affect[];
   /** The new sources and lines, read like an added-source result, with proofs (re-run steps given) and links. */
   data: SourceLines;
 }
@@ -895,6 +928,7 @@ export function parseChanges(text: string): ChangesResult {
           finalText: str(o.final_text, 600),
         };
       }),
+    affects: parseAffects(j.affects),
     data: parseLines(text, { changes: true }),
   };
 }

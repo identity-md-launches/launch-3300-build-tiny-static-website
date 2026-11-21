@@ -36,7 +36,7 @@ import {
 } from "./page";
 import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
-import { applyChangeLinks, applyRewords, carriedOf, lineInFile, type LineScope, type Reworded } from "./changeResult";
+import { applyChangeLinks, applyRewords, carriedOf, disputesOf, lineInFile, type Disputes, type LineScope, type Reworded } from "./changeResult";
 import { mergeRepeats, type KnownContract } from "./lookup";
 import { dropUnresolvedAnswers, type UnresolvedRef } from "./settle";
 import { readDate } from "./dates";
@@ -175,7 +175,7 @@ export function coreOf(items: Activity[], history?: HistoryReads): Core {
     .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash), raised: isChangesJob(a.req) }));
   // A changes result's new lines point at the line they are about; the target row shows what each does to it,
   // also when a rebuild has since carried that line forward under another id.
-  const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective) };
+  const scope: LineScope = { pageHash: latest?.fileHash ?? null, after, carried: carriedOf(page, latest?.req.bodyJson?.objective), pageAnswers: parsePrior(latest?.req.bodyJson?.objective).answers };
   // Lines with the same text show as one row (see mergeRepeats); counts and filters count it once.
   const repeats = mergeRepeats(applyChangeLinks(mergeRecord(page, jobs, page?.domain || domainOfId(items[0]?.req.subject ?? "")), scope));
   // A link to a panel answer the page's rebuild was not given settles nothing; Page upkeep lists it.
@@ -482,8 +482,8 @@ export function statusText(s: FirstPageStatus): string {
  */
 export interface Digest {
   type: "digest";
-  /** 3 since the digest counts panel answers and keeps failed reads apart; older digests are read again. */
-  v: 3;
+  /** 4 since counts are grouped as proven, stated and claimed; older digests are read again. */
+  v: 4;
   id: string;
   /** The completed results it was taken from; a different list means newer results exist. */
   sig: string;
@@ -527,7 +527,7 @@ export function digestOf(id: string, list: Activity[]): Digest | null {
   const s = summaryOf(id, list, core);
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
-  return { type: "digest", v: 3, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
+  return { type: "digest", v: 4, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
 }
 
 /** Results and panel answers still to fold into the page shown: the number the out-of-date note gives. */
@@ -664,6 +664,8 @@ export interface RecordModel {
   pendingRebuild: Activity | null;
   sourceList: ListedSource[];
   counts: ReturnType<typeof countKinds>;
+  /** What the affects lists of changes jobs not yet folded in mark as disputed (see changeResult.ts). */
+  disputes: Disputes;
 }
 
 /** The page's channels as <CHANNELS> lists them: http(s) URLs only, with their ties. */
@@ -756,6 +758,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
 
   const sourceList = useMemo(() => allSources(page, jobs), [page, jobs]);
   const byId = useMemo(() => new Map(sections.flatMap((s) => s.rows.flatMap((r) => [r, ...(r.same ?? [])].map((x) => [x.line.id, x.line] as const)))), [sections]);
+  const disputes = useMemo(() => disputesOf(scope, (x) => byId.has(x)), [scope, byId]);
   // Page lines keep their own ids; lines of a sources or edit job are "<request id>:<id>" (see mergeRecord).
   const resolve = (id: string) => byId.get(id.trim());
 
@@ -909,6 +912,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     pendingRebuild: pendingRebuildOf(items ?? []),
     sourceList,
     counts,
+    disputes,
   };
 }
 

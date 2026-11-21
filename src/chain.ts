@@ -2,7 +2,7 @@
 import { decodeAbiParameters, hexToString, trim, type Hex } from "viem";
 import { ACTIONS, INTAKE, LAUNCH_BLOCK, RPCS, TAG_NEEDLE, TOPIC_COMPLETED, TOPIC_REQUESTED } from "./config";
 import { matchOracleQuestion } from "./bodies";
-import { DEFAULT_SUBJECT, isSubjectId } from "./subject";
+import { canonicalId, DEFAULT_SUBJECT, isSubjectId } from "./subject";
 
 export interface RawLog {
   topics: Hex[];
@@ -176,8 +176,9 @@ export function decodeRequested(log: RawLog): TaggedRequest | null {
  */
 export function subjectOfTag(v: unknown, fallback?: string): string | null {
   const raw = v && typeof v === "object" ? (v as { subject?: unknown }).subject : v;
-  if (raw === undefined || raw === null) return fallback ?? DEFAULT_SUBJECT;
-  return isSubjectId(raw) ? raw : null;
+  // A subject added by a subdomain (app.uniswap.org) belongs to its registrable domain's record (uniswap.org).
+  if (raw === undefined || raw === null) return canonicalId(fallback ?? DEFAULT_SUBJECT);
+  return isSubjectId(raw) ? canonicalId(raw) : null;
 }
 
 export interface Completion {

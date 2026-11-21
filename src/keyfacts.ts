@@ -30,7 +30,11 @@ export interface KeyRow {
   /** The value as a list, only when the result gave one (infobox values): each entry on its own line. */
   values: string[];
   /** The Tokens row: one entry per token the value lists, each shown on its own line. Empty on other rows. */
-  tokens: TokenItem[];
+  tokens: TokenItem[];  /**
+   * Set when a newer source a kept change found contradicts or outdates this row (its affects list): the record
+   * id of that newer line. The badge then reads "Contradicted" or "Out of date" in place of its usual one.
+   */
+  disputedBy?: string;
 }
 
 /** One token of a Tokens value: its symbol, what it is for, its contract address and chain ("" when the value gives none). */

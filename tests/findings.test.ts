@@ -173,11 +173,10 @@ describe("a legacy bare dropped id finds its file (45192b1a)", () => {
 
 describe("the jobs' statement rule is the site's label rule (1154ad1b)", () => {
   it("rebuild, sources and edit objectives make Own domain and tie strong channels statements, nothing else", () => {
-    for (const t of [INSTRUCTIONS.rebuild.text, SOURCE_TEMPLATE, EDIT_TEMPLATE]) {
-      expect(t).not.toMatch(/tie (is )?strong or weak/);
-      expect(t).toContain("on the subject's domain or a subdomain of it");
-    }
-    expect(INSTRUCTIONS.rebuild.text).toContain("A line is a statement only if published on a listed channel on the subject's domain or a subdomain of it, or with tie strong; anything else is a claim.");
+    for (const t of [INSTRUCTIONS.rebuild.text, SOURCE_TEMPLATE, EDIT_TEMPLATE]) expect(t).not.toMatch(/tie (is )?strong or weak/);
+    for (const t of [SOURCE_TEMPLATE, EDIT_TEMPLATE]) expect(t).toContain("on the subject's domain or a subdomain of it");
+    // The rebuild now names the registrable domain: uniswap.org and every subdomain of it.
+    expect(INSTRUCTIONS.rebuild.text).toContain("A line is a statement only if published on a listed channel on the subject's own domain (its registrable domain or any subdomain of it), or with tie strong; anything else is a claim.");
     const o = sourceObjective(["https://docs.imd.fun/about"], [{ url: "https://docs.imd.fun", tie: "none" }], "", refFromId("imd.fun"));
     expect(o).toContain("If the publisher is a listed channel on the subject's domain or a subdomain of it, or a listed channel with tie strong, its lines have kind statement;");
   });

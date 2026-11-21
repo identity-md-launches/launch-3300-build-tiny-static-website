@@ -111,7 +111,7 @@ describe("a failed supporting result does not blank a readable page (440cb977)",
     const lines = act("source", { block: 20, sourcesError: "artifact answered 503" });
     const d = digestOf("example.com", [page, lines])!;
     expect(d).toMatchObject({ name: "Readable", oneLine: "Readable does things", hasPage: true, failedReads: 1, logo: "none" });
-    expect(d.counts.claim).toBe(1);
+    expect(d.counts.claimed).toBe(1);
     // The unread result is not folded in: the row also says the page is out of date.
     expect(d.unfolded).toBe(1);
     const [row] = subjectSummaries([{ ...page, filesRead: false }, { ...lines, filesRead: false }], new Map([["example.com", d]]));

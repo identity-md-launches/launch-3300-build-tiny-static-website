@@ -3,6 +3,7 @@
  * how it works. Submitting the bar opens a subject that exists, or offers "Add this project", which opens the
  * first-rebuild dialog.
  */
+import { GROUP_TONE, GROUP_WORDS, shownGroups } from "./settle";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { outdatedText, statusText, subjectSummaries, type Digest, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
@@ -78,11 +79,12 @@ function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading
         <p className="subject-meta small">
           {s.counts && (
             <>
-              {s.counts.proven > 0 && <span className="count-kind kind-proven"><span className="dot" aria-hidden="true" />{s.counts.proven.toLocaleString("en-US")} proven</span>}
-              {s.counts.contradicted > 0 && <span className="count-kind kind-contradicted"><span className="dot" aria-hidden="true" />{s.counts.contradicted.toLocaleString("en-US")} contradicted</span>}
-              <span className="count-kind kind-proof"><span className="dot" aria-hidden="true" />{plural(s.counts.proof, "proof")}</span>
-              <span className="count-kind kind-statement"><span className="dot" aria-hidden="true" />{plural(s.counts.statement, "statement")}</span>
-              <span className="count-kind kind-claim"><span className="dot" aria-hidden="true" />{plural(s.counts.claim, "claim")}</span>
+              {shownGroups(s.counts).map((g) => (
+                <span key={g} className={`count-kind kind-${GROUP_TONE[g]}`}>
+                  <span className="dot" aria-hidden="true" />
+                  {s.counts![g].toLocaleString("en-US")} {GROUP_WORDS[g].toLowerCase()}
+                </span>
+              ))}
             </>
           )}
           <span>Changed {when(s.changed)}</span>

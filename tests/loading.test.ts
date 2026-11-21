@@ -116,7 +116,7 @@ describe("storage", () => {
   });
 
   it("the home list shows a stored digest per subject without reading the page file again", () => {
-    const digest: Digest = { type: "digest", v: 3, unfolded: 0, pageReq: null, failedReads: 0, logo: "ok", id: "example.com", sig: "0x01", name: "Example", oneLine: "Does things", counts: { all: 3, proven: 1, contradicted: 0, outdated: 0, proof: 1, statement: 1, claim: 0, said: 1 }, logoHash: "ab", changed: 5, hasPage: true, main: "", contracts: [], status: null };
+    const digest: Digest = { type: "digest", v: 4, unfolded: 0, pageReq: null, failedReads: 0, logo: "ok", id: "example.com", sig: "0x01", name: "Example", oneLine: "Does things", counts: { all: 3, proven: 2, stated: 1, claimed: 0, contradicted: 0, outdated: 0, checks: 1, confirmed: 1 }, logoHash: "ab", changed: 5, hasPage: true, main: "", contracts: [], status: null };
     const { digests, logos } = splitDigests([digest, { type: "logo", hash: "ab", url: "data:image/png;base64,AAAA" }, { type: "logo", hash: "cd", url: "javascript:x" }]);
     expect(logos.size).toBe(1);
     const light = {
@@ -127,7 +127,7 @@ describe("storage", () => {
     expect(digestOf("example.com", [light])).toBeNull();
     const [s] = subjectSummaries([light], digests, logos);
     expect(s).toMatchObject({ name: "Example", oneLine: "Does things", hasPage: true, logo: "data:image/png;base64,AAAA", stale: false });
-    expect(s!.counts!.proven).toBe(1);
+    expect(s!.counts!.proven).toBe(2);
     // Without a digest the subject is listed by its id as unread: Home shows a placeholder row while it reads it.
     const [bare] = subjectSummaries([light]);
     expect(bare).toMatchObject({ name: "example.com", counts: null, unread: true, status: { kind: "unread" } });

@@ -173,7 +173,7 @@ describe("folded in", () => {
     const list = subjectSummaries([a, b]);
     expect(list.map((s) => s.id)).toEqual(["other.org", "example.com"]);
     expect(list[1]).toMatchObject({ name: "Example", oneLine: "Example does things", hasPage: true });
-    expect(list[1]!.counts!.claim).toBe(1);
+    expect(list[1]!.counts!.claimed).toBe(1);
     expect(list[0]!.name).toBe("other.org");
     expect(subjectRefFor("example.com", [a], a.page)).toEqual({ id: "example.com", domain: "example.com", address: A, chainId: 8453 });
   });

@@ -1,10 +1,11 @@
 /**
- * A subject is one project, named by its domain (lowercase host without "www.", such as imd.fun) or, when it
- * has none, by chain id and contract address (such as 1:0xabc…). Never by name, and never a person.
+ * A subject is one project, named by its registrable domain (lowercase, such as imd.fun or uniswap.org, never
+ * app.uniswap.org) or, when it has none, by chain id and contract address (such as 1:0xabc…). Never by name, and never a person.
  */
 
 /** Requests whose tag has no subject, and oracle questions with no "filed under" sentence, belong here. */
 export const DEFAULT_SUBJECT = "imd.fun";
+import { registrableDomain } from "./psl";
 
 /** Chains IMD's oracle check lists (POST /requests/check, 2026-11-19), offered in the forms. */
 export const CHAIN_CHOICES: { id: number; name: string }[] = [
@@ -36,8 +37,29 @@ export function normDomain(raw: string): string {
   return HOST.test(host) ? host : "";
 }
 
-/** The domain of a subject id, or "" for a chain:address id. */
-export const domainOfId = (id: string) => (/^\d+:0x[0-9a-f]{40}$/i.test(id) ? "" : normDomain(id));
+/**
+ * The project's own domain from what a visitor typed: the registrable domain of its host, by the public suffix
+ * rules (src/psl.ts). "app.uniswap.org" and "docs.uniswap.org" give "uniswap.org"; on a shared host such as
+ * github.io, vercel.app or imd.site a project owns only its own subdomain ("me.github.io"). "" when not a domain.
+ */
+export function subjectDomain(raw: string): string {
+  const host = normDomain(raw);
+  if (!host) return "";
+  const d = registrableDomain(host);
+  return HOST.test(d) ? d : host;
+}
+
+/**
+ * The subject id a stored or linked id now stands for: a domain id becomes its registrable domain, so an older
+ * subject added as app.uniswap.org opens, and is listed as, uniswap.org. A chain:address id is unchanged.
+ */
+export function canonicalId(id: string): string {
+  if (/^\d+:0x[0-9a-f]{40}$/i.test(id)) return id.toLowerCase();
+  return subjectDomain(id) || id;
+}
+
+/** The domain of a subject id (its registrable domain), or "" for a chain:address id. */
+export const domainOfId = (id: string) => (/^\d+:0x[0-9a-f]{40}$/i.test(id) ? "" : subjectDomain(id));
 
 export const isAddress = (a: string) => ADDRESS.test(a.trim());
 
@@ -54,9 +76,9 @@ export interface SubjectInput {
   chain: string;
 }
 
-/** The subject id for a form: the domain when there is one, else chain id and contract address. "" when neither is usable. */
+/** The subject id for a form: the registrable domain when there is one, else chain id and contract address. "" when neither is usable. */
 export function subjectIdOf(s: SubjectInput): string {
-  const d = normDomain(s.domain);
+  const d = subjectDomain(s.domain);
   if (d) return d;
   if (isAddress(s.address) && /^\d{1,12}$/.test(s.chain.trim()) && Number(s.chain) > 0) return `${Number(s.chain)}:${s.address.trim().toLowerCase()}`;
   return "";
@@ -99,7 +121,7 @@ export function refFromId(id: string): SubjectRef {
 /** The subject a visitor's form describes, with the contract when they gave one. */
 export function refFromInput(s: SubjectInput): SubjectRef {
   const id = subjectIdOf(s);
-  const domain = normDomain(s.domain);
+  const domain = subjectDomain(s.domain);
   const address = isAddress(s.address) ? s.address.trim() : "";
   return { id, domain, address, chainId: address && /^\d{1,12}$/.test(s.chain.trim()) && Number(s.chain) > 0 ? Number(s.chain) : null };
 }
@@ -108,7 +130,8 @@ export function refFromInput(s: SubjectInput): SubjectRef {
 export function contractFromObjective(objective: unknown, domain: string): { address: string; chainId: number } | null {
   if (typeof objective !== "string" || !domain) return null;
   const esc = domain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const m = new RegExp(`the project at ${esc}, whose main contract is (0x[0-9a-fA-F]{40}) on chain (\\d+)`).exec(objective);
+  // An older objective may name a subdomain of the subject's domain (the project at app.uniswap.org, …).
+  const m = new RegExp(`the project at (?:[a-z0-9-]+\\.)*${esc}, whose main contract is (0x[0-9a-fA-F]{40}) on chain (\\d+)`).exec(objective);
   return m ? { address: m[1]!, chainId: Number(m[2]) } : null;
 }
 

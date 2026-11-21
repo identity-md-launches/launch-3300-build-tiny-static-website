@@ -1,4 +1,5 @@
 /** The record's tabs: Overview (key facts, summary), Record (filter, sections, one facts table) and Sources. */
+import { disputedCount, sentenceDispute, type Dispute, type Disputes } from "./changeResult";
 import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
@@ -6,7 +7,7 @@ import { keyFacts, splitAddresses, type KeyRow } from "./keyfacts";
 import { addHref, subjectHref, to } from "./route";
 import { SubjectLogo } from "./Logo";
 import { findSubject, parseLookup, rowMatches, type Findable } from "./lookup";
-import { countLines, countsWords, FILTER_WORDS, FILTERS, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
+import { countLines, countsWords, FILTER_WORDS, filtersFor, GROUP_TONE, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
 import {
   blockNumber,
   channelStatus,
@@ -259,6 +260,20 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
 function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
   const b = r.status ?? r.badge;
   if (!b) return null;
+  if (r.disputedBy)
+    return (
+      <a
+        className={`badge badge-${b.tone}`}
+        href={to(lineAnchor(r.disputedBy))}
+        onClick={(e) => {
+          e.preventDefault();
+          ui.openLines([r.disputedBy!]);
+        }}
+        aria-label={`${r.label}: ${b.text}. Open the newer line that ${b.tone === "contradicted" ? "contradicts" : "outdates"} it`}
+      >
+        {b.text}
+      </a>
+    );
   const title = r.status ? STATUS_HELP[r.status.tone as ChannelStatus] : undefined;
   if (!r.lines.length)
     return (
@@ -288,7 +303,18 @@ const allLines = (m: Pick<RecordModel, "sections">) => m.sections.flatMap((s) =>
 export function useKeyFacts(m: RecordModel) {
   const all = m.sections.flatMap((s) => s.rows.map((r) => r.line));
   const sourceUrl = (l: Line) => (l.srcKeys[0] ? m.sourceList.find((s) => s.key === l.srcKeys[0])?.url ?? "" : "");
-  return keyFacts(m.page, m.resolve, all, sourceUrl);
+  const kf = keyFacts(m.page, m.resolve, all, sourceUrl);
+  return { ...kf, rows: withDisputes(kf.rows, m.disputes) };
+}
+
+/** A Key facts row a newer source contradicts or outdates reads "Contradicted" or "Out of date" in place of its badge. */
+export function withDisputes(rows: KeyRow[], d: Pick<Disputes, "infobox">): KeyRow[] {
+  return rows.map((r) => {
+    const hit = d.infobox.get(r.label.trim().toLowerCase());
+    if (!hit) return r;
+    const badge: KeyRow["badge"] = hit.type === "contradicts" ? { text: "Contradicted", tone: "contradicted" } : { text: "Out of date", tone: "outdated" };
+    return { ...r, status: null, badge, disputedBy: hit.by };
+  });
 }
 
 /** After each sentence, one small coloured dot per kind among its lines; a dot opens those lines in Record. */
@@ -342,6 +368,26 @@ function Sentence({ text, active, onOpen }: { text: string; active: boolean; onO
   );
 }
 
+/** A small amber (out of date) or red (contradicted) dot after a summary sentence a newer line disputes; it opens that line. */
+function DisputeDot({ d, ui }: { d: Dispute | null; ui: Ui }) {
+  if (!d) return null;
+  const word = d.type === "contradicts" ? "Contradicted" : "Out of date";
+  return (
+    <a
+      className={`dispute-dot dispute-${d.type}`}
+      href={to(lineAnchor(d.by))}
+      title={`${word}: a newer source disputes this sentence`}
+      aria-label={`${word}: open the newer line that disputes this sentence`}
+      onClick={(e) => {
+        e.preventDefault();
+        ui.openLines([d.by]);
+      }}
+    >
+      <span className="dot" aria-hidden="true" />
+    </a>
+  );
+}
+
 function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
   const sg = useSuggest();
   if (!m.summary.length) return null;
@@ -359,6 +405,7 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
                   <Fragment key={j}>
                     <Sentence text={s.text} active={sg.open === target.key} onOpen={() => sg.setOpen(sg.open === target.key ? null : target.key)} />
                     <SentenceDots lines={s.refs} ui={ui} />
+                    <DisputeDot d={sentenceDispute(s, m.disputes)} ui={ui} />
                     {s.rewordedBy && <span className="reworded small"> reworded by <span className="mono">{s.rewordedBy}</span></span>}
                     {s.correctedBy && <span className="reworded small"> corrected by <span className="mono">{s.correctedBy}</span></span>}
                     <PendingTag targetKey={target.key} />{" "}
@@ -460,6 +507,19 @@ function Related({ m, ui, subjects }: { m: RecordModel; ui: Ui; subjects: Findab
   );
 }
 
+/** "A newer source disputes N parts of this page.", when a kept change left anything in its affects list. */
+function DisputedNote({ m }: { m: RecordModel }) {
+  const { rows } = useKeyFacts(m);
+  if (!m.page || !m.disputes.fromKept) return null;
+  const n = disputedCount(m.disputes, rows.map((r) => r.label), m.summary);
+  if (!n) return null;
+  return (
+    <p className="disputed-note" role="note">
+      A newer source disputes {n === 1 ? "1 part" : `${n.toLocaleString("en-US")} parts`} of this page. <a href={to("rebuild")}>Rebuild to update them.</a>
+    </p>
+  );
+}
+
 export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean }) {
   const { page, latest, error } = m;
   const name = page?.name || m.subject.id;
@@ -474,6 +534,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       </div>
       <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
       {m.outdated && <OutdatedNote o={m.outdated} href={to("rebuild")} />}
+      <DisputedNote m={m} />
       {rejectedCard && (first?.kind === "instructions" || isInstructionsUnavailable(m.rejected!.rejected)) && (
         <div className="card empty" id="rejected">
           <h2>Instructions not verified</h2>
@@ -765,7 +826,7 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
   return (
     <ul className="settled">
       {links.map((k, i) => {
-        const word = k.type === "confirms" ? "Confirmed by" : k.type === "partly" ? "Partly confirmed by" : k.type === "context" ? "Context" : "Contradicted by";
+        const word = k.type === "confirms" ? "Confirmed by" : k.type === "partly" ? "Partly confirmed by" : k.type === "context" ? "Context" : k.type === "agrees" ? "Also said by another speaker" : "Contradicted by";
         const target = ctx.m.resolve(k.target);
         const answer = target ? null : ctx.m.answerRef(k.target);
         let body: React.ReactNode = <span>a line not shown in this record</span>;
@@ -966,11 +1027,12 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
             {settled ? (
               <>
                 {settled.state === "proven" && <SettleMark s={settled} ctx={ctx} />}
-                {line.kind === "proof" ? <KindMark kind="proof" /> : <span className="by small">{speakerText(line)}</span>}
+                {line.kind === "proof" ? <KindMark kind="proof" /> : <span className="by small">{speakerText(line)}{settled.state === "proven" ? ", then confirmed" : ""}</span>}
               </>
             ) : (
               <>
                 <KindMark kind={line.kind} />
+                {line.kind === "proof" && <span className="by small">a check in its own right</span>}
                 {showBy && <span className="by">{line.by}</span>}
               </>
             )}
@@ -1265,10 +1327,10 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
         <>
           {counts.all > 0 && (
             <div className="filter" role="group" aria-label="Show lines">
-              {FILTERS.map((f) => (
+              {filtersFor(counts).map((f) => (
                 <button key={f} type="button" className="btn btn-filter" aria-pressed={filter === f} onClick={() => ui.setFilter(f)}>
-                  {f === "all" || f === "said" ? FILTER_WORDS[f] : (
-                    <span className={`kind kind-${f}`}>
+                  {f === "all" ? FILTER_WORDS[f] : (
+                    <span className={`kind kind-${GROUP_TONE[f]}`}>
                       <span className="dot" aria-hidden="true" />
                       {FILTER_WORDS[f]}
                     </span>

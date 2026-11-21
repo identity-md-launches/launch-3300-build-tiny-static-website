@@ -55,7 +55,8 @@ export function settlesWith(target: string, proofIds: Set<string>): boolean {
  * Contradicts wins over confirms: a sentence a proof shows wrong is never shown as Proven.
  */
 export function settleOf(line: Pick<Line, "kind" | "links">, proofIds: Set<string>, lineIds: Set<string> = proofIds): Settle {
-  const pick = (type: LineLink["type"]) => line.links.filter((k) => k.type === type && settlesWith(k.target, proofIds)).map((k) => k.target.trim());
+  // A link an affects list placed settles whatever the newer line's kind: the changes job judged it plainly.
+  const pick = (type: LineLink["type"]) => line.links.filter((k) => k.type === type && (k.affects || settlesWith(k.target, proofIds))).map((k) => k.target.trim());
   const confirms = pick("confirms");
   const contradicts = pick("contradicts");
   const partly = pick("partly");
@@ -94,45 +95,55 @@ export function rowClass(line: Pick<Line, "kind">, s: Settle | undefined): RowCl
   return line.kind;
 }
 
-export type Counts = Record<RowClass | "all" | "said", number>;
-export const emptyCounts = (): Counts => ({ all: 0, proven: 0, contradicted: 0, outdated: 0, proof: 0, statement: 0, claim: 0, said: 0 });
+/**
+ * The groups every count shows, so a count reads at a glance:
+ * - proven: proof lines, plus statements and claims with a confirming link (to a proof or a panel answer);
+ * - stated: statements with no confirming link (a partly-confirmed statement is still only stated);
+ * - claimed: claims with no confirming link;
+ * - contradicted and outdated: shown only when above zero.
+ */
+export type Group = "proven" | "stated" | "claimed" | "contradicted" | "outdated";
+export const groupOf = (k: RowClass): Group => (k === "proof" || k === "proven" ? "proven" : k === "statement" ? "stated" : k === "claim" ? "claimed" : k);
+export const GROUP_WORDS: Record<Group, string> = { proven: "Proven", stated: "Stated", claimed: "Claimed", contradicted: "Contradicted", outdated: "Out of date" };
+/** The kind colour each group shows in: proven green, stated blue, claimed orange, contradicted red, out of date amber. */
+export const GROUP_TONE: Record<Group, string> = { proven: "proven", stated: "statement", claimed: "claim", contradicted: "contradicted", outdated: "outdated" };
+
+/** all and each group; `checks` and `confirmed` split proven into proof rows and said-then-confirmed rows. */
+export type Counts = Record<Group | "all" | "checks" | "confirmed", number>;
+export const emptyCounts = (): Counts => ({ all: 0, proven: 0, stated: 0, claimed: 0, contradicted: 0, outdated: 0, checks: 0, confirmed: 0 });
 
 /**
- * The counts Record, the filter, Home and Key facts share. A settled row counts once, as Proven or Contradicted;
- * a proof that a settled row already shows is not counted again. "said" is every statement and claim with no
- * confirms or contradicts link (a partly-confirmed line is still only said). all = proven + contradicted + proof +
- * statement + claim.
+ * The counts Record, the filter, Home and Key facts share. A settled row counts once; a proof that a settled row
+ * already shows is not counted again. all = proven + stated + claimed + contradicted + outdated.
  */
 export function countLines(lines: Pick<Line, "id" | "kind" | "links">[], settled = settleAll(lines)): Counts {
   const c = emptyCounts();
   for (const l of lines) {
     if (l.kind === "proof" && settled.absorbed.has(l.id)) continue;
     const k = rowClass(l, settled.by.get(l.id));
-    c[k]++;
+    c[groupOf(k)]++;
+    if (k === "proof") c.checks++;
+    if (k === "proven") c.confirmed++;
     c.all++;
-    if (k === "statement" || k === "claim") c.said++;
   }
   return c;
 }
 
-export type Filter = "all" | "proven" | "contradicted" | "outdated" | "said" | Kind;
-export const FILTERS: Filter[] = ["all", "proven", "contradicted", "outdated", "proof", "statement", "claim", "said"];
-export const FILTER_WORDS: Record<Filter, string> = {
-  all: "All",
-  proven: "Proven",
-  contradicted: "Contradicted",
-  outdated: "Out of date",
-  proof: "Proof",
-  statement: "Statement",
-  claim: "Claim",
-  said: "Only said",
-};
+/** The groups shown: Proven, Stated and Claimed always; Contradicted and Out of date only when above zero. */
+export function shownGroups(c: Counts): Group[] {
+  return (["proven", "stated", "claimed", "contradicted", "outdated"] as Group[]).filter((g) => g === "proven" || g === "stated" || g === "claimed" || c[g] > 0);
+}
 
-/** True when a row of this class passes the filter. */
+export type Filter = "all" | Group;
+export const FILTERS: Filter[] = ["all", "proven", "stated", "claimed", "contradicted", "outdated"];
+export const FILTER_WORDS: Record<Filter, string> = { all: "All", ...GROUP_WORDS };
+/** The filter buttons for these counts: All and the groups shown. */
+export const filtersFor = (c: Counts): Filter[] => ["all", ...shownGroups(c)];
+
+/** True when a row of this class passes the filter. Proven passes proof rows and said-then-confirmed rows alike. */
 export function passes(filter: Filter, k: RowClass): boolean {
   if (filter === "all") return true;
-  if (filter === "said") return k === "statement" || k === "claim";
-  return filter === k;
+  return groupOf(k) === filter;
 }
 
 /** "Stated by <channel>" for a statement, "Claimed by <who>" for a claim: the speaker a settled row keeps. */
@@ -142,9 +153,9 @@ export function speakerText(line: Pick<Line, "kind" | "by" | "channel">): string
   return "";
 }
 
-/** "2 proven, 1 contradicted, 3 proofs, 1 statement, 0 claims": proven and contradicted only when there are any. */
+/** "5 proven, 2 stated, 3 claimed", then contradicted and out of date only when there are any. */
 export function countsWords(c: Counts): string {
-  const p = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-  const settled = [c.proven ? `${c.proven.toLocaleString("en-US")} proven` : "", c.contradicted ? `${c.contradicted.toLocaleString("en-US")} contradicted` : "", c.outdated ? `${c.outdated.toLocaleString("en-US")} out of date` : ""].filter(Boolean);
-  return [...settled, p(c.proof, "proof"), p(c.statement, "statement"), p(c.claim, "claim")].join(", ");
+  return shownGroups(c)
+    .map((g) => `${c[g].toLocaleString("en-US")} ${g === "outdated" ? "out of date" : g}`)
+    .join(", ");
 }

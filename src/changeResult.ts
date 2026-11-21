@@ -5,12 +5,16 @@
  *   that target line, pointing back at the new line, so the target row shows what the new line does to it:
  *   Contradicted by, Confirmed by, Partly confirmed by, or Context. A new proof settles the target as Proven or
  *   Contradicted by the same settled-line rules as any proof.
+ * - A link from a new statement or claim to an existing proof line or panel answer goes the other way: it says what
+ *   that proof or answer does to the new line, so it stays on the new line and settles it.
+ * - Its affects list marks, at once, every existing line, Key facts row and summary sentence a new line
+ *   contradicts or outdates (disputesOf). Only the sentence the visitor targeted is rewritten.
  * - A kept reword replaces that summary sentence, marked "reworded by <payer>".
  */
 import { parsePrior } from "./bodies";
 import { parseItems } from "./changes";
 import { payerName } from "./format";
-import type { LineLink, Page, RecordRow, SummarySentence } from "./page";
+import type { Affect, LineLink, Page, RecordRow, SummarySentence } from "./page";
 import type { Activity } from "./useActivity";
 
 /**
@@ -23,6 +27,8 @@ export interface LineScope {
   after: Activity[];
   /** "<artifact hash>|<line id>" of each carried-forward origin, to the page line that carries it now. */
   carried: Map<string, string>;
+  /** The panel answers (A1…) the page shown was rebuilt with, so an answer a changes job names is found by its URL. */
+  pageAnswers?: { n: number; url: string }[];
 }
 
 /** The carried-forward map of the page shown: every from origin, resolved to its file's artifact hash. */
@@ -75,12 +81,31 @@ export function resolveChangeTarget(raw: string, a: Activity, scope: LineScope, 
   return has(id) ? id : null;
 }
 
+/** A panel answer a changes job names (A<n> of its own <PRIOR>) as the page shown numbers it, or null. */
+function answerInPage(raw: string, a: Activity, scope: LineScope): string | null {
+  const m = /^\s*A(\d+)\s*$/i.exec(raw);
+  if (!m) return null;
+  const url = parsePrior(a.req.bodyJson?.objective).answers.find((x) => x.n === Number(m[1]))?.url;
+  const hit = url ? scope.pageAnswers?.find((x) => x.url === url) : undefined;
+  return hit ? `A${hit.n}` : null;
+}
+
+/** The lines and links each kept changes job adds to the rows shown, as described at the top of this file. */
 export function applyChangeLinks(sections: { section: string; rows: RecordRow[] }[], scope: LineScope): { section: string; rows: RecordRow[] }[] {
   const jobs = scope.after.filter((a) => a.changes);
   if (!jobs.length) return sections;
-  const ids = new Set(sections.flatMap((s) => s.rows.map((r) => r.line.id)));
+  const kindOf = new Map(sections.flatMap((s) => s.rows.map((r) => [r.line.id, r.line.kind] as const)));
+  const ids = new Set(kindOf.keys());
   const added = new Map<string, LineLink[]>();
+  const kept = new Map<string, LineLink[]>();
   const raisedIds = new Set<string>();
+  const add = (on: string, k: LineLink) => {
+    const list = added.get(on) ?? [];
+    const same = list.find((x) => x.type === k.type && x.target === k.target);
+    if (same) same.affects = same.affects || k.affects;
+    else list.push({ ...k });
+    added.set(on, list);
+  };
   for (const a of jobs) {
     const key = a.req.requestId;
     for (const l of a.changes!.data.lines) {
@@ -88,22 +113,99 @@ export function applyChangeLinks(sections: { section: string; rows: RecordRow[] 
       if (!ids.has(newId)) continue;
       raisedIds.add(newId);
       for (const k of l.links) {
-        const target = resolveChangeTarget(k.target, a, scope, (x) => ids.has(x));
+        const answer = answerInPage(k.target, a, scope);
+        const target = answer ?? resolveChangeTarget(k.target, a, scope, (x) => ids.has(x));
         if (!target || target === newId) continue;
-        added.set(target, [...(added.get(target) ?? []), { type: k.type, target: newId }]);
+        // An existing proof or panel answer settling the new statement or claim: the link stays on the new line.
+        const settling = (k.type === "confirms" || k.type === "partly" || k.type === "contradicts") && l.kind !== "proof" && (!!answer || kindOf.get(target) === "proof");
+        if (settling) kept.set(newId, [...(kept.get(newId) ?? []), { type: k.type, target }]);
+        else if (!answer) add(target, { type: k.type, target: newId });
       }
+    }
+    for (const f of a.changes!.affects) {
+      if (f.kind !== "line") continue;
+      const by = `${key}:${f.byLine}`;
+      const target = resolveChangeTarget(f.target, a, scope, (x) => ids.has(x));
+      if (!ids.has(by) || !target || target === by) continue;
+      add(target, { type: f.type, target: by, affects: true });
     }
   }
   return sections.map((s) => ({
     section: s.section,
     rows: s.rows.map((r) => {
       const more = added.get(r.line.id);
-      // A raised line's own links name its target, not what settles it: they now live on the target.
-      const own = raisedIds.has(r.line.id) ? [] : r.line.links;
+      // A raised line's own links name its target, not what settles it: they now live on the target, except the
+      // links by which an existing proof or panel answer settles it.
+      const own = raisedIds.has(r.line.id) ? kept.get(r.line.id) ?? [] : r.line.links;
       if (!more && own === r.line.links) return r;
       return { ...r, line: { ...r.line, links: [...own, ...(more ?? [])] } };
     }),
   }));
+}
+
+/** One part of the page a newer source disputes: the record id of the newer line that does it, and how. */
+export interface Dispute {
+  type: Affect["type"];
+  by: string;
+}
+export interface Disputes {
+  /** Record line ids marked Contradicted or Out of date by an affects entry. */
+  lines: Map<string, Dispute>;
+  /** Key facts rows by lower-case label. */
+  infobox: Map<string, Dispute>;
+  /** Summary sentences by their normalised text. */
+  summary: Map<string, Dispute>;
+  /** True when a changes job with a kept change listed anything in affects. */
+  fromKept: boolean;
+}
+
+/**
+ * Everything the affects lists of the changes jobs not yet folded in name, resolved to what the page shows now. A
+ * newer job's entry for the same target wins; contradicts wins over outdates within one job.
+ */
+export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disputes {
+  const out: Disputes = { lines: new Map(), infobox: new Map(), summary: new Map(), fromKept: false };
+  const put = (m: Map<string, Dispute>, k: string, d: Dispute) => {
+    const was = m.get(k);
+    if (!was || was.type !== "contradicts" || d.type === "contradicts") m.set(k, d);
+  };
+  for (const a of scope.after) {
+    if (!a.changes) continue;
+    const key = a.req.requestId;
+    let any = false;
+    for (const f of a.changes.affects) {
+      const by = `${key}:${f.byLine}`;
+      if (!has(by)) continue;
+      const d = { type: f.type, by };
+      if (f.kind === "line") {
+        const t = resolveChangeTarget(f.target, a, scope, has);
+        if (!t || t === by) continue;
+        put(out.lines, t, d);
+      } else if (f.kind === "infobox") put(out.infobox, f.target.trim().toLowerCase(), d);
+      else {
+        const t = norm(unquote(f.target));
+        if (!t) continue;
+        put(out.summary, t, d);
+      }
+      any = true;
+    }
+    if (any && a.changes.items.some((v) => v.kept)) out.fromKept = true;
+  }
+  return out;
+}
+
+/** The dispute on a summary sentence shown now, unless that sentence was itself rewritten by a kept change. */
+export function sentenceDispute(s: { text: string; original?: string }, d: Disputes): Dispute | null {
+  if (s.original) return null;
+  return d.summary.get(norm(s.text)) ?? null;
+}
+
+/** How many parts of the page shown the disputes mark: lines, Key facts rows and summary sentences. */
+export function disputedCount(d: Disputes, rowLabels: string[], sentences: { text: string; original?: string }[]): number {
+  const labels = new Set(rowLabels.map((l) => l.trim().toLowerCase()));
+  const rows = [...d.infobox.keys()].filter((k) => labels.has(k)).length;
+  const sent = sentences.filter((s) => sentenceDispute(s, d)).length;
+  return d.lines.size + rows + sent;
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").replace(/[.!?\s]+$/, "").trim();
