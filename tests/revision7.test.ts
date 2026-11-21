@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { parsePage } from "../src/page";
 import { badgeOf, keyFacts, speakersOf, withoutChain } from "../src/keyfacts";
-import { repeatKey } from "../src/lookup";
+import { repeatKey, rowMatches } from "../src/lookup";
 import { dropUnresolvedAnswers, settleAll } from "../src/settle";
 import { parseItems, seedFromLine } from "../src/changes";
 import INSTRUCTIONS from "../src/instructions.json";
@@ -159,5 +159,15 @@ describe("fcd90aeb: the README names the current instruction files", () => {
     expect(cur.startsWith(`Current files: \`${INSTRUCTIONS.rebuild.file}\` and \`${INSTRUCTIONS.changes.file}\``)).toBe(true);
     expect(readme).toContain(`filename=${INSTRUCTIONS.rebuild.file}`);
     expect(readme).toContain(`filename=${INSTRUCTIONS.changes.file}`);
+  });
+});
+
+describe("search finds a merged row by any of its speakers (revision 8)", () => {
+  const row = { line: { text: "IMD is a swarm of agents.", by: "the project" }, same: [{ line: { text: "imd is a swarm of agents", by: "a forum" } }] };
+  it("matches the row's own speaker and the speaker of a line merged into it", () => {
+    expect(rowMatches(row, "the project")).toBe(true);
+    expect(rowMatches(row, "a forum")).toBe(true);
+    expect(rowMatches(row, "someone else")).toBe(false);
+    expect(rowMatches({ line: row.line }, "a forum")).toBe(false);
   });
 });

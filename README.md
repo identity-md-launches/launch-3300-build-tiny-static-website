@@ -486,8 +486,8 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-aede2eb36737.txt` and `changes-b1e42e455312.txt`; still served: `rebuild-b280294bd61b.txt`
-and `changes-8400e6bf9d85.txt`.
+Current files: `rebuild-8d7dfbc27d07.txt` and `changes-0571b29e932d.txt`; still served: `rebuild-aede2eb36737.txt`,
+`changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and `changes-8400e6bf9d85.txt`.
 
 ### Where a job fetches the instruction files
 
@@ -496,8 +496,8 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreifo3yxlgzzxchnk4fbv6fl4bes2txkh3rsaeicmrowg5xppzdp3em?filename=rebuild-aede2eb36737.txt`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreifr4qxekuys52ty6r3swvxbb7ofn4bjrlfoanm4tafdahopbeogwy?filename=changes-b1e42e455312.txt`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreienpx54e7iheybqe6h6we42m6f2xfqvmbqi5w7ftc5c5tup2gzbgi?filename=rebuild-8d7dfbc27d07.txt`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreiafogzj5ezn77ofgwqdwvioydy64oppcep4j5vd4ynyxlpmb2drf4?filename=changes-0571b29e932d.txt`
 
 Why this address (all checked with `curl -sSL` on 2026-11-21):
 
@@ -515,8 +515,8 @@ are not published yet (the hosted version, `bafybeihiyfpu…`, predates them; th
 job), so their raw CIDs time out until then. Once this version is pinned, check them with:
 
 ```sh
-curl -sSL -o rebuild.txt 'https://ipfs.filebase.io/ipfs/bafkreifo3yxlgzzxchnk4fbv6fl4bes2txkh3rsaeicmrowg5xppzdp3em?filename=rebuild-aede2eb36737.txt' -w '%{http_code}\n' && sha256sum rebuild.txt   # 200, aede2eb3…dfb23
-curl -sSL -o changes.txt 'https://ipfs.filebase.io/ipfs/bafkreifr4qxekuys52ty6r3swvxbb7ofn4bjrlfoanm4tafdahopbeogwy?filename=changes-b1e42e455312.txt' -w '%{http_code}\n' && sha256sum changes.txt  # 200, b1e42e45…1c6b6
+curl -sSL -o rebuild.txt 'https://ipfs.filebase.io/ipfs/bafkreienpx54e7iheybqe6h6we42m6f2xfqvmbqi5w7ftc5c5tup2gzbgi?filename=rebuild-8d7dfbc27d07.txt' -w '%{http_code}\n' && sha256sum rebuild.txt   # 200, 8d7dfbc2…b2132
+curl -sSL -o changes.txt 'https://ipfs.filebase.io/ipfs/bafkreiafogzj5ezn77ofgwqdwvioydy64oppcep4j5vd4ynyxlpmb2drf4?filename=changes-0571b29e932d.txt' -w '%{http_code}\n' && sha256sum changes.txt  # 200, 0571b29e…8712f
 ```
 
 The visitor's preview ("Instructions this job follows") links both the file on this site
@@ -591,33 +591,38 @@ pins the site's bodies to them.
 
 ## Validation results
 
-Run on this machine after the last source change (job 10). Details, the Better Interface review and its limits
-are in `artifacts/validation.md`.
+Run on this machine on 2026-11-21 after the last source change (revision 8 of job 11). Earlier details and the
+Better Interface review are in `artifacts/validation.md`.
 
-- `npm run typecheck`: exit 0.
-- `npm test`: 175 of 175 pass in 12 files under `tests/`, including 17 new in `tests/polish.test.ts` (number
-  formatting and what it leaves alone, the panel's markup rendered with `react-dom/server`: evidence first, at most
-  4 rows then "and 2 more", no "Rests on:", the kept rule absent outside Reword it, Add disabled; the 10-character
-  and reword-differs rules; Key facts targets with all line ids and the fallback text, read back by `parseItems`;
-  reword dots from `items[].lines`; the word diff; and CSS/source checks for the panel width, header/main width,
-  footer and account menu). (`npx vitest run` with no path also picks up the scratch test below.)
-- Interaction checks in jsdom (`test/scratch/interact.test.tsx`, jsdom installed under `$TMPDIR`, not a project
-  dependency; the folder is not submitted): 4 of 4 pass. Reword it: Add disabled, kept rule shown only after
-  choosing it, the prefilled same sentence keeps Add disabled with "Change the sentence first", a new sentence
-  enables it and the change joins the tray. Back this up: disabled until a link is typed. Review with three
-  changes: two "No source" tags, exactly one warning "2 of your changes have no source…", the about text shows
-  "Supply: 59,822.62 imdUSD" while the request body keeps `59822.623566`, only "three founders." bold, footer
-  "0.5 IMD for all 3", Read the full request toggles the body, Submit calls the pay dialog. Account chip: shows the
-  ENS name, no Disconnect until opened, the menu lists Copy address and Disconnect, Escape closes it, Disconnect
-  calls disconnect.
+- **Export was stale, now rebuilt.** The committed `dist/` still held the bundle and instruction files of the job
+  before (it named `rebuild-aede2eb36737.txt` and lacked `rebuild-8d7dfbc27d07.txt` and `changes-0571b29e932d.txt`),
+  so `tests/revision*.test.ts` failed on `dist/agents.md` differing from `public/agents.md`. `npm run build` now
+  writes all six instruction files into `dist/instructions/`, and the bundle names the current two.
+- `npx vite-node scripts/instructions.ts` and `npx vite-node scripts/agents-md.ts`: no change to `public/` or
+  `src/instructions.json` (the current files are `rebuild-8d7dfbc27d07.txt`, `changes-0571b29e932d.txt`; their raw
+  CIDs, recomputed from their sha256, match the ones above and in `public/agents.md`).
+- `npm run typecheck`: exit 0. `npm test`: 254 of 254 pass in 17 files.
 - `npm run build`: exit 0. `dist/index.html` uses only `./` URLs and has the title, favicon, description,
-  og:title and og:image; `dist/` is 1.6 MB.
-- **Not run:** `node tests/e2e.mjs` and the design probe `taste.mjs`. The probe ran and stopped at `render`:
-  Playwright cannot start Chromium on this machine (the cached headless shell is missing `libnss3`, `libnspr4`,
-  `libatk-1.0` and other system libraries). No screenshot, rendered width, overflow measurement or contrast figure
-  is claimed for this job; the panel and page width rules are checked in CSS only.
-- **Not tested here:** paying, approving and connecting a real wallet (no wallet on this machine), and the ENS
-  lookup against mainnet (mocked in the jsdom check).
+  og:title and og:image; `dist/` is 1.7 MB. The entry chunk loads `walletRuntime-*.js` (wagmi, the Coinbase
+  connector) only by dynamic `import()`, and `index.html` preloads nothing else.
+- Browser interaction checks: `node tests/e2e.mjs` on `dist/` with the fixture: **234 of 234 pass** at 390, 1440
+  and 320 wide, plus the oracle-only, rejected and failed-read variants. This is the first run of the suite since
+  job 10. It found one real defect, now fixed: a row standing for identical lines (item 4) could not be found by
+  searching the speaker of a merged line ("a forum"); the search now matches every merged line's text and speaker
+  (`rowMatches` in `src/lookup.ts`, unit test in `tests/revision7.test.ts`). Checks that still described the
+  site before this job were updated to the brief: the repeat box now lives inside Page upkeep, Page upkeep is the
+  last section, an unlinked panel answer is listed under Page upkeep only, the filters include Out of date, a logo
+  under 64 px shows at its real size, and the contract form opens from "Write a question from scratch". The same
+  goes for wording earlier accepted jobs changed (How it works copy, the Overview footer links, the changes
+  objective naming the main contract, the waiting message when the chain cannot be read).
+- Design probe `taste.mjs --out test/scratch/taste` (Playwright from `~/.imd-taste`): all 16 checks pass. Render
+  ran with no script errors or missing files; on load it contacted only `api.imd.fun` and the public RPCs
+  (`gateway.tenderly.co`, `ethereum-rpc.publicnode.com`, `rpc.mevblocker.io`), with no Coinbase host. No
+  horizontal scroll at 320, 390 or 1440. Contrast passes 4.5:1 for all measured text. 4 type sizes in use. Prose
+  on the first screen is 52 words at 390. I checked the 390 screenshot: headline, Look it up bar and Connect are
+  on the first screen.
+- **Not tested here:** paying, approving and connecting a real wallet (no wallet on this machine), and live reads
+  against mainnet (the e2e suite answers every chain and api.imd.fun read from a fixture).
 
 ## Limits
 

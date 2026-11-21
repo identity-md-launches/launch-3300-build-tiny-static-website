@@ -149,6 +149,11 @@ export function lineMatches(l: Pick<Line, "text" | "by">, raw: string): boolean 
   return words.every((w) => hay.includes(w));
 }
 
+/** A row shown for several identical lines matches the text or the speaker of any of them: its details list them all. */
+export function rowMatches(r: { line: Pick<Line, "text" | "by">; same?: { line: Pick<Line, "text" | "by"> }[] }, raw: string): boolean {
+  return lineMatches(r.line, raw) || (r.same ?? []).some((o) => lineMatches(o.line, raw));
+}
+
 /** A line with at least one confirms or contradicts link (a partly link does not settle it). */
 export const isSettled = (l: Pick<Line, "links">) => l.links.some((k) => k.type === "confirms" || k.type === "contradicts");
 

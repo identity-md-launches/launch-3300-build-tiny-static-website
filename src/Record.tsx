@@ -5,7 +5,7 @@ import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { keyFacts, splitAddresses, type KeyRow } from "./keyfacts";
 import { addHref, subjectHref, to } from "./route";
 import { SubjectLogo } from "./Logo";
-import { findSubject, lineMatches, parseLookup, type Findable } from "./lookup";
+import { findSubject, parseLookup, rowMatches, type Findable } from "./lookup";
 import { countLines, countsWords, FILTER_WORDS, FILTERS, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
 import {
   blockNumber,
@@ -1211,7 +1211,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const narrowKey = narrowing ? `${query.trim().toLowerCase()}|${filter}` : "";
   const narrowState = narrowOpen.key === narrowKey ? narrowOpen.open : {};
   // A filter is a settled class as well as a kind: a settled row passes Proven or Contradicted, never Statement or Claim.
-  const keep = (r: RecordRow) => passes(filter, rowClass(r.line, settled.by.get(r.line.id))) && lineMatches(r.line, query);
+  const keep = (r: RecordRow) => passes(filter, rowClass(r.line, settled.by.get(r.line.id))) && rowMatches(r, query);
   const shownFacts = factRows.filter(keep);
   const named = new Set(sections.map((s) => s.section));
   if (factRows.length) named.add("on_chain");
