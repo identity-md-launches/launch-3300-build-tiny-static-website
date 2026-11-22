@@ -1,9 +1,9 @@
 /** The record's tabs: Overview (key facts, summary), Record (filter, sections, one facts table) and Sources. */
-import { disputedCount, rowPatchesOf, sentenceDispute, type Dispute, type Disputes } from "./changeResult";
+import { disputedCount, rowPatchListsOf, sentenceDispute, type Dispute, type Disputes, type SentenceChange } from "./changeResult";
 import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
-import { keyFacts, splitAddresses, withPatches, type KeyRow } from "./keyfacts";
+import { keyFacts, splitAddresses, withPatches, type Badge, type KeyRow, type RowChange } from "./keyfacts";
 import { addHref, subjectHref, to } from "./route";
 import { SubjectLogo } from "./Logo";
 import { findSubject, parseLookup, rowMatches, type Findable } from "./lookup";
@@ -109,7 +109,8 @@ function KeyValue({ row }: { row: KeyRow }) {
       <ul className="kf-accounts">
         {row.accounts.map((a, i) => (
           <li key={i}>
-            {a.channel && safeHref(a.channel.url) ? <ExtLink url={a.channel.url} className="break">{a.name}</ExtLink> : <span className="break">{a.name}</span>}
+            {safeHref(a.url) ? <ExtLink url={a.url} className="break">{a.name}</ExtLink> : <span className="break">{a.name}</span>}
+            {row.perAccount && a.status && <AccountBadge b={a.status} />}
           </li>
         ))}
       </ul>
@@ -183,24 +184,62 @@ function ValueText({ text, url = "" }: { text: string; url?: string }) {
   );
 }
 
+/** An account's own label, shown beside it when an Official accounts row's accounts differ. */
+function AccountBadge({ b }: { b: Badge }) {
+  return (
+    <span className={`badge badge-${b.tone}`} title={STATUS_HELP[b.tone as ChannelStatus]}>
+      {b.text}
+    </span>
+  );
+}
+
+/** "19 Nov 2026" from unix seconds, or "" when unknown. */
+const whenOf = (at: number | null | undefined) => (at ? readDate(String(at)) : "");
+
+/** Every earlier value of a patched row or sentence, newest first, each with who changed it and when. */
+function ChangeHistory({ items }: { items: Array<RowChange | (SentenceChange & { value?: string })> }) {
+  return (
+    <ol className="plain change-history">
+      {items.map((h, i) => {
+        const v = "value" in h && h.value !== undefined ? h.value : (h as SentenceChange).text;
+        const when = whenOf(h.at);
+        return (
+          <li key={i}>
+            <span className="block">“{v || "none"}”</span>
+            <span className="small">
+              Changed by <span className="mono">{h.by}</span>
+              {when ? `, ${when}` : ""}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /** Every full address a key facts row names, for its details: the table itself shows them shortened. */
 const rowAddresses = (r: KeyRow) => [...new Set([r.value, ...r.values, ...r.tokens.map((t) => t.address)].flatMap((v) => splitAddresses(v).filter((p) => p.address).map((p) => p.text)))];
 /** Every name, in full: "A", "A and B", "A, B and C". */
 const allNames = (n: string[]) => (n.length < 2 ? n[0] ?? "" : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`);
 /** A row opens details when it has full addresses, more speakers than its badge names, or a patch from a change. */
-const hasRowDetails = (r: KeyRow) => rowAddresses(r).length > 0 || (r.speakers?.length ?? 0) > 1 || !!r.updatedBy;
+const hasRowDetails = (r: KeyRow) => rowAddresses(r).length > 0 || (r.speakers?.length ?? 0) > 0 || !!r.updatedBy;
+/** Rows shown before "Show all N". */
+export const KEY_FACTS_SHOWN = 8;
 
 function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
   const { rows } = useKeyFacts(m);
   const s = useSuggest();
   const [openRow, setOpenRow] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
   if (!rows.length) return null;
+  // A row opened by a link or a suggestion stays visible even while the list is folded.
+  const shown = all || rows.length <= KEY_FACTS_SHOWN ? rows : rows.filter((r, i) => i < KEY_FACTS_SHOWN || r.label === openRow);
   return (
     <section className="keyfacts" aria-labelledby="keyfacts-title">
       <h2 id="keyfacts-title">Key facts</h2>
       <table>
         <tbody>
-          {rows.map((r, i) => {
+          {shown.map((r, i) => {
             const target = keyFactTarget(r.label, r.value || r.accounts.map((a) => a.name).join(", "), r.lines.map((l) => l.id), r.lines[0]?.id ? originOfLine(r.lines[0].id, m.scope) : null);
             const src = r.lines[0]?.srcKeys[0];
             const url = src ? m.sourceList.find((x) => x.key === src)?.url ?? "" : r.url;
@@ -222,7 +261,7 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                     <PendingTag targetKey={target.key} />
                   </td>
                   <td className="kf-badge">
-                    <RowBadge r={r} ui={ui} />
+                    {!r.perAccount && <RowBadge r={r} ui={ui} />}
                   </td>
                   <td className="kf-edit">
                     <Pencil target={target} label={`Suggest a change`} />
@@ -234,13 +273,21 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                       <dl className="facts">
                         {r.updatedBy && (
                           <>
-                            <dt>Updated by a change from <span className="mono">{r.updatedBy}</span></dt>
-                            <dd className="break">Earlier value: {r.earlier || "none"}</dd>
+                            <dt>
+                              Updated by a change from <span className="mono">{r.updatedBy}</span>
+                              {whenOf(r.history?.[0]?.at) ? `, ${whenOf(r.history?.[0]?.at)}` : ""}
+                            </dt>
+                            <dd className="break">
+                              {(r.history?.length ?? 0) > 1 ? "Earlier values, newest first:" : "Earlier value:"}
+                              <ChangeHistory items={r.history?.length ? r.history : [{ value: r.earlier ?? "", by: r.updatedBy, at: null }]} />
+                            </dd>
                           </>
                         )}
-                        {r.speakers && r.speakers.length > 1 && (
+                        {r.speakers && r.speakers.length > 0 && (
                           <>
-                            <dt>{r.badge?.tone === "statement" ? "Stated by" : "Reported by"}</dt>
+                            <dt>
+                              {r.badge?.tone === "statement" ? "Stated by" : r.badge?.tone === "claim" ? "Reported by" : "Said by"} ({r.speakers.length})
+                            </dt>
                             <dd className="break">{allNames(r.speakers)}</dd>
                           </>
                         )}
@@ -268,6 +315,11 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
           })}
         </tbody>
       </table>
+      {rows.length > KEY_FACTS_SHOWN && (
+        <button type="button" className="linklike kf-more" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? "Show fewer" : `Show all ${rows.length}`}
+        </button>
+      )}
     </section>
   );
 }
@@ -321,7 +373,7 @@ export function useKeyFacts(m: RecordModel) {
   const sourceUrl = (l: Line) => (l.srcKeys[0] ? m.sourceList.find((s) => s.key === l.srcKeys[0])?.url ?? "" : "");
   const kf = keyFacts(m.page, m.resolve, all, sourceUrl);
   // Patches from changes jobs not yet folded in: the row's new value rests on the patch's lines, in that job's scope.
-  const patches = new Map([...rowPatchesOf(m.after)].map(([k, p]) => [k, { value: p.patch.value, lines: m.editRefs(p.job, p.patch.lines, null), payer: p.payer }] as const));
+  const patches = new Map([...rowPatchListsOf(m.after)].map(([k, ps]) => [k, ps.map((p) => ({ value: p.patch.value, lines: m.editRefs(p.job, p.patch.lines, null), payer: p.payer, at: p.job.doneTime ?? null }))] as const));
   return { ...kf, rows: withDisputes(withPatches(kf.rows, patches, all, sourceUrl, { channels: m.page?.channels ?? [], domain: m.page?.domain ?? "" }), m.disputes) };
 }
 
@@ -406,41 +458,99 @@ function DisputeDot({ d, ui }: { d: Dispute | null; ui: Ui }) {
   );
 }
 
+/** A changed sentence's one small pencil after its dots: it shows who changed it, when, the earlier wording and its lines. */
+function ChangedMark({ open, onToggle, id }: { open: boolean; onToggle: () => void; id: string }) {
+  return (
+    <button type="button" className={`changed-mark${open ? " is-on" : ""}`} aria-expanded={open} aria-controls={id} aria-label="Corrected by a visitor: show the change" title="Corrected by a visitor" onClick={onToggle}>
+      <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false">
+        <path d="M13.6 3.2a1.9 1.9 0 0 1 2.7 0l.5.5a1.9 1.9 0 0 1 0 2.7l-8.9 8.9-3.6.9.9-3.6 8.4-8.4Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M12.2 4.6l3.2 3.2" stroke="currentColor" strokeWidth="1.6" />
+      </svg>
+    </button>
+  );
+}
+
+/** A summary sentence's changes since the last rebuild, newest first; the fallback reads the older single fields. */
+export function sentenceChanges(s: { history?: SentenceChange[]; correctedBy?: string; rewordedBy?: string; updatedBy?: string; earlier?: string; original?: string }): SentenceChange[] {
+  if (s.history?.length) return s.history;
+  const by = s.correctedBy ?? s.rewordedBy ?? s.updatedBy;
+  if (!by) return [];
+  return [{ text: s.earlier ?? s.original ?? "", by, at: null, how: s.correctedBy ? "corrected" : s.rewordedBy ? "reworded" : "updated", lines: [] }];
+}
+const HOW: Record<SentenceChange["how"], string> = { corrected: "Corrected", reworded: "Reworded", updated: "Updated" };
+
+/** What the pencil opens: who changed the sentence, when, every earlier wording and the lines the new one rests on. */
+function ChangeNote({ id, changes, refs, ui }: { id: string; changes: SentenceChange[]; refs: Line[]; ui: Ui }) {
+  const last = changes[0]!;
+  const when = whenOf(last.at);
+  return (
+    <div className="change-note" id={id} role="region" aria-label="How this sentence changed">
+      <p>
+        {HOW[last.how]} by <span className="mono">{last.by}</span>
+        {when ? `, ${when}` : ""}. {changes.length > 1 ? "Earlier wordings, newest first:" : "Earlier wording:"}
+      </p>
+      <ChangeHistory items={changes} />
+      {refs.length > 0 && (
+        <p className="small">
+          Supported by{" "}
+          {refs.map((l, i) => (
+            <Fragment key={l.id}>
+              {i > 0 ? ", " : ""}
+              <a
+                href={to(lineAnchor(l.id))}
+                onClick={(e) => {
+                  e.preventDefault();
+                  ui.openLines([l.id]);
+                }}
+              >
+                {l.text.length > 70 ? `${l.text.slice(0, 68)}…` : l.text}
+              </a>
+            </Fragment>
+          ))}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
   const sg = useSuggest();
+  const [note, setNote] = useState<string | null>(null);
   if (!m.summary.length) return null;
+  const changed = m.summary.filter((s) => sentenceChanges(s).length > 0).length;
   return (
     <div className="summary">
       <h2>Summary</h2>
       {paragraphsOf(m.summary).map((p, i) => {
         const openHere = p.find((s) => sg.open === sentenceTarget(s.text).key);
+        const noteHere = p.find((s) => note === sentenceTarget(s.text).key && sentenceChanges(s).length);
         return (
           <Fragment key={i}>
             <p className="prose">
               {p.map((s, j) => {
                 const target = sentenceTarget(s.text);
+                const ch = sentenceChanges(s);
                 return (
                   <Fragment key={j}>
                     <Sentence text={s.text} active={sg.open === target.key} onOpen={() => sg.setOpen(sg.open === target.key ? null : target.key)} />
                     <SentenceDots lines={s.refs} ui={ui} />
                     <DisputeDot d={sentenceDispute(s, m.disputes)} ui={ui} />
-                    {s.rewordedBy && <span className="reworded small"> reworded by <span className="mono">{s.rewordedBy}</span></span>}
-                    {s.correctedBy && <span className="reworded small"> corrected by <span className="mono">{s.correctedBy}</span></span>}
-                    {s.updatedBy && <span className="reworded small"> updated by a change from <span className="mono">{s.updatedBy}</span></span>}
+                    {ch.length > 0 && <ChangedMark id={`chg-${i}`} open={note === target.key} onToggle={() => setNote(note === target.key ? null : target.key)} />}
                     <PendingTag targetKey={target.key} />{" "}
                   </Fragment>
                 );
               })}
             </p>
-            {openHere?.updatedBy && (
-              <p className="small sentence-updated" role="note">
-                Updated by a change from <span className="mono">{openHere.updatedBy}</span>. Earlier: “{openHere.earlier}”
-              </p>
-            )}
+            {noteHere && <ChangeNote id={`chg-${i}`} changes={sentenceChanges(noteHere)} refs={noteHere.refs} ui={ui} />}
             {openHere && <ChangePanel key={openHere.text} target={sentenceTarget(openHere.text)} mode="sentence" evidence={evidenceOf(openHere.refs, allLines(m))} onOpenLines={ui.openLines} />}
           </Fragment>
         );
       })}
+      {changed > 0 && (
+        <p className="small changed-count">
+          {changed === 1 ? "1 sentence" : `${changed} sentences`} corrected by visitors since the last rebuild.
+        </p>
+      )}
       <p className="small">
         {m.edit ? (
           <>
@@ -493,33 +603,43 @@ function PanelAnswers({ m }: { m: RecordModel }) {
 }
 
 /**
- * Related projects under Key facts: each with its relation. A link to its page here when a subject with that
- * domain or contract exists on the site; otherwise "Add this project", which opens the home bar filled in.
+ * Related projects at the bottom of Overview, as a row of chips: the project's name with its relation in small text
+ * under it. A chip links to that project's page when a subject with that domain or contract exists on the site;
+ * otherwise a click offers "Add this project", which opens the home bar filled in.
  */
-function Related({ m, ui, subjects }: { m: RecordModel; ui: Ui; subjects: Findable[] }) {
+function Related({ m, subjects }: { m: RecordModel; subjects: Findable[] }) {
   const related = m.page?.related ?? [];
+  const [offer, setOffer] = useState<number | null>(null);
   if (!related.length) return null;
   return (
     <section className="related" aria-labelledby="related-title">
       <h2 id="related-title">Related</h2>
-      <ul className="plain related-list">
+      <ul className="plain related-chips">
         {related.map((r, i) => {
           const q = parseLookup(r.id);
           const found = q.kind === "domain" || q.kind === "address" ? findSubject(q, subjects.filter((s) => s.id !== m.subject.id)) : null;
-          const lines = r.lines.map(m.resolve).filter((l): l is Line => !!l);
           const addable = q.kind === "domain" || (q.kind === "address" && q.chainId !== null) ? r.id : q.kind === "address" ? q.address : "";
+          const body = (
+            <>
+              <span className="rel-name">{r.name || r.id}</span>
+              <span className="rel-what">{r.relation || "related"}</span>
+            </>
+          );
           return (
-            <li key={i} className="related-item">
-              <span className="related-name">
-                {found ? <a href={subjectHref(found)}>{r.name}</a> : <strong>{r.name}</strong>}
-                {r.id && <span className="small mono"> {r.id}</span>}
-              </span>
-              <span className="related-rel">
-                {r.relation || "related"}
-                <SentenceDots lines={lines} ui={ui} />
-              </span>
-              {!found && addable && (
-                <a className="btn btn-small" href={addHref(addable)}>
+            <li key={i} className="rel-item">
+              {found ? (
+                <a className="rel-chip" href={subjectHref(found)}>
+                  {body}
+                </a>
+              ) : addable ? (
+                <button type="button" className="rel-chip" aria-expanded={offer === i} onClick={() => setOffer(offer === i ? null : i)}>
+                  {body}
+                </button>
+              ) : (
+                <span className="rel-chip">{body}</span>
+              )}
+              {offer === i && !found && addable && (
+                <a className="btn btn-small rel-add" href={addHref(addable)}>
                   Add this project
                 </a>
               )}
@@ -612,18 +732,20 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       )}
       {(page || m.summary.length > 0) && (
         <div className="overview">
+          <div className="summary-col">
+            <Summary m={m} ui={ui} />
+            {page && !m.summary.length && (
+              <p className="small">
+                This page has no summary yet. Read the lines in <a href={to("record")}>Record</a>; the next rebuild writes one.
+              </p>
+            )}
+          </div>
           <div className="facts-col">
             <KeyFacts m={m} ui={ui} />
-            <Related m={m} ui={ui} subjects={subjects} />
           </div>
-          <Summary m={m} ui={ui} />
-          {page && !m.summary.length && (
-            <p className="small">
-              This page has no summary yet. Read the lines in <a href={to("record")}>Record</a>; the next rebuild writes one.
-            </p>
-          )}
         </div>
       )}
+      {page && <Related m={m} subjects={subjects} />}
 
       {page ? (
         <div className="ov-foot" id="suggest">
@@ -651,7 +773,7 @@ interface Ctx {
   numbers: Map<string, ListedSource>;
   /** Every line's settle state and the proofs a settled row already shows. */
   settled: { by: Map<string, Settle>; absorbed: Set<string> };
-  research: { payer: string; href: string } | null;
+  research: { payer: string; href: string; time: number | null } | null;
   m: RecordModel;
   ui: Ui;
 }
@@ -682,12 +804,10 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
   const st = ctx.settled.by.get(line.id);
   const settledBy = st && (st.state === "proven" || st.state === "contradicted") ? (st.state === "proven" ? st.confirms : st.contradicts) : [];
   const listed = line.srcKeys.map((k) => ctx.numbers.get(k)).filter((s): s is ListedSource => !!s);
-  const checked =
-    line.kind === "proof"
-      ? "Proof: anyone can follow the re-run steps and get the same answer."
-      : line.kind === "statement"
-        ? `Statement: published on ${line.channel?.label || line.channel?.url || "a channel of the subject"}, labelled “${line.channel ? statusWord(line.channel, ctx.m.page?.domain ?? ctx.m.subject.domain) : STATUS_WORDS.unverified}”.`
-        : `Claim: said by ${line.by || "someone other than the subject"}, not on an Own domain or Verified on chain channel of the subject.`;
+  const checked = whyLabel(line, ctx.m.page?.name || ctx.m.subject.id, ctx.m.page?.domain ?? ctx.m.subject.domain);
+  // First recorded: the job that added the line, else the earliest earlier file it was carried over from, else the page job.
+  const fromTimes = line.from.map(ctx.m.fromTime).filter((t): t is number => !!t);
+  const first = origin?.time ?? (fromTimes.length ? Math.min(...fromTimes) : null) ?? ctx.research?.time ?? null;
   // This row's own earlier origins: those of the lines folded into it are listed with each of them.
   const ownFrom = line.from.filter((f) => !(row.same ?? []).some((o) => o.line.from.includes(f)));
   const job = origin ? { what: origin.raised ? "A changes job a visitor raised" : "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
@@ -755,11 +875,31 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
             <dd>{line.rerun}</dd>
           </>
         )}
-        <dt>Checked</dt>
+        <dt>Why it has this label</dt>
         <dd>
           {checked}
           {line.labelNote && <span className="block small">{line.labelNote}</span>}
         </dd>
+        {listed.length > 0 && (
+          <>
+            <dt>Source</dt>
+            <dd>
+              <ul className="links">
+                {listed.map((s) => (
+                  <li key={s.key}>
+                    <span className="chip mono">{s.n}</span> <ExtLink url={s.url}>{hostOf(s.url) || s.url || "source"}</ExtLink>
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        )}
+        {first && (
+          <>
+            <dt>First recorded</dt>
+            <dd>{readDate(String(first))}</dd>
+          </>
+        )}
         {!!line.history?.length && (
           <>
             <dt>Earlier readings</dt>
@@ -789,14 +929,9 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
                 {row.same.map((o, i) => {
                   const nums = o.line.srcKeys.map((k) => ctx.numbers.get(k)?.n).filter((n): n is number => n !== undefined);
                   const who = o.line.kind === "proof" ? "A proof" : speakerText(o.line);
-                  const added = o.origin
-                    ? `added by ${o.origin.raised ? "a changes job" : "a sources or edit job"} paid by ${o.origin.payer}`
-                    : o.line.from.length
-                      ? [...new Set(o.line.from.map(ctx.m.fromOrigin))].join("; ")
-                      : "from the page job";
                   return (
                     <li key={i}>
-                      {who}, {added}
+                      {who}
                       {nums.length ? `, source${nums.length === 1 ? "" : "s"} ${nums.join(", ")}` : ""}
                       {o.line.quote ? <span className="block">“{o.line.quote}”</span> : null}
                     </li>
@@ -806,37 +941,82 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
             </dd>
           </>
         )}
-        <dt>Added by</dt>
-        <dd>
-          {job ? (
+      </dl>
+      <details className="line-history">
+        <summary>History</summary>
+        <dl className="facts">
+          <dt>Added by</dt>
+          <dd>
+            {job ? (
+              <>
+                {job.what}, paid by <span className="mono">{job.payer}</span>
+              </>
+            ) : (
+              "Unknown"
+            )}
+          </dd>
+          {!origin && ownFrom.length > 0 && (
             <>
-              {job.what}, paid by <span className="mono">{job.payer}</span>
+              <dt>Carried over</dt>
+              <dd>{[...new Set(ownFrom.map(ctx.m.fromOrigin))].join("; ")}</dd>
             </>
-          ) : (
-            "Unknown"
           )}
-          {!origin && ownFrom.length > 0 && <span className="block small">{[...new Set(ownFrom.map(ctx.m.fromOrigin))].join("; ")}</span>}
-        </dd>
-        <dt>Links</dt>
-        <dd>
-          <ul className="links">
-            {listed.map((s) => (
-              <li key={s.key}>
-                <span className="chip mono">{s.n}</span> <ExtLink url={s.url}>{hostOf(s.url) || s.url || "source"}</ExtLink>
-              </li>
-            ))}
-            {job && (
-              <li>
+          {!!row.same?.length && (
+            <>
+              <dt>Merged lines</dt>
+              <dd>
+                <ul className="plain">
+                  {row.same.map((o, i) => (
+                    <li key={i}>
+                      {o.origin
+                        ? `Added by ${o.origin.raised ? "a changes job" : "a sources or edit job"} paid by ${o.origin.payer}`
+                        : o.line.from.length
+                          ? [...new Set(o.line.from.map(ctx.m.fromOrigin))].join("; ")
+                          : "From the page job"}
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </>
+          )}
+          {job && (
+            <>
+              <dt>Job</dt>
+              <dd>
                 <a href={job.href} target="_blank" rel="noopener noreferrer">
                   {origin ? "Its job" : "Page job"} on {job.href.startsWith(EXPLORER) ? "explorer.imd.fun" : "Etherscan"}
                 </a>
-              </li>
-            )}
-          </ul>
-        </dd>
-      </dl>
+              </dd>
+            </>
+          )}
+        </dl>
+      </details>
     </div>
   );
+}
+
+/** How a channel's label reads inside a sentence: "part of its own domain", "an account its own site links to". */
+const STATUS_PHRASE: Record<ChannelStatus, string> = {
+  own: "part of its own domain",
+  linked: "an account its own site links to",
+  verified: "an account shown on chain to be its own",
+  unverified: "not shown to be its own",
+};
+
+/**
+ * One plain sentence on why a line has its label, such as "Zora said this on its help centre, which is part of its
+ * own domain." Pure, for tests.
+ */
+export function whyLabel(line: Pick<Line, "kind" | "by" | "channel">, name: string, domain: string): string {
+  if (line.kind === "proof") return "Anyone can re-run this check on chain and get the same answer.";
+  const who = line.by.split(/\s*;\s*/)[0]?.trim();
+  if (line.kind === "statement") {
+    const ch = line.channel;
+    const where = ch?.label || hostOf(ch?.url ?? "") || "one of its channels";
+    const st: ChannelStatus = ch ? channelStatus(ch, domain) : "unverified";
+    return `${name} said this on ${where}, which is ${STATUS_PHRASE[st]}.`;
+  }
+  return `${who || "Someone other than " + name} said this, not ${name} on a channel shown to be its own, so it is a claim.`;
 }
 
 /** "Confirmed by" in green or "Contradicted by" in red, each opening the linked proof line or panel answer. */
@@ -1282,7 +1462,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const ctx: Ctx = {
     settled,
     numbers: new Map(m.sourceList.map((s) => [s.key, s])),
-    research: latest ? { payer: payerName(latest), href: jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash) } : null,
+    research: latest ? { payer: payerName(latest), href: jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash), time: latest.doneTime ?? null } : null,
     m,
     ui,
   };

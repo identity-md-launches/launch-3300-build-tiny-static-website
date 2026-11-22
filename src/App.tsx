@@ -26,7 +26,7 @@ import { OverviewTab, RecordTab, SourcesTab, type Filter, type Ui } from "./Reco
 import { ActivityList } from "./ActivityList";
 import { Connect, loadWallet, useWalletAccount } from "./walletLazy";
 import { publicClient } from "./reads";
-import { rememberSent, useActivity } from "./useActivity";
+import { isChangesJob, rememberSent, sentTxs, useActivity } from "./useActivity";
 import { holdFocus } from "./modal";
 import { leftOutText, pendingRebuildOf, planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
 import { InstructionsBlock } from "./Instructions";
@@ -40,7 +40,7 @@ import { Home, StillReading } from "./Home";
 import { useDigests } from "./digest";
 import type { Activity } from "./useActivity";
 import { AddButtons, SuggestProvider, TrayBar, type Quote } from "./Suggest";
-import { takeConfirmSeed, type ConfirmSeed } from "./changes";
+import { parseItems, takeConfirmSeed, type ConfirmSeed } from "./changes";
 
 type RecordState = RecordModel;
 const actionId = (a: string) => pad(stringToHex(a), { dir: "right", size: 32 });
@@ -425,9 +425,37 @@ function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { o
 
 /* ---------- Pay dialog ---------- */
 
-type Step = "review" | "approving" | "sending" | "sent" | "error";
+type Step = "review" | "approving" | "approved" | "sending" | "error";
 
-function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () => void; onSent: () => void; running?: Activity | null }) {
+/** What the job will do, in one plain sentence, for the top of the pay dialog. Pure, for tests. */
+export function askSentence(a: Pick<Ask, "action" | "kind" | "subject" | "rebuild" | "body" | "title">): string {
+  const who = a.subject ?? "this project";
+  if (a.action === ACTIONS.oracle) {
+    const q = String(a.body.question ?? "").replace(/\s*This question is filed under the record of \S+\.\s*$/, "").trim();
+    return `A panel of agents answers one question${q ? `: “${q.length > 160 ? `${q.slice(0, 158)}…` : q}”` : "."}`;
+  }
+  if (a.kind === "changes") {
+    const n = parseItems((a.body as { objective?: unknown }).objective).length;
+    return `A research job checks your ${n === 1 ? "suggested change" : `${n} suggested changes`} to ${who} against their sources and keeps what they support.`;
+  }
+  if (a.kind === "source") return `A research job reads the links you gave and adds what they say about ${who} to its record.`;
+  if (a.kind === "edit") return `A research job checks your edit to the summary of ${who} and keeps what the record supports.`;
+  if (/^Create/i.test(a.title)) return `A research job researches ${who} and writes its first page from public sources.`;
+  return `A research job rebuilds the page of ${who} from its sources and earlier results.`;
+}
+
+/** A request the visitor just sent: its transaction, then its job once IMD lists it. */
+export interface SentNote {
+  hash: Hex;
+  subject: string | null;
+  kind: string;
+  /** Changes in a "changes" request, for "Your N changes are being checked". */
+  n: number;
+  rebuild: boolean;
+  at: number;
+}
+
+function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () => void; onSent: (sent: SentNote) => void; running?: Activity | null }) {
   const { address, isConnected, chainId } = useWalletAccount();
   const [price, setPrice] = useState<bigint | null>(null);
   const [allowance, setAllowance] = useState<bigint | null>(null);
@@ -435,16 +463,15 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
   const [step, setStep] = useState<Step>("review");
   const [msg, setMsg] = useState("");
   const [priceFailed, setPriceFailed] = useState(false);
-  const [tx, setTx] = useState<Hex | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<Element | null>(document.activeElement);
   const json = encodeBody(ask.body);
   const right = isConnected && chainId === CHAIN_ID && !!address;
   // One rebuild at a time: a rebuild someone else started while this review was open blocks paying for another.
   // The latest value is read again at the click, just before anything is sent to the wallet.
-  const blocked = !!running && running.req.transactionHash !== tx && (step === "review" || step === "approving");
+  const blocked = !!running && (step === "review" || step === "error");
   const runningRef = useRef<Activity | null>(null);
-  runningRef.current = running && running.req.transactionHash !== tx ? running : null;
+  runningRef.current = running ?? null;
 
   const refresh = async () => {
     const p = await readPrice(ask.action);
@@ -484,14 +511,16 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const busy = step === "approving" || step === "approved" || step === "sending";
   const close = () => {
-    onClose();
+    if (!busy) onClose();
   };
 
   const pay = async () => {
     if (!address || price === null) return;
     if (runningRef.current) return;
     setMsg("");
+    setStep("review");
     try {
       // The price is read again at the click; the amount sent is exactly that value.
       const p = await readPrice(ask.action);
@@ -507,12 +536,12 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
         const h = await w.write({ address: IMD, abi: ERC20_ABI, functionName: "approve", args: [INTAKE, p], chainId: CHAIN_ID });
         await w.waitFor(h, CHAIN_ID);
         setAllowance(p);
-      }
+        setStep("approved");
+      } else setStep("sending");
       if (runningRef.current) {
         setStep("review");
         return;
       }
-      setStep("sending");
       const w = await loadWallet();
       const h = await w.write({
         address: INTAKE,
@@ -521,78 +550,160 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
         args: [actionId(ask.action), stringToHex(json), { target: ZERO_ADDRESS, selector: EMPTY_SELECTOR }, IMD, p],
         chainId: CHAIN_ID,
       });
-      setTx(h);
       rememberSent({ hash: h, kind: ask.kind, action: ask.action, at: Date.now() });
-      await w.waitFor(h, CHAIN_ID);
-      setStep("sent");
+      // Sent: the dialog closes and the page follows the request; the tray is cleared (afterSent).
       ask.afterSent?.();
-      onSent();
+      onSent({
+        hash: h,
+        subject: ask.subject ?? null,
+        kind: ask.kind,
+        n: ask.kind === "changes" ? parseItems((ask.body as { objective?: unknown }).objective).length : 0,
+        rebuild: !!ask.rebuild,
+        at: Date.now(),
+      });
     } catch (e) {
       const text = e instanceof Error ? e.message : "";
       setStep("error");
-      setMsg(/reject|denied/i.test(text) ? "The wallet request was declined. Nothing was paid." : "The transaction did not go through. Check the wallet and try again.");
+      setMsg(/reject|denied|cancel/i.test(text) ? "You declined the request in your wallet, so nothing was paid." : "The wallet could not send the request, so nothing was paid.");
     }
   };
 
   const short = balance !== null && price !== null && balance < price;
   const needsApprove = allowance !== null && price !== null && allowance < price;
-  const busy = step === "approving" || step === "sending";
+  const priceText = price !== null ? imd(price) : priceFailed ? "Price unavailable" : "Reading price…";
 
   return (
-    <div className="sheet-bg" onClick={busy ? undefined : close}>
-      <div ref={ref} className="sheet sheet-wide" role="dialog" aria-modal="true" aria-labelledby="pay-title" onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-bg" onClick={close}>
+      <div ref={ref} className="sheet sheet-wide" role="dialog" aria-modal="true" aria-labelledby="pay-title" aria-describedby="pay-what" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
           <h2 id="pay-title" tabIndex={-1}>{ask.title}</h2>
           <button className="x" aria-label="Close" onClick={close} disabled={busy}>×</button>
         </div>
-        <dl className="facts">
-          <dt>Amount</dt>
-          <dd className="mono">{price !== null ? `${imd(price)} (${price.toString()})` : priceFailed ? "Price unavailable" : "Reading price…"}</dd>
-          <dt>To</dt>
-          <dd className="mono">IMD Intake v2 {INTAKE}</dd>
-          <dt>Action</dt>
-          <dd className="mono">{ask.action}</dd>
+        <p id="pay-what" className="pay-what">{askSentence(ask)}</p>
+        <dl className="pay-plain">
+          <div>
+            <dt>Price</dt>
+            <dd>{priceText}</dd>
+          </div>
+          <div>
+            <dt>Paid to</dt>
+            <dd>IMD, the network that runs the job. Not refunded.</dd>
+          </div>
         </dl>
         {ask.warning && <p className="warn">{ask.warning}</p>}
-        <p className="small">The full body, sent as UTF-8 bytes:</p>
-        <pre className="body mono" tabIndex={0} aria-label="Request body">{JSON.stringify(ask.body, null, 2)}</pre>
-        {ask.instructions && (
+        <div className="pay-more">
           <details className="ins-details">
-            <summary>Instructions this job follows</summary>
-            <InstructionsBlock name={ask.instructions} id={`dialog-ins-${ask.instructions}`} />
+            <summary>Show the full request</summary>
+            <dl className="facts">
+              <dt>Amount, in raw units</dt>
+              <dd className="mono">{price !== null ? `${imd(price)} (${price.toString()})` : priceText}</dd>
+              <dt>To</dt>
+              <dd className="mono break">IMD Intake v2 {INTAKE}</dd>
+              <dt>Action</dt>
+              <dd className="mono">{ask.action}</dd>
+            </dl>
+            <p className="small">The full body, sent as UTF-8 bytes:</p>
+            <pre className="body mono" tabIndex={0} aria-label="Request body">{JSON.stringify(ask.body, null, 2)}</pre>
+            {needsApprove && <p className="small">Your wallet first approves exactly {priceText} to the Intake.</p>}
           </details>
-        )}
-        <p className="small">Payments go to IMD and are not refunded. {needsApprove ? `Your wallet first approves exactly ${price !== null ? imd(price) : "the price"} to the Intake.` : ""}</p>
-        <div className="row-actions">
-          {priceFailed && price === null && (
-            <button type="button" className="btn" onClick={readQuote}>
-              Retry price
-            </button>
-          )}
-          {blocked ? (
-            <p className="running" role="status">
-              A rebuild is running, started {startedAt(running!)} by <span className="mono">{payerName(running!)}</span>.{" "}
-              <a href={jobLink(running!.jobId, running!.req.transactionHash)} target="_blank" rel="noopener noreferrer">Follow it</a>
-            </p>
-          ) : !isConnected ? (
-            <><Connect /><span className="small">Connect a wallet to pay.</span></>
-          ) : !right ? (
-            <Connect />
-          ) : step === "sent" ? (
-            <button className="btn btn-primary" onClick={close}>Done</button>
-          ) : (
-            <button className="btn btn-primary" onClick={pay} disabled={busy || price === null || short}>
-              {step === "approving" ? "Approving in wallet…" : step === "sending" ? "Paying in wallet…" : needsApprove ? `Approve and pay ${price !== null ? imd(price) : ""}` : `Pay ${price !== null ? imd(price) : ""}`}
-            </button>
+          {ask.instructions && (
+            <details className="ins-details">
+              <summary>Instructions this job follows</summary>
+              <InstructionsBlock name={ask.instructions} id={`dialog-ins-${ask.instructions}`} />
+            </details>
           )}
         </div>
-        <p className="note" role="status">
+        {busy ? (
+          <p className="pay-wait" role="status">
+            {step === "approved" ? "Approved. Now confirm the request." : "Waiting for your wallet…"}
+          </p>
+        ) : (
+          <div className="row-actions">
+            {priceFailed && price === null && (
+              <button type="button" className="btn" onClick={readQuote}>
+                Retry price
+              </button>
+            )}
+            {blocked ? (
+              <p className="running" role="status">
+                A rebuild is running, started {startedAt(running!)} by <span className="mono">{payerName(running!)}</span>.{" "}
+                <a href={jobLink(running!.jobId, running!.req.transactionHash)} target="_blank" rel="noopener noreferrer">Follow on the explorer</a>
+              </p>
+            ) : !isConnected ? (
+              <><Connect /><span className="small">Connect a wallet to pay.</span></>
+            ) : !right ? (
+              <Connect />
+            ) : (
+              <button className="btn btn-primary" onClick={pay} disabled={price === null || short}>
+                {step === "error" ? "Try again" : needsApprove ? `Approve and pay ${price !== null ? imd(price) : ""}` : `Pay ${price !== null ? imd(price) : ""}`}
+              </button>
+            )}
+          </div>
+        )}
+        <p className={step === "error" ? "note error" : "note"} role={step === "error" ? "alert" : "status"}>
           {short && balance !== null ? `This wallet holds ${imd(balance)}, less than the price.` : ""}
-          {step === "sent" ? "Paid. It shows under Activity as pending until the swarm answers." : ""}
           {msg}
-          {tx && <> <a href={`${ETHERSCAN}/tx/${tx}`} target="_blank" rel="noopener noreferrer">View the transaction</a></>}
         </p>
       </div>
+    </div>
+  );
+}
+
+/** The job link once IMD lists the request's job, else the transaction on Etherscan. */
+export const sentHref = (hash: string, items: Activity[] | null): string => {
+  const a = (items ?? []).find((x) => x.req.transactionHash.toLowerCase() === hash.toLowerCase());
+  return jobLink(a?.jobId ?? null, hash);
+};
+
+/** The small confirmation at the bottom of the page, for about 8 seconds after a request is sent. */
+function SentToast({ sent, items, onDone }: { sent: SentNote; items: Activity[] | null; onDone: () => void }) {
+  useEffect(() => {
+    const t = window.setTimeout(onDone, 8000);
+    return () => window.clearTimeout(t);
+  }, [sent.hash, onDone]);
+  return (
+    <p className="toast toast-sent" role="status">
+      <span>
+        Sent.{" "}
+        <a href={sentHref(sent.hash, items)} target="_blank" rel="noopener noreferrer">
+          Follow it on the IMD explorer.
+        </a>
+      </span>
+    </p>
+  );
+}
+
+/**
+ * The pending state where the visitor is: "A rebuild is running, started just now" or "Your N changes are being
+ * checked", each with "Follow on the explorer". From requests sent here this visit and from the chain.
+ */
+function PendingBar({ subject, items, sent }: { subject: string; items: Activity[] | null; sent: SentNote[] }) {
+  const mine = (items ?? []).filter((a) => a.req.subject === subject);
+  const done = (h: string) => mine.some((a) => a.req.transactionHash.toLowerCase() === h.toLowerCase() && a.state !== "pending");
+  const rows: { key: string; text: string; href: string }[] = [];
+  const rebuild = pendingRebuildOf(mine);
+  const localRebuild = sent.find((x) => x.subject === subject && x.rebuild && !done(x.hash));
+  if (rebuild) rows.push({ key: rebuild.req.transactionHash, text: `A rebuild is running, started ${startedAt(rebuild)}.`, href: jobLink(rebuild.jobId, rebuild.req.transactionHash) });
+  else if (localRebuild) rows.push({ key: localRebuild.hash, text: "A rebuild is running, started just now.", href: sentHref(localRebuild.hash, items) });
+  const mineSent = new Set([...sentTxs().map((x) => x.hash.toLowerCase()), ...sent.map((x) => x.hash.toLowerCase())]);
+  const changes = new Map<string, { n: number; href: string }>();
+  for (const x of sent) if (x.subject === subject && x.kind === "changes" && !done(x.hash)) changes.set(x.hash.toLowerCase(), { n: x.n, href: sentHref(x.hash, items) });
+  for (const a of mine)
+    if (a.state === "pending" && isChangesJob(a.req) && mineSent.has(a.req.transactionHash.toLowerCase()))
+      changes.set(a.req.transactionHash.toLowerCase(), { n: parseItems(a.req.bodyJson?.objective).length, href: jobLink(a.jobId, a.req.transactionHash) });
+  for (const [k, c] of changes) rows.push({ key: k, text: c.n === 1 ? "Your change is being checked." : `Your ${c.n} changes are being checked.`, href: c.href });
+  if (!rows.length) return null;
+  return (
+    <div className="pending-bar" role="status">
+      {rows.map((r) => (
+        <p key={r.key}>
+          <span className="pending-dot" aria-hidden="true" />
+          {r.text}{" "}
+          <a href={r.href} target="_blank" rel="noopener noreferrer">
+            Follow on the explorer
+          </a>
+        </p>
+      ))}
     </div>
   );
 }
@@ -620,8 +731,10 @@ function useRoute() {
   return route;
 }
 
-function SubjectView({ subject, items, activity, route, onAsk, researchPrice, researchQuote, subjects, readingFiles }: {
+function SubjectView({ subject, items, activity, route, onAsk, researchPrice, researchQuote, subjects, readingFiles, sent }: {
   readingFiles: boolean;
+  /** Requests sent from this page this visit, for the pending state. */
+  sent: SentNote[];
   subject: string;
   /** Every subject on the site, so Related can link to the ones that have a page here. */
   subjects: Findable[];
@@ -690,6 +803,7 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, re
           </a>
         ))}
       </nav>
+      <PendingBar subject={subject} items={activity.items} sent={sent} />
       {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} subjects={subjects} chainError={activity.error} retrying={activity.retrying} readingFiles={readingFiles} />}
       {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
       {route.tab === "sources" && <SourcesTab m={rec} />}
@@ -707,6 +821,16 @@ export default function App() {
   const subject = route.subject;
   const activity = useActivity(subject ?? null);
   const [ask, setAsk] = useState<Ask | null>(null);
+  const [sent, setSent] = useState<SentNote[]>([]);
+  const [toast, setToast] = useState<SentNote | null>(null);
+  const hideToast = useCallback(() => setToast(null), []);
+  // While a sent request's job id is not known, read again so the toast and the pending line switch to the job link.
+  const waitingJob = sent.some((x) => !(activity.items ?? []).some((a) => a.req.transactionHash.toLowerCase() === x.hash.toLowerCase() && (a.jobId || a.state !== "pending")));
+  useEffect(() => {
+    if (!waitingJob) return;
+    const t = window.setInterval(() => void activity.reload(), 15000);
+    return () => window.clearInterval(t);
+  }, [waitingJob, activity]);
   // A rebuild or a set of changes opens its pay dialog only after its instruction file was fetched and its sha256
   // matched (instructionsReachable); otherwise the visitor is told, and nothing can be paid.
   const [checking, setChecking] = useState(false);
@@ -772,7 +896,7 @@ export default function App() {
       </header>
       <main id="root-main" tabIndex={-1}>
         {subject ? (
-          <SubjectView key={subject} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={openAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
+          <SubjectView key={subject} sent={sent} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={openAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
         ) : (
           <Home key={route.add ?? ""} items={activity.items} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
         )}
@@ -801,12 +925,17 @@ export default function App() {
           ask={ask}
           running={ask.rebuild && ask.subject ? pendingRebuildOf((activity.items ?? []).filter((a) => a.req.subject === ask.subject)) : null}
           onClose={() => setAsk(null)}
-          onSent={() => {
+          onSent={(note) => {
+            setAsk(null);
+            setSent((xs) => [note, ...xs]);
+            setToast(note);
             void activity.reload();
-            if (ask.subject && route.subject !== ask.subject) location.hash = subjectHref(ask.subject, "activity");
+            // From Home (a new project), the visitor is taken to that project's page, where its pending state shows.
+            if (ask.subject && route.subject !== ask.subject) location.hash = subjectHref(ask.subject, "overview");
           }}
         />
       )}
+      {toast && <SentToast sent={toast} items={activity.items} onDone={hideToast} />}
     </>
   );
 }

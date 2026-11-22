@@ -85,6 +85,8 @@ export interface InfoRow {
   lines: string[];
   /** When the value lists several things, each one: shown as separate lines. Empty for a single value. */
   values: string[];
+  /** Entries the result gave as { name, url } (Official accounts): each account's name and link. */
+  entries?: { name: string; url: string }[];
 }
 export interface Dropped {
   id: string;
@@ -530,8 +532,11 @@ export function parsePage(text: string, domain = ""): Page {
       .slice(0, 16)
       .map((r) => {
         const o = obj(r);
-        const values = arr(o.values).map((x) => str(x, 300).trim()).filter(Boolean).slice(0, 20);
-        return { label: str(o.label, 80), value: str(o.value, 300) || values.join("; "), url: str(o.url, 400), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean), values: values.length > 1 ? values : [] };
+        // A value entry is a string, or { name, url } (Official accounts): its name is the value, its url the link.
+        const raw = arr(o.values).slice(0, 20);
+        const entries = raw.filter((x) => x && typeof x === "object").map((x) => ({ name: str(obj(x).name, 200).trim(), url: str(obj(x).url, 400).trim() })).filter((e) => e.name || e.url);
+        const values = raw.map((x) => (x && typeof x === "object" ? str(obj(x).name, 300) || str(obj(x).url, 300) : str(x, 300)).trim()).filter(Boolean);
+        return { label: str(o.label, 80), value: str(o.value, 300) || values.join("; "), url: str(o.url, 400), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean), values: values.length > 1 ? values : [], ...(entries.length ? { entries } : {}) };
       })
       // A row never shows "unverified" or "unknown" as its value: it is left out, as the instructions say.
       .filter((r) => r.label && r.value && !/^\s*(unverified|unknown|not known|n\/a)\.?\s*$/i.test(r.value))
@@ -725,7 +730,7 @@ export function parseLines(text: string, opts: { changes?: boolean } = {}): Sour
 /** A record row: a research line, or a line added by a source job (with who paid and where the job is). */
 export interface RecordRow extends Row {
   /** raised: the line came from a visitor's changes job ("raised by <payer>"). */
-  origin: { payer: string; jobHref: string; raised?: boolean } | null;
+  origin: { payer: string; jobHref: string; raised?: boolean; time?: number | null } | null;
   /** Other lines with the same text (ignoring case and punctuation), shown as this ONE row: their origins, speakers and sources. */
   same?: RecordRow[];
 }
@@ -737,6 +742,8 @@ export interface SourceJob {
   payer: string;
   jobHref: string;
   raised?: boolean;
+  /** When the job completed (unix seconds), for a line's "First recorded". */
+  time?: number | null;
 }
 
 /** One numbered source in the record's single list: research sources first, then each source job's. */
@@ -784,7 +791,7 @@ export function mergeRecord(page: Page | null, jobs: SourceJob[], domain = page?
     .map((section) => {
       const rows: RecordRow[] = page ? orderSection(page, section, placedResearch).map((r) => ({ ...r, origin: null })) : [];
       for (const p of pages)
-        rows.push(...orderSection(p.page, section, p.placed).map((r) => ({ ...r, origin: { payer: p.job.payer, jobHref: p.job.jobHref, raised: p.job.raised } })));
+        rows.push(...orderSection(p.page, section, p.placed).map((r) => ({ ...r, origin: { payer: p.job.payer, jobHref: p.job.jobHref, raised: p.job.raised, time: p.job.time ?? null } })));
       return { section, rows };
     })
     .filter((s) => s.rows.length > 0);

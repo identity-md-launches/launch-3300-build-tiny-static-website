@@ -121,8 +121,23 @@ section { display: grid; gap: var(--space-4); min-width: 0; }
 .tab > h1:focus, .tab-title:focus, .section-head h1:focus { outline: none; }
 .tab-title { font-size: var(--text-title); letter-spacing: -0.01em; }
 
-/* Overview: key facts first, full width, above the summary. */
+/* Overview: the summary first; at 1000px and wider, Key facts in a column to its right (about 40%), both from the
+   same height. Narrower screens stack them: Summary, then Key facts. */
 .overview { display: grid; gap: var(--space-6); align-items: start; }
+.summary-col { display: grid; gap: var(--space-3); min-width: 0; align-content: start; }
+@media (min-width: 62.5rem) {
+  .overview { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  /* In the narrower column a row's label sits above its value; the badge under the value, the pencil at the end. */
+  .facts-col .keyfacts tr:not(.kf-details):not(.kf-panel) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-2); border-top: 1px solid var(--color-border); padding: var(--space-2) 0; }
+  .facts-col .keyfacts tr.kf-details, .facts-col .keyfacts tr.kf-panel { display: block; }
+  .facts-col .keyfacts tr.kf-details td, .facts-col .keyfacts tr.kf-panel td { display: block; }
+  .facts-col .keyfacts th, .facts-col .keyfacts td { border-top: 0; padding: 0; width: auto; }
+  .facts-col .keyfacts th { grid-column: 1 / -1; padding-bottom: var(--space-1); }
+  .facts-col .kf-value { grid-column: 1; padding-inline-end: 0 !important; }
+  .facts-col .kf-badge { grid-column: 1; grid-row: 3; text-align: start !important; padding-top: var(--space-1) !important; }
+  .facts-col .kf-edit { grid-column: 2; grid-row: 2 / span 2; width: auto; }
+}
+.kf-more { justify-self: start; font-size: var(--text-small); }
 .keyfacts { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
 .keyfacts h2 { font-size: var(--text-heading); }
 .keyfacts table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -267,15 +282,24 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .title-row { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .title-row h1 { min-width: 0; }
 
-/* Related, under Key facts. */
+/* Related, at the bottom of Overview above the footer links: a compact row of chips, no dots or badges. */
 .facts-col { display: grid; gap: var(--space-4); min-width: 0; align-content: start; }
-.related { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
+.related { display: grid; gap: var(--space-2); min-width: 0; }
 .related h2 { font-size: var(--text-heading); }
-.related-list { display: grid; gap: 0; }
-.related-item { display: grid; gap: var(--space-1); padding: var(--space-2) 0; border-top: 1px solid var(--color-border); justify-items: start; }
-.related-name { font-weight: 600; overflow-wrap: anywhere; }
-.related-name .small { font-weight: 400; }
-.related-rel { color: var(--color-text-secondary); font-size: var(--text-small); }
+.related-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.rel-item { display: grid; gap: var(--space-1); justify-items: start; min-width: 0; max-width: 100%; }
+.rel-chip {
+  display: grid; gap: 0; min-height: 44px; max-width: 100%; padding: var(--space-1) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  background: var(--color-bg); color: var(--color-text); font: inherit; text-align: start; text-decoration: none; cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+span.rel-chip { cursor: default; }
+a.rel-chip .rel-name { color: var(--color-accent-solid); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+@media (hover: hover) { a.rel-chip:hover, button.rel-chip:hover { background: var(--color-bg-subtle); border-color: var(--color-text-secondary); } }
+.rel-chip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.rel-name { font-weight: 600; overflow-wrap: anywhere; }
+.rel-what { font-size: var(--text-small); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .rel-chip { transition: none; } }
 
 /* Record: closed sections with counts, the search and the settled filter. */
 .record-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
@@ -551,6 +575,18 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .sent.is-on { background: var(--color-accent-subtle); box-shadow: 0 2px 0 var(--color-accent-solid); }
 .sent:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .reworded { white-space: nowrap; }
+/* A sentence a visitor's job changed: one small pencil after its dots; it opens who, when, the earlier wording and lines. */
+.changed-mark { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-inline-start: 2px; vertical-align: -6px; border: 0; border-radius: 6px; background: none; color: var(--color-text-secondary); cursor: pointer; }
+.changed-mark::before { content: ""; position: absolute; inset: -10px; }
+.changed-mark { position: relative; }
+@media (hover: hover) { .changed-mark:hover { background: var(--color-bg-hover); color: var(--color-text); } }
+.changed-mark.is-on { background: var(--color-bg-hover); color: var(--color-text); }
+.changed-mark:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.change-note { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-control); background: var(--color-bg-subtle); min-width: 0; overflow-wrap: anywhere; }
+.change-note p { margin: 0; }
+.change-history { display: grid; gap: var(--space-2); margin: var(--space-1) 0 0; }
+.change-history li { display: grid; gap: 2px; }
+.changed-count { color: var(--color-text-secondary); }
 
 .pending { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-inline-start: var(--space-1); }
 .row > .pending { margin-inline-start: 28px; }
@@ -743,3 +779,22 @@ body.has-tray main { padding-bottom: 9rem; }
 .dispute-contradicts .dot { background: var(--red-800); }
 @media (hover: hover) { .dispute-dot:hover { background: var(--color-bg-hover); } }
 .settled-agrees { color: var(--color-text-secondary); }
+
+/* ---------- Pay dialog: the plain summary first, the full request folded ---------- */
+.pay-what { margin: 0; font-size: var(--text-body); }
+.pay-plain { margin: 0; display: grid; gap: var(--space-2); }
+.pay-plain > div { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: var(--space-3); align-items: baseline; }
+.pay-plain dt { font-size: var(--text-small); color: var(--color-text-secondary); }
+.pay-plain dd { margin: 0; overflow-wrap: anywhere; }
+.pay-plain > div:first-child dd { font-weight: 600; font-variant-numeric: tabular-nums; }
+.pay-more { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); align-items: flex-start; }
+.pay-more > details { flex: 1 1 14rem; min-width: 0; }
+.pay-more > details[open] { flex-basis: 100%; }
+.pay-wait { margin: 0; min-height: 44px; display: flex; align-items: center; font-weight: 600; }
+.note.error { color: var(--color-error); }
+
+/* After paying: a small confirmation at the bottom of the page, and the pending state under the tabs. */
+.toast-sent a { color: var(--gray-0); text-decoration: underline; text-underline-offset: 2px; }
+.pending-bar { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); background: var(--color-accent-subtle); font-size: var(--text-small); }
+.pending-bar p { margin: 0; overflow-wrap: anywhere; }
+.pending-dot { display: inline-block; width: 8px; height: 8px; margin-inline-end: var(--space-2); border-radius: 50%; background: var(--color-accent-solid); vertical-align: 1px; }

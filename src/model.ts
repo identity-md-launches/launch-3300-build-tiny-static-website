@@ -64,6 +64,8 @@ export interface ShownSentence extends SummarySentence {
   updatedBy?: string;
   earlier?: string;
   original?: string;
+  /** Every change visitors' jobs made to this sentence since the page was built, newest first. */
+  history?: import("./changeResult").SentenceChange[];
   /**
    * The changes job whose kept reword or correction the sentence shows: a later source's affects entry for the new
    * wording is told from an earlier one by it (changeResult.ts sentenceDispute).
@@ -181,7 +183,7 @@ export function coreOf(items: Activity[], history?: HistoryReads): Core {
   const after = unfolded.filter((a) => isSourceJob(a.req) || isEditJob(a.req) || isChangesJob(a.req));
   const jobs: SourceJob[] = after
     .filter((a) => a.sources)
-    .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash), raised: isChangesJob(a.req) }));
+    .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash), raised: isChangesJob(a.req), time: a.doneTime ?? null }));
   // A changes result's new lines point at the line they are about; the target row shows what each does to it,
   // also when a rebuild has since carried that line forward under another id.
   // The panel answers the record can name: the rebuild's own A1… and, after them, answers completed since.
@@ -713,6 +715,8 @@ export interface RecordModel {
   unresolved: UnresolvedRef[];
   /** A line's earlier origin ("F2:L14") in words: the job that wrote it, its payer and date. No ids. */
   fromOrigin: (ref: string) => string;
+  /** When the job that wrote an earlier line ("F2:L14") completed (unix seconds), or null when unknown. */
+  fromTime: (ref: string) => number | null;
   /** The newest page job for this subject that has not completed yet: while it runs, Rebuild is not offered. */
   pendingRebuild: Activity | null;
   sourceList: ListedSource[];
@@ -855,6 +859,13 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     return `carried over from ${what} paid by ${payerName(a)}${a.doneTime ? `, ${readDate(String(a.doneTime))}` : ""}`;
   };
 
+  const fromTime = (ref: string): number | null => {
+    const m = /^\s*F(\d+):/i.exec(ref);
+    const f = m ? given.files.find((x) => x.n === Number(m[1])) : undefined;
+    const a = f?.hash ? (items ?? []).find((x) => x.fileHash === f.hash) : undefined;
+    return a?.doneTime ?? null;
+  };
+
   const answerRef = (target: string) => {
     const m = /^A(\d+)$/i.exec(target.trim());
     if (!m) return null;
@@ -963,6 +974,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     merged: core.merged,
     unresolved: core.unresolved,
     fromOrigin,
+    fromTime,
     pendingRebuild: pendingRebuildOf(items ?? []),
     sourceList,
     counts,

@@ -30,22 +30,39 @@ export const forgetWallet = (): void => {
 };
 
 /**
- * Removes what wagmi persisted before the site stopped letting it (wagmi.store held each connection with its
- * accounts, plus wagmi.recentConnectorId, wagmi.injected.connected and the like). Run once on every page load; the
- * site's own flag is kept.
+ * Every key a wallet library may have written in this site's storage: wagmi (wagmi.store held each connection with its
+ * accounts, wagmi.recentConnectorId, wagmi.injected.connected), the Coinbase Wallet SDK (-CBWSDK:…, cbwsdk.store,
+ * -walletlink:…, which held the address) and WalletConnect (wc@2:…, WCM_…, @w3m/…). The site's own flag never matches.
+ */
+export const WALLET_KEY = /^(?:wagmi\.|-CBWSDK:|cbwsdk\.|-walletlink|walletlink|wc@2:|WCM_|@w3m|@appkit|WALLETCONNECT|walletconnect)/i;
+
+/**
+ * Removes every wallet library key (WALLET_KEY) from localStorage and sessionStorage. Run on every page load and on
+ * Disconnect; the site's own flag is kept (Disconnect clears it with forgetWallet).
  */
 export const dropWalletSnapshots = (): number => {
-  const s = store();
-  if (!s) return 0;
-  try {
-    const keys: string[] = [];
-    for (let i = 0; i < s.length; i++) {
-      const k = s.key(i);
-      if (k && /^wagmi\./.test(k)) keys.push(k);
+  let n = 0;
+  for (const s of [store(), session()]) {
+    if (!s) continue;
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < s.length; i++) {
+        const k = s.key(i);
+        if (k && WALLET_KEY.test(k)) keys.push(k);
+      }
+      for (const k of keys) s.removeItem(k);
+      n += keys.length;
+    } catch {
+      /* storage blocked */
     }
-    for (const k of keys) s.removeItem(k);
-    return keys.length;
+  }
+  return n;
+};
+
+const session = (): Storage | null => {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
   } catch {
-    return 0;
+    return null;
   }
 };

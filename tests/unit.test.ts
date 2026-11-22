@@ -210,7 +210,7 @@ describe("add sources", () => {
     expect(money[5]!.differsWith).toBe("r1:a");
     expect(money.slice(4).map((r) => r.line.kind)).toEqual(["statement", "claim", "claim"]);
     expect(money[5]!.line.labelNote).toContain("is not on the subject's domain or one of the record's verified channels");
-    expect(money[4]!.origin).toEqual({ payer: "alice.eth", jobHref: "https://explorer.imd.fun/jobs/x" });
+    expect(money[4]!.origin).toEqual({ payer: "alice.eth", jobHref: "https://explorer.imd.fun/jobs/x", time: null });
     expect(merged.find((s) => s.section === "history")).toBeUndefined();
     expect(mergeRecord(null, [{ key: "r1", data, payer: "p", jobHref: "h" }]).map((s) => s.section)).toEqual(["money"]);
   });

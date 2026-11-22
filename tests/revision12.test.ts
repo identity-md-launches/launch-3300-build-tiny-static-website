@@ -150,7 +150,9 @@ describe("a17bafd2: a corrected summary sentence shows the patch, its evidence, 
     expect(s.correctedBy).toBeUndefined();
     expect(s.earlier).toBe(OLD);
     expect(s.refs.map((l) => l.id)).toEqual(["0xc1:N1"]);
-    expect(html).not.toContain("corrected by");
+    // No "corrected by 0x…" text inside the paragraph: one pencil after the dots, and one line under the summary.
+    expect(html).not.toMatch(/corrected by <span|corrected by 0x|Updated by a change from <span class="mono">/);
+    expect(html).toContain('aria-label="Corrected by a visitor: show the change"');
     expect(notice(html)).toBeNull();
   });
 });

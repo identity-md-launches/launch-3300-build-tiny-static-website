@@ -40,9 +40,20 @@ export interface KeyRow {
    * first ("Stated by Documentation +1") and the row's details list them all.
    */
   speakers?: string[];
-  /** Set when a kept change patched this row: who paid for it, and the value the page shown had before. */
+  /** Set when a kept change patched this row: who paid for the newest patch, and the value shown just before it. */
   updatedBy?: string;
   earlier?: string;
+  /** Every value this row showed before each patch, newest first: the value, who changed it and when (unix seconds). */
+  history?: RowChange[];
+  /** True on an Official accounts row whose accounts carry different labels: each account shows its own badge. */
+  perAccount?: boolean;
+}
+
+/** One patch of a row or sentence: the value shown just before it, who paid for the change and when it completed. */
+export interface RowChange {
+  value: string;
+  by: string;
+  at: number | null;
 }
 
 /** One token of a Tokens value: its symbol, what it is for, its contract address and chain ("" when the value gives none). */
@@ -135,20 +146,78 @@ export function isGenericSpeaker(by: string): boolean {
 }
 
 export interface Account {
+  /** A short reader's name, such as "@zora on X" or "ourzora on GitHub"; never an address in brackets. */
   name: string;
+  /** Where the account's link goes: the entry's url, else its channel's, else "" (plain text). */
+  url: string;
   channel: Channel | null;
+  /** From the account's own tie: Linked from own site (linked), Verified on chain (strong), else Not verified. */
   status: Badge | null;
 }
 
+/** An Official accounts entry as the result may give it: a name with a url. */
+export type AccountEntry = { name: string; url: string };
+
+const SITES: Array<[RegExp, string, boolean]> = [
+  [/^(?:x|twitter)\.com$/, "X", true],
+  [/^github\.com$/, "GitHub", false],
+  [/^(?:warpcast\.com|farcaster\.xyz)$/, "Farcaster", true],
+  [/^(?:t\.me|telegram\.me)$/, "Telegram", true],
+  [/^(?:discord\.gg|discord\.com)$/, "Discord", false],
+  [/^medium\.com$/, "Medium", true],
+  [/^(?:youtube\.com|youtu\.be)$/, "YouTube", true],
+  [/^linkedin\.com$/, "LinkedIn", false],
+  [/^reddit\.com$/, "Reddit", false],
+  [/^mirror\.xyz$/, "Mirror", false],
+  [/^instagram\.com$/, "Instagram", true],
+  [/^bsky\.app$/, "Bluesky", true],
+];
+
+/**
+ * A short name for an account: "@zora on X", "ourzora on GitHub", "zora on Discord". Taken from its URL when it has
+ * one on a known site; otherwise the given name with any bracketed address or URL removed.
+ */
+export function accountLabel(name: string, url: string): string {
+  const clean = name.replace(/\s*\((?:[^)]*0x[0-9a-fA-F]{6,}[^)]*|https?:[^)]*)\)/g, "").replace(/\s*0x[0-9a-fA-F]{40}\b/g, "").trim();
+  let u: URL | null = null;
+  try {
+    u = url ? new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`) : null;
+  } catch {
+    u = null;
+  }
+  if (!u) return clean || name.trim();
+  const host = u.hostname.toLowerCase().replace(/^(?:www|mobile|m)\./, "");
+  const site = SITES.find(([re]) => re.test(host));
+  const seg = u.pathname.split("/").filter(Boolean);
+  let handle = (host === "linkedin.com" || host === "reddit.com" ? seg[1] : host === "discord.com" ? seg[1] : seg[0]) ?? "";
+  handle = decodeURIComponent(handle).replace(/^@/, "");
+  if (!site) return clean || host;
+  if (!handle || /^(?:invite|channel|company|r|in|u|user|c)$/i.test(handle)) return clean && !/^https?:/i.test(clean) ? (/ on /.test(clean) ? clean : `${clean} on ${site[1]}`) : site[1];
+  return `${site[2] ? "@" : ""}${handle} on ${site[1]}`;
+}
+
 /** Each account an Official accounts value lists ("@imd, @news"), matched to its channel by label, handle or URL. */
-export function accountsOf(channels: Channel[], value: string | string[], domain: string): Account[] {
+export function accountsOf(channels: Channel[], value: string | string[] | AccountEntry[], domain: string): Account[] {
   // A text value is never split on commas or "and": only a list the result gave (values) is several accounts.
-  const parts = (typeof value === "string" ? [value] : value).map((p) => p.trim()).filter(Boolean);
-  return parts.map((name) => {
-    const url = /^https?:\/\//i.test(name) ? name : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(name) ? `https://${name}` : "";
-    const channel = channelFor(channels, name, url ? [url] : []);
-    return { name, channel, status: channel ? statusBadge(channel, domain) : null };
+  const parts: AccountEntry[] = (typeof value === "string" ? [value] : value)
+    .map((p) => (typeof p === "string" ? { name: p.trim(), url: "" } : { name: p.name.trim(), url: p.url.trim() }))
+    .filter((p) => p.name || p.url);
+  return parts.map(({ name, url: given }) => {
+    const own = /^https?:\/\//i.test(name) ? name : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(name) ? `https://${name}` : "";
+    const url0 = safeHref(given) ? given : own;
+    const channel = channelFor(channels, name, url0 ? [url0] : []);
+    const url = url0 || (channel && safeHref(channel.url) ? channel.url : "");
+    return { name: accountLabel(name, url), url, channel, status: toBadge(accountStatus(url || name, channel, domain)) };
   });
+}
+
+/** One account's label from its own tie: on the own domain, else its channel's tie (linked, strong), else Not verified. */
+function accountStatus(target: string, ch: Channel | null, domain: string): ChannelStatus {
+  const url = /^https?:\/\//i.test(target) ? target : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(target) ? `https://${target}` : "";
+  if (url && onDomain(url, domain)) return "own";
+  // A channel on the own domain matched to an off-site account (or a handle) never lends it Own domain.
+  if (ch && !onDomain(ch.url, domain)) return channelStatus(ch, domain);
+  return "unverified";
 }
 
 const OUTDATED: Badge = { text: "Out of date", tone: "outdated" };
@@ -199,9 +268,11 @@ export function speakerShort(names: string[]): string {
 
 /** The full speaker list for a row's details, when its Stated by or Reported by badge names more than one. */
 export function speakersField(badge: Badge | null, lines: Line[], sourceUrl: (l: Line) => string = () => ""): { speakers?: string[] } {
-  if (!badge || (badge.tone !== "statement" && badge.tone !== "claim")) return {};
   const names = speakersOf(lines, sourceUrl);
-  return names.length > 1 ? { speakers: names } : {};
+  // A Stated by / Reported by badge names the first: the details list all once there is more than one. Any other
+  // badge (Proven, Contradicted, Out of date) names none, so the details list every speaker there is.
+  const named = !!badge && (badge.tone === "statement" || badge.tone === "claim");
+  return names.length > (named ? 1 : 0) ? { speakers: names } : {};
 }
 
 /**
@@ -211,23 +282,37 @@ export function speakersField(badge: Badge | null, lines: Line[], sourceUrl: (l:
  */
 export function withPatches(
   rows: KeyRow[],
-  patches: Map<string, { value: string; lines: Line[]; payer: string }>,
+  patches: Map<string, RowPatchIn | RowPatchIn[]>,
   all: Line[],
   sourceUrl: (l: Line) => string = () => "",
   ctx: { channels: Channel[]; domain: string } = { channels: [], domain: "" },
 ): KeyRow[] {
   if (!patches.size) return rows;
-  return rows.map((r) => {
-    const p = patches.get(r.label.trim().toLowerCase());
-    if (!p) return r;
+  return rows.map((r0) => {
+    const got = patches.get(r0.label.trim().toLowerCase());
+    if (!got) return r0;
+    // Patches in completion order: each one's "earlier" is the value shown just before it.
+    let r = r0;
+    for (const p of Array.isArray(got) ? got : [got]) r = patchRow(r, p, all, sourceUrl, ctx);
+    return r;
+  });
+}
+
+/** A patch as withPatches takes it: the new value, its resolved lines, the payer and when it completed. */
+export type RowPatchIn = { value: string; lines: Line[]; payer: string; at?: number | null };
+
+function patchRow(r: KeyRow, p: RowPatchIn, all: Line[], sourceUrl: (l: Line) => string, ctx: { channels: Channel[]; domain: string }): KeyRow {
+  {
     const tied = TIE_ROWS.test(r.label.trim());
     const badge = tied ? null : badgeOf(p.lines, all, sourceUrl);
     const { speakers: _drop, ...rest } = r;
     // A row's link and channel label belong to its value: a patched Website or Official accounts row is linked and
     // labelled from the new value and the channels, never from the value it replaced. No identifiable URL: plain text.
     const link = tied ? patchedLink(r.label, p.value, p.lines, all, ctx) : { url: "", channel: null, status: null };
-    return { ...rest, ...link, value: p.value, values: [], tokens: [], accounts: [], lines: p.lines, badge, updatedBy: p.payer, earlier: r.value || r.values.join("; "), ...speakersField(badge, p.lines, sourceUrl) };
-  });
+    const before = r.value || r.values.join("; ") || r.accounts.map((a) => a.name).join("; ");
+    const history: RowChange[] = [{ value: before, by: p.payer, at: p.at ?? null }, ...(r.history ?? [])];
+    return { ...rest, ...link, value: p.value, values: [], tokens: [], accounts: [], perAccount: false, lines: p.lines, badge, updatedBy: p.payer, earlier: before, history, ...speakersField(badge, p.lines, sourceUrl) };
+  }
 }
 
 /** The URL a value names on its own: a whole http(s) address, or a bare host with an optional path; else "". */
@@ -262,10 +347,13 @@ export function speakersOf(lines: Line[], sourceUrl: (l: Line) => string = () =>
   const ordered = [...said.filter((l) => l.kind === "statement"), ...said.filter((l) => l.kind !== "statement")];
   for (const l of ordered) {
     const by = l.by.split(/\s*[;,]\s*/).map((s) => s.trim()).filter((s) => s && !isGenericSpeaker(s));
-    const names = l.kind === "statement" ? [l.channel?.label || hostOf(l.channel?.url ?? "") || by[0] || "the project", ...by.slice(1)] : by;
+    // Every speaker counts: the statement's channel, then every name its by gives (none is assumed to be the channel).
+    const channel = l.kind === "statement" ? l.channel?.label || hostOf(l.channel?.url ?? "") || (by.length ? "" : "the project") : "";
+    // A claim whose speaker is not named counts as the host of its source, when it has one.
+    const names = [channel, ...by, ...(l.kind !== "statement" && !by.length ? [hostOf(sourceUrl(l))] : [])].filter(Boolean);
     for (const name of names) if (!out.some((x) => x.toLowerCase() === name.toLowerCase())) out.push(name);
   }
-  // A claim whose speaker is not named falls back to the host of its source, only when no one is named at all.
+  // No one named at all: a claim falls back to "a source not named in the record".
   if (!out.length) {
     const cl = lines.find((l) => l.kind === "claim");
     return cl ? [reporter(cl, sourceUrl)] : [];
@@ -379,19 +467,23 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       if (named) used.add(named);
       const tied = TIE_ROWS.test(r.label.trim());
       // An Official accounts row naming several accounts links each account to its channel.
-      const listed = tied && /^official accounts?$/i.test(r.label.trim()) ? accountsOf(page.channels, r.values?.length ? r.values : r.value, domain) : [];
-      const accounts = listed.length > 1 ? listed : [];
+      const isAcc = tied && /^official accounts?$/i.test(r.label.trim());
+      const listed = isAcc ? accountsOf(page.channels, r.entries?.length ? r.entries : r.values?.length ? r.values : r.value, domain) : [];
+      // Official accounts always list their accounts by short name, each linked; other rows keep their plain value.
+      const accounts = isAcc ? listed : listed.length > 1 ? listed : [];
       for (const a of accounts) if (a.channel) used.add(a.channel);
       // A lone account takes the channel its handle resolves to, with the row's URL or value as the fallback.
       const lone = listed.length === 1 ? listed[0]!.channel : null;
-      const channel = tied && !accounts.length ? lone ?? named : null;
+      const channel = tied && (listed.length <= 1) ? lone ?? named : null;
       if (channel) used.add(channel);
       // Exactly one badge per row: Website and Official accounts show only their channel label (worked out from
       // the URL and the subject's domain when no channel matches); every other row shows only Proven on chain,
       // Stated by or Reported by.
       // A Website or Official accounts row whose lines are all out of date says so in place of its channel label.
       const stale = tied && allOutdated(lines, all);
-      const status = tied ? (stale ? OUTDATED : rowStatus(r, channel, /^official accounts?$/i.test(r.label.trim()) ? listed : accounts, domain)) : null;
+      const status = tied ? (stale ? OUTDATED : rowStatus(r, channel, isAcc ? listed : accounts, domain)) : null;
+      // Accounts with different labels each show their own badge beside them; the row then shows none.
+      const perAccount = isAcc && !stale && new Set(listed.map((a) => a.status?.tone)).size > 1;
       const badge = tied ? null : badgeOf(lines, all, sourceUrl);
       // Tokens one per line only when the result gave them as a list (values); a text value stays one text value.
       const isTokens = TOKEN_ROWS.test(r.label.trim());
@@ -399,7 +491,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // "on <chain>" says nothing when the Chains row names a single chain.
       if (singleChain) for (const t of tokens) t.chain = "";
       const value = isTokens && singleChain && !tokens.length ? withoutChain(r.value, chainsRow!.values?.[0] ?? chainsRow!.value) : r.value;
-      return { label: r.label, value, url: r.url, note: "", lines, channel, badge, status, accounts, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...speakersField(badge, lines, sourceUrl) };
+      return { label: r.label, value, url: r.url, note: "", lines, channel, badge, status, accounts, perAccount, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...speakersField(badge, lines, sourceUrl) };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }

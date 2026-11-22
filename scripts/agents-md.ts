@@ -399,8 +399,10 @@ statement, else "Reported by <who>" for a claim. When a claim's \`by\` is missin
 such as "Reported by news.example", and never says "an outside source". Every row shows exactly one badge. The Website and Official
 accounts rows show only a channel label (Own domain, Verified on chain or Not verified) instead: Website from its
 URL and the subject's domain (Own domain for the domain or a subdomain, even when that URL is not a listed channel);
-Official accounts from the channel each listed account resolves to, the row taking the most cautious label among
-them (one Not verified account makes the row Not verified). Each account's own label is listed on Sources. Without \`infobox\`, the table shows at most: Website (the channel at
+Official accounts from each account's own tie in the result: "Linked from own site" (tie linked), "Verified on chain"
+(tie strong), else "Not verified"; when the accounts' labels differ, each account shows its own badge beside it.
+Each account is a link with a short name ("@zora on X", "ourzora on GitHub"), never an address in brackets: give
+Official accounts \`values\` as entries \`{"name": "@zora on X", "url": "https://x.com/zora"}\`. Without \`infobox\`, the table shows at most: Website (the channel at
 the subject's domain), Main contract, and one token symbol proof and one token supply proof (a proof named for
 the token's symbol or supply, or re-run with \`symbol()\` or \`totalSupply()\`; never a seat count; and only a proof
 that names the subject's own token contract and whose re-run reads no other contract); it never
@@ -460,9 +462,9 @@ when its source is an X post (link and handle from the URL), "A contract call re
 rerun names an address, a function and a chain, and whose fact gives the value, else "A web page says" with its
 source link. A line whose source fits none of these says so and offers "Write a question from scratch".
 
-**Privacy.** On load the site contacts only its own host, IMD's API and the public RPCs. The wallet code (wagmi,
-the EIP-6963 injected connector and Coinbase Smart Wallet, telemetry off) is loaded only when the visitor presses
-Connect. While a rebuild of a subject is pending, its Rebuild button is replaced by "A rebuild is running, started
+**Privacy.** On load the site contacts only its own host, IMD's API and the public RPCs. The wallet code (wagmi
+and the EIP-6963 injected connector; browser-extension wallets only) is loaded only when the visitor presses
+Connect. The site stores one wallet key, \`imd-record:wallet-connected\` = \`1\`, and no address. While a rebuild of a subject is pending, its Rebuild button is replaced by "A rebuild is running, started
 <time> by <payer>" with a link to it.
 
 **Out of date.** A page is out of date when completed results or panel answers are not folded in (not listed in

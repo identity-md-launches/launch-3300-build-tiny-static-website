@@ -290,6 +290,17 @@ export interface RowPatch {
   job: Activity;
   payer: string;
 }
+/** Every patch of each row, in completion order: a row patched twice shows the newest and keeps both earlier values. */
+export function rowPatchListsOf(after: Activity[]): Map<string, RowPatch[]> {
+  const out = new Map<string, RowPatch[]>();
+  for (const a of after)
+    for (const p of patchesOf(a.changes))
+      if (p.kind === "infobox") {
+        const k = p.target.trim().toLowerCase();
+        out.set(k, [...(out.get(k) ?? []), { patch: p, job: a, payer: payerName(a) }]);
+      }
+  return out;
+}
 export function rowPatchesOf(after: Activity[]): Map<string, RowPatch> {
   const out = new Map<string, RowPatch>();
   for (const a of after) for (const p of patchesOf(a.changes)) if (p.kind === "infobox") out.set(p.target.trim().toLowerCase(), { patch: p, job: a, payer: payerName(a) });
@@ -320,7 +331,8 @@ function patchSentences<T extends SummarySentence>(summary: Reworded<T>[], a: Ac
       hit = true;
       replaced.add(was);
       if (s.original) replaced.add(norm(s.original));
-      return { ...s, earlier: s.text, original: s.original ?? s.text, text: p.value, updatedBy: payerName(a), rewordedBy: undefined, correctedBy: undefined, rewordLines: p.lines, rewordJob: a };
+      const history: SentenceChange[] = [{ text: s.text, by: payerName(a), at: a.doneTime ?? null, how: "updated", lines: p.lines }, ...(s.history ?? [])];
+      return { ...s, earlier: s.text, original: s.original ?? s.text, text: p.value, updatedBy: payerName(a), rewordedBy: undefined, correctedBy: undefined, rewordLines: p.lines, rewordJob: a, history };
     });
   }
   return { out, replaced };
@@ -354,7 +366,18 @@ const unquote = (s: string) => {
  * Kept rewordings replace their sentence. The sentence then rests on the lines its own verdict lists
  * (items[].lines, in `rewordLines`, read in the scope of `rewordJob`), not on the old sentence's lines.
  */
-export type Reworded<T> = T & { rewordedBy?: string; correctedBy?: string; updatedBy?: string; earlier?: string; original?: string; rewordLines?: string[]; rewordJob?: Activity };
+export type Reworded<T> = T & { rewordedBy?: string; correctedBy?: string; updatedBy?: string; earlier?: string; original?: string; rewordLines?: string[]; rewordJob?: Activity; history?: SentenceChange[] };
+/**
+ * One change a visitor's job made to a summary sentence: the wording shown just before it, who paid, when it
+ * completed (unix seconds), how (corrected: "This is wrong"; reworded; updated: a patch) and the lines it rests on.
+ */
+export interface SentenceChange {
+  text: string;
+  by: string;
+  at: number | null;
+  how: "corrected" | "reworded" | "updated";
+  lines: string[];
+}
 export function applyRewords<T extends SummarySentence>(summary: T[], after: Activity[]): Reworded<T>[] {
   let out: Reworded<T>[] = summary;
   for (const a of after) out = rewordWith(out, a, new Set());
@@ -374,7 +397,12 @@ function rewordWith<T extends SummarySentence>(summary: Reworded<T>[], a: Activi
       const was = norm(item?.text || unquote(v.target));
       if (!was || skip.has(was)) continue;
       const who = v.type === "wrong" ? { correctedBy: payerName(a), rewordedBy: undefined } : { rewordedBy: payerName(a), correctedBy: undefined };
-      out = out.map((s) => (norm(s.text) === was || (s.original && norm(s.original) === was) ? { ...s, original: s.original ?? s.text, text: v.finalText.trim(), ...who, rewordLines: v.lines.length ? v.lines : s.rewordLines, rewordJob: a } : s));
+      out = out.map((s) => {
+        if (!(norm(s.text) === was || (s.original && norm(s.original) === was))) return s;
+        const lines = v.lines.length ? v.lines : s.rewordLines ?? [];
+        const history: SentenceChange[] = [{ text: s.text, by: payerName(a), at: a.doneTime ?? null, how: v.type === "wrong" ? "corrected" : "reworded", lines }, ...(s.history ?? [])];
+        return { ...s, original: s.original ?? s.text, earlier: s.text, text: v.finalText.trim(), ...who, updatedBy: undefined, rewordLines: v.lines.length ? v.lines : s.rewordLines, rewordJob: a, history };
+      });
   }
   return out;
 }

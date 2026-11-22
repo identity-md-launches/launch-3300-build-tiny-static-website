@@ -1,11 +1,15 @@
-/** Wallets, the network's one way: EIP-6963 extensions, "Open in" links on phones, Coinbase Smart Wallet. No relay, no project ID. */
+/**
+ * Wallets: EIP-6963 extensions and the browser's injected wallet, plus "Open in" links on phones. No relay, no project
+ * ID. The Coinbase Smart Wallet connector is not offered: its SDK always keeps the connected address in localStorage
+ * (-CBWSDK:… and cbwsdk.store keys) and has no setting to stop it, and this site stores only its own one-value flag.
+ */
 import { useEffect, useRef, useState } from "react";
 import { createConfig, http, useAccount, useConnect, useDisconnect, useEnsName, useSwitchChain, type Connector } from "wagmi";
-import { coinbaseWallet, injected } from "wagmi/connectors";
-import { CHAIN, CHAIN_ID, RPCS, SITE_NAME } from "./config";
+import { injected } from "wagmi/connectors";
+import { CHAIN, CHAIN_ID, RPCS } from "./config";
 import { WALLET_ICONS } from "./wallet-icons";
 import { holdFocus } from "./modal";
-import { forgetWallet } from "./walletFlag";
+import { forgetWallet, dropWalletSnapshots } from "./walletFlag";
 
 /**
  * The browser's own injected wallet (window.ethereum), as a targeted connector: it is authorized by asking the
@@ -19,8 +23,8 @@ export const config = createConfig({
   chains: [CHAIN],
   // EIP-6963 discovery lists every installed extension under its own name
   multiInjectedProviderDiscovery: true,
-  // Coinbase Smart Wallet with its telemetry off: the SDK sends no analytics (cca-lite.coinbase.com).
-  connectors: [browserWallet, coinbaseWallet({ appName: SITE_NAME, preference: { options: "all", telemetry: false } })],
+  // Browser-extension wallets only: discovered ones (EIP-6963) and window.ethereum. No connector that stores accounts.
+  connectors: [browserWallet],
   // Nothing about the wallet is persisted by wagmi (its default keeps connections, with their addresses, in
   // localStorage under wagmi.store). The site remembers a connection with its one flag (walletFlag.ts) and a silent
   // reconnect asks the already-authorized wallet for the account. Without storage, mounting WagmiProvider with
@@ -84,8 +88,7 @@ export function ConnectSheet({ autoOpen = false }: { autoOpen?: boolean }) {
   const listed = [...connectors.filter((c) => c.type === "injected"), ...connectors.filter((c) => c.type !== "injected")].filter(
     (c) => !(c.id === "injected" && named),
   );
-  const label = (c: Connector) =>
-    c.id === "injected" ? "Browser wallet" : c.id === "coinbaseWalletSDK" && mobile ? "Coinbase Smart Wallet" : c.name;
+  const label = (c: Connector) => (c.id === "injected" ? "Browser wallet" : c.name);
   const icon = (c: Connector) => c.icon ?? WALLET_ICONS[c.id];
 
   if (isConnected && address) {
@@ -96,6 +99,8 @@ export function ConnectSheet({ autoOpen = false }: { autoOpen?: boolean }) {
         onDisconnect={() => {
           forgetWallet();
           disconnect();
+          // Every wallet key the site or a library may have written (wagmi.*, Coinbase SDK, WalletConnect): none stays.
+          dropWalletSnapshots();
         }}
       />
     );

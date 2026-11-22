@@ -77,8 +77,9 @@ address", and one button, "Look it up". There is no separate search box or add f
   **Add this project**, which opens the first-rebuild dialog with `<SUBJECT>` = `the project at <domain>` or
   `the project whose main contract is <address> on chain <id>`. The first completed rebuild creates the page.
   The offer waits while the project list is still being read, so nobody pays for a subject that already exists.
-- **Related**: on Overview, under Key facts, each related project with its relation. It links to that subject's
-  page when one matches its domain or contract (the same index, chain included); otherwise **Add this project**
+- **Related**: at the bottom of Overview, above the footer links, a compact row of chips: each related project's
+  name with its relation in small text under it, with no dots or badges. A chip links to that subject's
+  page when one matches its domain or contract (the same index, chain included); otherwise a click on the chip offers **Add this project**, which
   opens Home with the bar filled in with the related id as given (`8453:0x…` keeps its chain) and its offer shown.
 
 **First page.** A subject with no page is listed on Home with its first page's state, and its own Overview shows
@@ -118,7 +119,7 @@ job with its notes, and the subject's Overview shows "No project found" with the
 | `src/ActivityList.tsx` | Activity, including each source job's per-source outcome and each edit sentence's verdict |
 | `src/format.ts` | Shared display helpers (kind names, tie words, job links, line anchors) |
 | `src/useActivity.ts` | Follows every request of this site to completion; refusal reasons; source files; ENS names; polling |
-| `src/wallet.tsx`, `src/wallet-icons.ts` | wagmi config and the connect sheet (EIP-6963, "Open in" links, Coinbase Smart Wallet) |
+| `src/wallet.tsx`, `src/wallet-icons.ts` | wagmi config and the connect sheet (EIP-6963 browser-extension wallets, "Open in" links on phones) |
 | `src/App.tsx`, `src/styles.css` | Tabs and their links, Contribute (rebuild, confirm, add sources, suggest an edit), pay dialog and About line; all styles |
 | `tests/` | Unit tests, the fixture builder `make-fixture.ts` and the Playwright interaction script |
 
@@ -527,13 +528,74 @@ Wallet code still loads only when it is needed (`src/walletLazy.tsx`, `src/walle
   **Disconnect** in the site's own account menu (`src/wallet.tsx`), and when a silent reconnect fails. Where storage
   is blocked, nothing is remembered and the next visit shows Connect.
 - **With the flag, on page load**, `restoreWallet()` (called from `src/main.tsx`) loads the wallet runtime
-  (`walletRuntime-*.js`: wagmi, the EIP-6963 injected connector and Coinbase Smart Wallet) in the background and
+  (`walletRuntime-*.js`: wagmi and the EIP-6963 injected connector) in the background and
   reconnects silently, so the address chip appears without a click. While that runs, the header shows the chip's
   outline (`ChipOutline`, the Connect button's 44 px height; screen readers hear "Reconnecting your wallet…") in
   place of Connect, so the header does not flicker. If it fails, Connect shows and the flag is cleared.
 - **Without the flag**, nothing changes: no wallet code is loaded and no third party is contacted until Connect is
-  pressed. Loading the wallet code makes no third-party request either; the Coinbase connector is created with
-  `preference: { options: "all", telemetry: false }`.
+  pressed. Loading the wallet code makes no third-party request either.
+
+### Exactly which keys the site stores (revision 13)
+
+The **only** wallet-related key the site keeps is its own flag: `localStorage["imd-record:wallet-connected"] = "1"`.
+No address, no connector id, no session.
+
+- wagmi is created with `storage: null`, so it persists nothing (no `wagmi.store`, `wagmi.recentConnectorId`,
+  `wagmi.injected.connected`).
+- **The Coinbase Smart Wallet connector is removed.** Its SDK (`@coinbase/wallet-sdk`, reached through wagmi's
+  `coinbaseWallet()`) always writes the connected account to localStorage (`-CBWSDK:…` and `cbwsdk.store` keys) and
+  has no option to keep it in memory, so it cannot meet the one-flag rule. The connect sheet lists browser-extension
+  wallets only (EIP-6963 discovery plus `window.ethereum`); on phones it keeps the "Open in MetaMask / Coinbase
+  Wallet / Rabby / Phantom" links, which open this page inside that wallet's own browser and store nothing here.
+- **On Disconnect** (the site's account menu) the flag is removed and `dropWalletSnapshots()` (`src/walletFlag.ts`)
+  removes every key matching `WALLET_KEY` from localStorage and sessionStorage: `wagmi.*`, `-CBWSDK:*`, `cbwsdk.*`,
+  `-walletlink*`, `walletlink*`, `wc@2:*`, `WCM_*`, `@w3m*`, `@appkit*`, `walletconnect*`. The same sweep runs on
+  every page load, so keys written by earlier versions of the site (which offered the Coinbase connector) are gone.
+- Other site data, none of it wallet-related: the tray of drafted changes (`imd-record:tray:<subject>`), the
+  read cache (job ids, block times, ENS names, panel reads, sent transaction hashes) and IndexedDB `imd-record`.
+
+## Revision 13: Overview order, corrected sentences, pay dialog
+
+**Overview order** (`OverviewTab` in `src/Record.tsx`). Under the name and one_line: any "Out of date" or "A newer
+source disputes…" note, directly under the one_line and above both columns. Then the **Summary**; at 1000 px and
+wider, **Key facts** sits in a column to its right (`grid-template-columns: 3fr 2fr`, about 40%), both from the same
+height, and in that column each row's label sits above its value with the badge under it. Key facts shows its first
+8 rows (`KEY_FACTS_SHOWN`) and "Show all N" when there are more. Narrower screens stack Summary, then Key facts.
+**Related** follows at the bottom, above the footer links, as chips.
+
+**Corrected sentences.** A summary sentence a visitor's changes job corrected, reworded or patched carries no
+"corrected by 0x…" text. It gets one small pencil after its dots (`ChangedMark`); clicking it shows who changed it,
+when, every earlier wording (newest first) and the lines it now rests on. Under the summary one line says
+"N sentences corrected by visitors since the last rebuild." when any apply.
+
+**Patch history.** A Key facts row or sentence changed more than once keeps every step (`history`, newest first):
+its "earlier value" is the value shown immediately before the newest patch, and the details list every earlier value
+with who changed it and when (`withPatches` in `src/keyfacts.ts`, `applySentenceChanges` in `src/changeResult.ts`).
+
+**Key facts speakers.** The badge's "+N" and the row's details count and list every speaker of the lines the row
+rests on (`speakersOf`): a statement's channel and every name in its `by`, and, for a claim with no named speaker,
+its source's host. A Proven, Contradicted or Out of date row lists its speakers in its details too.
+
+**Official accounts.** Each account is a link with a short name ("@zora on X", "ourzora on GitHub"; `accountLabel`),
+never with an address in brackets. Its badge comes from its own tie: "Linked from own site" (linked), "Verified on
+chain" (strong), else "Not verified". When the accounts' labels differ, each shows its badge beside it. Results may
+give the accounts as `values: [{name, url}]` entries, which the rebuild instructions now ask for.
+
+**Line details** (Record). "Why it has this label": one plain sentence (`whyLabel`, such as "Zora said this on its
+help centre, which is part of its own domain."). "Source": the links. "First recorded": the date of the job that
+added the line, or of the earliest file it was carried over from. The paying wallet, the job link and "carried over
+from" are under a closed **History** row.
+
+**Pay dialog** (`PayDialog` in `src/App.tsx`). First a plain summary: what the job will do in one sentence
+(`askSentence`), the price and who it is paid to. The full request (amount in raw units, Intake address, action,
+body) is under a closed "Show the full request" row, with "Instructions this job follows" closed beside it. While
+the wallet is open the dialog shows one line, "Waiting for your wallet…", and after an approval "Approved. Now
+confirm the request." Once the wallet returns the transaction the dialog closes, the tray is cleared, and a small
+confirmation shows at the bottom of the page for about 8 seconds: "Sent. Follow it on the IMD explorer.", linking
+the transaction until the job id is known and the job on explorer.imd.fun from then on. No time estimate, no Done
+button. Under the tabs the page shows "A rebuild is running, started just now" or "Your N changes are being
+checked", each with "Follow on the explorer". If the wallet rejects or fails, the dialog stays open, says what
+happened in one sentence and offers "Try again".
 
 ## Reading whole results
 
@@ -584,7 +646,8 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-77f7165b2051.txt` and `changes-059436ca0814.txt`; still served: `rebuild-5c84552b327e.txt`,
+Current files: `rebuild-8ba8632e27f2.txt` and `changes-74f6ac6095c4.txt`; still served: `rebuild-77f7165b2051.txt`,
+`changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`,
 `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`, `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`,
 `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and `changes-8400e6bf9d85.txt`. The current rebuild file adds,
@@ -608,8 +671,11 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreidx64lfwicrshizked26o55fukjisodh3ktwktrgu3uwlqvopkkvm?filename=rebuild-77f7165b2051.txt`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreiafsq3mucau43wyfz32zgsb5t23qxkcozevejxgdz6wnh5lnaru3q?filename=changes-059436ca0814.txt`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreielvbrs4j7spkozxl76gbn5jasfn27iyho4uchtchnxtwcd2e5lii?filename=rebuild-8ba8632e27f2.txt`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreidu62wgbfoex7bv44cktgvck3qz4yaekzz5pgjil2t7ujrrwcagai?filename=changes-74f6ac6095c4.txt`
+
+These two files are new in revision 13. Like every file before them, they reach the gateways once the site export
+holding them is pinned; until then the site's preflight refuses to take payment for a rebuild or changes request.
 
 Since this revision the objective names a **second address** for the same raw CID, at `gateway.pinata.cloud`
 (`INSTRUCTIONS_FALLBACK_GATEWAY` in `src/config.ts`, `Instructions.fallbackUrl`): "Your full instructions are the

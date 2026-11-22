@@ -275,7 +275,9 @@ describe("an Official accounts row shows one badge (2ba970b7, revised by 44e4268
     );
     const [row] = keyFacts(p, (id) => p.lines.find((l) => l.id === id), p.lines).rows;
     // The individual labels stay with each account (and on Sources); the row shows only the most cautious one.
-    expect(row!.accounts.map((a) => [a.name, a.status?.text])).toEqual([["@imd", "Verified on chain"], ["@news", "Not verified"]]);
+    // Each account by a short name, with its own tie's label; they differ, so each shows its badge beside it.
+    expect(row!.accounts.map((a) => [a.name, a.status?.text])).toEqual([["@imd on X", "Verified on chain"], ["@news on X", "Not verified"]]);
+    expect(row!.perAccount).toBe(true);
     expect(row!.status).toEqual({ text: "Not verified", tone: "unverified" });
     expect(row!.badge).toBeNull();
     expect(accountsOf(p.channels, ["@imd", "x.com/news", "@other"], "imd.fun").map((a) => a.channel?.label ?? null)).toEqual(["@imd", "@news", null]);
