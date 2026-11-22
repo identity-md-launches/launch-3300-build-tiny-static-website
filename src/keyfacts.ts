@@ -52,6 +52,8 @@ export interface KeyRow {
 /** One patch of a row or sentence: the value shown just before it, who paid for the change and when it completed. */
 export interface RowChange {
   value: string;
+  /** Set when the row showed a list just before the patch (values, tokens or accounts): its item names, in order. */
+  values?: string[];
   by: string;
   at: number | null;
 }
@@ -196,11 +198,76 @@ export function accountLabel(name: string, url: string): string {
   return `${site[2] ? "@" : ""}${handle} on ${site[1]}`;
 }
 
+/** Platform words an older value puts before handles ("X: @a, @b"), and the hosts each means. */
+const PLATFORM_HOSTS: [RegExp, RegExp][] = [
+  [/^(?:x|twitter)$/i, /^(?:x|twitter)\.com$/],
+  [/^(?:farcaster|warpcast)$/i, /^(?:warpcast\.com|farcaster\.xyz)$/],
+  [/^instagram$/i, /^instagram\.com$/],
+  [/^tiktok$/i, /^tiktok\.com$/],
+  [/^github$/i, /^github\.com$/],
+  [/^telegram$/i, /^t\.me$/],
+  [/^youtube$/i, /^youtube\.com$/],
+  [/^(?:bluesky|bsky)$/i, /^bsky\.app$/],
+];
+const SOCIAL_HOST = /^(?:x\.com|twitter\.com|warpcast\.com|farcaster\.xyz|instagram\.com|tiktok\.com|github\.com|t\.me|youtube\.com|bsky\.app|discord\.(?:gg|com)|linkedin\.com|medium\.com|mirror\.xyz|reddit\.com)$/;
+
+/** A channel's social host and its handle (first path segment without "@"), or null for other channels. */
+function socialOf(c: Channel): { host: string; handle: string } | null {
+  try {
+    const u = new URL(c.url);
+    const host = u.hostname.toLowerCase().replace(/^(?:www|mobile|m)\./, "");
+    if (!SOCIAL_HOST.test(host)) return null;
+    const seg = u.pathname.split("/").filter(Boolean);
+    if (seg.length !== 1) return null;
+    return { host, handle: decodeURIComponent(seg[0]!).replace(/^@/, "").toLowerCase() };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The accounts an older text value names. The value is cut at commas, semicolons and "and" only when at least one
+ * part resolves to a profile: an explicit URL ("X @zora (https://x.com/zora)", "x.com/news") or a handle that one of
+ * the result's own channels has ("X: @Uniswap, @UniswapBuilders", where the platform word carries to the handles
+ * after it). Every part is kept, linked or not, so nothing the value says is dropped. Returns [] otherwise.
+ */
+export function accountEntriesIn(text: string, channels: Channel[]): AccountEntry[] {
+  const URL_RE = /\(?((?:https?:\/\/)[^\s)\],;]+|(?:www\.)?(?:x|twitter|github|instagram|tiktok|warpcast|t)\.(?:com|me)\/[^\s)\],;]+)\)?/i;
+  const parts = text.split(/\s*[,;]\s*|\s+and\s+/i).map((x) => x.trim()).filter(Boolean);
+  let platform: RegExp | null = null;
+  const out = parts.map((part): AccountEntry => {
+    const lead = /^([A-Za-z]+)\s*:?\s+(?=@|\S)/.exec(part);
+    const p = lead ? PLATFORM_HOSTS.find(([re]) => re.test(lead[1]!)) : undefined;
+    if (p) platform = p[1];
+    const u = URL_RE.exec(part);
+    if (u) {
+      const url = /^https?:/i.test(u[1]!) ? u[1]!.replace(/[.,]+$/, "") : `https://${u[1]!.replace(/[.,]+$/, "")}`;
+      return { name: part.replace(u[0], "").replace(/\s*:\s*$/, "").trim() || url, url };
+    }
+    const h = /@([A-Za-z0-9_.~-]+)/.exec(part);
+    if (h) {
+      const handle = h[1]!.replace(/[.]+$/, "").toLowerCase();
+      const ch = channels.find((c) => {
+        const so = socialOf(c);
+        return !!so && so.handle === handle && (!platform || platform.test(so.host));
+      });
+      if (ch) return { name: `@${h[1]!.replace(/[.]+$/, "")}`, url: ch.url };
+    }
+    return { name: part, url: "" };
+  });
+  return out.some((e) => e.url) ? out : [];
+}
+
 /** Each account an Official accounts value lists ("@imd, @news"), matched to its channel by label, handle or URL. */
 export function accountsOf(channels: Channel[], value: string | string[] | AccountEntry[], domain: string): Account[] {
-  // A text value is never split on commas or "and": only a list the result gave (values) is several accounts.
+  // A text value is split only into the profile URLs or channel handles it names (accountEntriesIn); otherwise it
+  // stays one entry. A structured entry's own url is used first.
   const parts: AccountEntry[] = (typeof value === "string" ? [value] : value)
-    .map((p) => (typeof p === "string" ? { name: p.trim(), url: "" } : { name: p.name.trim(), url: p.url.trim() }))
+    .flatMap((p): AccountEntry[] => {
+      if (typeof p !== "string") return [{ name: p.name.trim(), url: p.url.trim() }];
+      const found = accountEntriesIn(p, channels);
+      return found.length ? found : [{ name: p.trim(), url: "" }];
+    })
     .filter((p) => p.name || p.url);
   return parts.map(({ name, url: given }) => {
     const own = /^https?:\/\//i.test(name) ? name : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(name) ? `https://${name}` : "";
@@ -309,10 +376,22 @@ function patchRow(r: KeyRow, p: RowPatchIn, all: Line[], sourceUrl: (l: Line) =>
     // A row's link and channel label belong to its value: a patched Website or Official accounts row is linked and
     // labelled from the new value and the channels, never from the value it replaced. No identifiable URL: plain text.
     const link = tied ? patchedLink(r.label, p.value, p.lines, all, ctx) : { url: "", channel: null, status: null };
-    const before = r.value || r.values.join("; ") || r.accounts.map((a) => a.name).join("; ");
-    const history: RowChange[] = [{ value: before, by: p.payer, at: p.at ?? null }, ...(r.history ?? [])];
+    const shown = displayedOf(r);
+    const before = shown.length > 1 ? shown.join("; ") : shown[0] ?? "";
+    const history: RowChange[] = [{ value: before, ...(shown.length > 1 ? { values: shown } : {}), by: p.payer, at: p.at ?? null }, ...(r.history ?? [])];
     return { ...rest, ...link, value: p.value, values: [], tokens: [], accounts: [], perAccount: false, lines: p.lines, badge, updatedBy: p.payer, earlier: before, history, ...speakersField(badge, p.lines, sourceUrl) };
   }
+}
+
+/**
+ * What a row displays, as Overview draws it: its accounts' short names, its tokens, its list of values, or else
+ * its one value. Patch history keeps exactly this, so an earlier entry reads as the visitor saw it.
+ */
+export function displayedOf(r: Pick<KeyRow, "value" | "values" | "tokens" | "accounts">): string[] {
+  if (r.accounts.length) return r.accounts.map((a) => a.name);
+  if (r.tokens.length) return r.tokens.map((t) => [t.symbol, t.purpose ? `(${t.purpose})` : ""].filter(Boolean).join(" "));
+  if (r.values.length) return [...r.values];
+  return r.value ? [r.value] : [];
 }
 
 /** The URL a value names on its own: a whole http(s) address, or a bare host with an optional path; else "". */

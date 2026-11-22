@@ -50,3 +50,11 @@ export async function tryReconnect(): Promise<boolean> {
 export const write = (args: { address: `0x${string}`; abi: readonly unknown[]; functionName: string; args: readonly unknown[]; chainId: number }) =>
   (writeContract as unknown as (c: typeof config, a: unknown) => Promise<`0x${string}`>)(config, { ...args, chainId: 1 });
 export const waitFor = (hash: `0x${string}`, _chainId?: number) => waitForTransactionReceipt(config, { hash, chainId: 1 });
+/** eth_getTransactionReceipt from the connected wallet's own provider (the chain it just sent on); null when none. */
+export async function walletReceipt(hash: string): Promise<{ status?: string | null } | null> {
+  const c = getAccount(config).connector;
+  if (!c) return null;
+  const p = (await c.getProvider()) as { request?: (a: { method: string; params: unknown[] }) => Promise<unknown> } | undefined;
+  if (!p?.request) return null;
+  return ((await p.request({ method: "eth_getTransactionReceipt", params: [hash] })) as { status?: string | null } | null) ?? null;
+}

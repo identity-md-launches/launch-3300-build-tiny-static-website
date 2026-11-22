@@ -49,6 +49,9 @@ export function routeOf(hash: string): Route {
     return { subject: null, tab: "overview", target: null }; // a truncated or mistyped escape such as "#%"
   }
   if (h === "" || h === "/") return { subject: null, tab: "overview", target: null };
+  // "#/add/" with nothing after it: home with the lookup field empty and focused, for a related project whose
+  // record gives no usable domain or contract.
+  if (h === "/add" || h === "/add/") return { subject: null, tab: "overview", target: null, add: "" };
   const add = /^\/add\/(.+)$/.exec(h);
   if (add) return { subject: null, tab: "overview", target: null, add: add[1]!.trim().slice(0, 300) };
   const m = /^\/s\/([^/]+)(?:\/(.*))?$/.exec(h);

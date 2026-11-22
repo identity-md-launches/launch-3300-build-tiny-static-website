@@ -281,8 +281,10 @@ describe("an Official accounts row shows one badge (2ba970b7, revised by 44e4268
     expect(row!.status).toEqual({ text: "Not verified", tone: "unverified" });
     expect(row!.badge).toBeNull();
     expect(accountsOf(p.channels, ["@imd", "x.com/news", "@other"], "imd.fun").map((a) => a.channel?.label ?? null)).toEqual(["@imd", "@news", null]);
-    // A text value is one account: never split on commas or "and" (revision 13).
-    expect(accountsOf(p.channels, "@imd and x.com/news; @other", "imd.fun")).toHaveLength(1);
+    // A text value is split only when its parts name profiles (revision 14, 62dcc4ad); every part is kept.
+    expect(accountsOf(p.channels, "@imd and x.com/news; @other", "imd.fun").map((a) => [a.name, a.url])).toEqual([["@imd on X", "https://x.com/imd"], ["@news on X", "https://x.com/news"], ["@other", ""]]);
+    // A text value naming no profile stays one account.
+    expect(accountsOf(p.channels, "Our team and friends", "imd.fun")).toHaveLength(1);
   });
 });
 

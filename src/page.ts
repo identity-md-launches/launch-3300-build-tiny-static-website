@@ -145,6 +145,19 @@ export interface Page {
 
 const str = (v: unknown, max = 2000): string => (typeof v === "string" ? v.slice(0, max) : typeof v === "number" ? String(v) : "");
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+/**
+ * A line's speakers ("by"): a text, or a list of names. A list keeps every name, in order and once each, joined
+ * with "; " so the speaker logic (keyfacts.ts speakersOf) counts each of them.
+ */
+export const byOf = (v: unknown): string => {
+  if (!Array.isArray(v)) return str(v, Number.MAX_SAFE_INTEGER);
+  const out: string[] = [];
+  for (const x of v) {
+    const n = str(x, 300).trim();
+    if (n && !out.some((o) => o.toLowerCase() === n.toLowerCase())) out.push(n);
+  }
+  return out.join("; ");
+};
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const kindOf = (v: unknown): Kind => {
   const k = str(v).toLowerCase();
@@ -504,7 +517,7 @@ export function parsePage(text: string, domain = ""): Page {
         labelNote: "",
         channel: null,
         // A merged line names every speaker in by; the whole field is kept.
-        by: str(o.by, Number.MAX_SAFE_INTEGER),
+        by: byOf(o.by),
         sources: ids,
         srcKeys: ids.map((s) => `r:${s}`),
         quote: str(o.quote, 400),
@@ -528,8 +541,8 @@ export function parsePage(text: string, domain = ""): Page {
     contracts,
     main: /^0x[0-9a-fA-F]{40}$/.test(main) ? main : "",
     summary: parseSummary(j.summary),
+    // Every valid row is kept: Overview shows the first eight and "Show all N" over all of them.
     infobox: arr(j.infobox)
-      .slice(0, 16)
       .map((r) => {
         const o = obj(r);
         // A value entry is a string, or { name, url } (Official accounts): its name is the value, its url the link.
@@ -539,8 +552,7 @@ export function parsePage(text: string, domain = ""): Page {
         return { label: str(o.label, 80), value: str(o.value, 300) || values.join("; "), url: str(o.url, 400), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean), values: values.length > 1 ? values : [], ...(entries.length ? { entries } : {}) };
       })
       // A row never shows "unverified" or "unknown" as its value: it is left out, as the instructions say.
-      .filter((r) => r.label && r.value && !/^\s*(unverified|unknown|not known|n\/a)\.?\s*$/i.test(r.value))
-      .slice(0, 15),
+      .filter((r) => r.label && r.value && !/^\s*(unverified|unknown|not known|n\/a)\.?\s*$/i.test(r.value)),
     lines,
     differs: parseDiffers(j.differs),
     dropped: parseDropped(j.dropped),
@@ -682,7 +694,7 @@ export function parseLines(text: string, opts: { changes?: boolean } = {}): Sour
       id: str(o.id, 64),
       url: str(o.url, 600),
       type: str(o.type, 64),
-      publisher: str(o.publisher, 200),
+      publisher: byOf(o.publisher).slice(0, 400),
       publishedAt: str(o.published_at, 64),
       readAt: str(o.read_at, 64),
       couldOpen: typeof o.could_open === "boolean" ? o.could_open : null,
@@ -711,7 +723,7 @@ export function parseLines(text: string, opts: { changes?: boolean } = {}): Sour
         marked,
         labelNote: "",
         channel: null,
-        by: str(o.by, Number.MAX_SAFE_INTEGER) || source?.publisher || "",
+        by: byOf(o.by) || source?.publisher || "",
         sources: sourceId ? [sourceId] : [],
         srcKeys: [],
         quote: str(o.quote, 400),

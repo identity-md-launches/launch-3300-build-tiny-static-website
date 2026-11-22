@@ -125,7 +125,9 @@ describe("f4777c44: one rebuild at a time, also in an open review", () => {
   it("passes the running rebuild to the dialog and checks it again before sending", () => {
     const src = readFileSync("src/App.tsx", "utf8");
     expect(src).toContain("running={ask.rebuild && ask.subject ? pendingRebuildOf(");
-    expect(src).toContain("if (runningRef.current) {");
+    // Revision 14: the check before sending lives in payFlow.ts (Payment.pay), fed the latest running rebuild.
+    expect(src).toContain("running: () => !!runningRef.current");
+    expect(readFileSync("src/payFlow.ts", "utf8")).toContain('if (deps.running()) return { kind: "blocked" };');
     expect(src).toContain("{blocked ? (");
   });
 });

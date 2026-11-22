@@ -205,7 +205,15 @@ function ChangeHistory({ items }: { items: Array<RowChange | (SentenceChange & {
         const when = whenOf(h.at);
         return (
           <li key={i}>
-            <span className="block">“{v || "none"}”</span>
+            {"values" in h && h.values && h.values.length > 1 ? (
+              <ul className="plain block">
+                {h.values.map((x, j) => (
+                  <li key={j}>{x}</li>
+                ))}
+              </ul>
+            ) : (
+              <span className="block">“{v || "none"}”</span>
+            )}
             <span className="small">
               Changed by <span className="mono">{h.by}</span>
               {when ? `, ${when}` : ""}
@@ -635,15 +643,14 @@ function Related({ m, subjects }: { m: RecordModel; subjects: Findable[] }) {
                 <a className="rel-chip" href={subjectHref(found)}>
                   {body}
                 </a>
-              ) : addable ? (
+              ) : (
                 <button type="button" className="rel-chip" aria-expanded={offer === i} onClick={() => setOffer(offer === i ? null : i)}>
                   {body}
                 </button>
-              ) : (
-                <span className="rel-chip">{body}</span>
               )}
-              {offer === i && !found && addable && (
-                <a className="btn btn-small rel-add" href={addHref(addable)}>
+              {/* An identifier with no usable domain or contract (an older "eip155:1") opens the empty lookup field. */}
+              {offer === i && !found && (
+                <a className="btn btn-small rel-add" href={addHref(addable)} aria-label={addable ? undefined : `Add this project: enter the domain or contract of ${r.name || r.id}`}>
                   Add this project
                 </a>
               )}
@@ -808,7 +815,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
   const st = ctx.settled.by.get(line.id);
   const settledBy = st && (st.state === "proven" || st.state === "contradicted") ? (st.state === "proven" ? st.confirms : st.contradicts) : [];
   const listed = line.srcKeys.map((k) => ctx.numbers.get(k)).filter((s): s is ListedSource => !!s);
-  const checked = whyLabel(line, ctx.m.page?.name || ctx.m.subject.id, ctx.m.page?.domain ?? ctx.m.subject.domain);
+  const checked = whyLabel(line, ctx.m.page?.name || ctx.m.subject.id, ctx.m.page?.domain ?? ctx.m.subject.domain, listed[0]?.url ?? "");
   // First recorded: the job that added the line, else the earliest earlier file it was carried over from, else the page job.
   const fromTimes = line.from.map(ctx.m.fromTime).filter((t): t is number => !!t);
   const first = origin?.time ?? (fromTimes.length ? Math.min(...fromTimes) : null) ?? ctx.research?.time ?? null;
@@ -880,10 +887,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
           </>
         )}
         <dt>Why it has this label</dt>
-        <dd>
-          {checked}
-          {line.labelNote && <span className="block small">{line.labelNote}</span>}
-        </dd>
+        <dd>{checked}</dd>
         {listed.length > 0 && (
           <>
             <dt>Source</dt>
@@ -949,6 +953,12 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
       <details className="line-history">
         <summary>History</summary>
         <dl className="facts">
+          {line.labelNote && (
+            <>
+              <dt>Label</dt>
+              <dd>{line.labelNote}</dd>
+            </>
+          )}
           <dt>Added by</dt>
           <dd>
             {job ? (
@@ -1011,7 +1021,7 @@ const STATUS_PHRASE: Record<ChannelStatus, string> = {
  * One plain sentence on why a line has its label, such as "Zora said this on its help centre, which is part of its
  * own domain." Pure, for tests.
  */
-export function whyLabel(line: Pick<Line, "kind" | "by" | "channel">, name: string, domain: string): string {
+export function whyLabel(line: Pick<Line, "kind" | "by" | "channel"> & { marked?: Line["marked"] }, name: string, domain: string, sourceUrl = ""): string {
   if (line.kind === "proof") return "Anyone can re-run this check on chain and get the same answer.";
   const who = line.by.split(/\s*;\s*/)[0]?.trim();
   if (line.kind === "statement") {
@@ -1019,6 +1029,12 @@ export function whyLabel(line: Pick<Line, "kind" | "by" | "channel">, name: stri
     const where = ch?.label || hostOf(ch?.url ?? "") || "one of its channels";
     const st: ChannelStatus = ch ? channelStatus(ch, domain) : "unverified";
     return `${name} said this on ${where}, which is ${STATUS_PHRASE[st]}.`;
+  }
+  // A line the job marked a statement but shown as a claim: one plain sentence on where it was said. The technical
+  // reason stays under History, the URL under Source.
+  if (line.marked === "statement") {
+    const host = hostOf(sourceUrl) || hostOf(line.channel?.url ?? "");
+    return `${who || "Someone"} made this claim on ${host ? host : "a site"}, outside ${name}'s verified channels.`;
   }
   return `${who || "Someone other than " + name} said this, not ${name} on a channel shown to be its own, so it is a claim.`;
 }

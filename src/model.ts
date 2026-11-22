@@ -859,12 +859,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     return `carried over from ${what} paid by ${payerName(a)}${a.doneTime ? `, ${readDate(String(a.doneTime))}` : ""}`;
   };
 
-  const fromTime = (ref: string): number | null => {
-    const m = /^\s*F(\d+):/i.exec(ref);
-    const f = m ? given.files.find((x) => x.n === Number(m[1])) : undefined;
-    const a = f?.hash ? (items ?? []).find((x) => x.fileHash === f.hash) : undefined;
-    return a?.doneTime ?? null;
-  };
+  const fromTime = (ref: string): number | null => firstRecordedOf(ref, given.files, items ?? []);
 
   const answerRef = (target: string) => {
     const m = /^A(\d+)$/i.exec(target.trim());
@@ -1041,4 +1036,28 @@ export function planRebuild(items: Activity[], subject: SubjectRef, read?: Prior
 /** The newest rebuild (page job) of these requests that is still pending, or null. */
 export function pendingRebuildOf(items: Activity[]): Activity | null {
   return items.filter((a) => isPageJob(a.req) && a.state === "pending").sort((a, b) => (b.time ?? 0) - (a.time ?? 0))[0] ?? null;
+}
+
+/**
+ * When a carried-over line was first recorded: "F<n>:<line id>" names the file and its line. The file's job date is
+ * the nearest known date; when that job's page still has the line and it was itself carried over (its own from),
+ * each of those references is followed through the earlier jobs' own <PRIOR> files, and the earliest date wins.
+ * A file or line that cannot be found keeps the nearest date found so far. Pure, for tests.
+ */
+export function firstRecordedOf(ref: string, files: { n: number; hash: string }[], items: Pick<Activity, "fileHash" | "doneTime" | "page" | "req">[], depth = 0): number | null {
+  const m = /^\s*F(\d+):(.+)$/i.exec(ref);
+  const f = m ? files.find((x) => x.n === Number(m[1])) : undefined;
+  const a = f?.hash ? items.find((x) => x.fileHash === f.hash) : undefined;
+  if (!a) return null;
+  let best = a.doneTime ?? null;
+  const id = m![2]!.trim();
+  const line = a.page?.lines.find((l) => l.id === id);
+  if (line?.from.length && depth < 32) {
+    const prior = parsePrior(a.req.bodyJson?.objective).files;
+    for (const r of line.from) {
+      const t = firstRecordedOf(r, prior, items, depth + 1);
+      if (t !== null && (best === null || t < best)) best = t;
+    }
+  }
+  return best;
 }

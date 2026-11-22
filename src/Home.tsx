@@ -308,6 +308,9 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   // "Add this project" under Related lands here with the bar filled in: look it up once the list is read.
   const handed = useRef(false);
   useEffect(() => {
+    if (prefill === "") document.getElementById("lookup")?.focus();
+  }, [prefill]);
+  useEffect(() => {
     if (!prefill || handed.current || items === null) return;
     handed.current = true;
     setQ(prefill);
