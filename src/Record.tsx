@@ -532,10 +532,14 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
                 const ch = sentenceChanges(s);
                 return (
                   <Fragment key={j}>
-                    <Sentence text={s.text} active={sg.open === target.key} onOpen={() => sg.setOpen(sg.open === target.key ? null : target.key)} />
-                    <SentenceDots lines={s.refs} ui={ui} />
-                    <DisputeDot d={sentenceDispute(s, m.disputes)} ui={ui} />
-                    {ch.length > 0 && <ChangedMark id={`chg-${i}`} open={note === target.key} onToggle={() => setNote(note === target.key ? null : target.key)} />}
+                    <span className="sent-group">
+                      <Sentence text={s.text} active={sg.open === target.key} onOpen={() => sg.setOpen(sg.open === target.key ? null : target.key)} />
+                      {/* A word joiner in the nowrap group: Chrome then never breaks between the sentence and its dots. */}
+                      {"\u2060"}
+                      <SentenceDots lines={s.refs} ui={ui} />
+                      <DisputeDot d={sentenceDispute(s, m.disputes)} ui={ui} />
+                      {ch.length > 0 && <ChangedMark id={`chg-${i}`} open={note === target.key} onToggle={() => setNote(note === target.key ? null : target.key)} />}
+                    </span>
                     <PendingTag targetKey={target.key} />{" "}
                   </Fragment>
                 );

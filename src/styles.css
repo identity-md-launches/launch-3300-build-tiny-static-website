@@ -123,7 +123,7 @@ section { display: grid; gap: var(--space-4); min-width: 0; }
 
 /* Overview: the summary first; at 1000px and wider, Key facts in a column to its right (about 40%), both from the
    same height. Narrower screens stack them: Summary, then Key facts. */
-.overview { display: grid; gap: var(--space-6); align-items: start; }
+.overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); align-items: start; }
 .summary-col { display: grid; gap: var(--space-3); min-width: 0; align-content: start; }
 @media (min-width: 62.5rem) {
   .overview { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
@@ -331,6 +331,10 @@ select { font: inherit; min-height: 44px; padding: 0 var(--space-3); border: 1px
 .summary { display: grid; gap: var(--space-3); min-width: 0; }
 .summary h2 { font-size: var(--text-title); }
 .prose { max-width: 68ch; line-height: 1.6; }
+/* A sentence and its marks: the group is nowrap, so no line break falls between the sentence's last word and its
+   dots (the boundary's nearest common ancestor decides); the sentence itself wraps normally inside. */
+.sent-group { white-space: nowrap; }
+.sent-group > .sent { white-space: normal; }
 .sdots { display: inline-flex; gap: 0; margin-inline-start: 2px; vertical-align: middle; margin-block: -6px; }
 .sdot { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; }
 .sdot .dot { width: 9px; height: 9px; }
@@ -737,7 +741,8 @@ body.has-tray main { padding-bottom: 9rem; }
 .acct-menu button:focus-visible { outline-offset: -2px; }
 
 /* Single-column grids take the column's width, never their content's: nothing inside widens the page. */
-.tab, .overview, .facts-col, .summary, .lines, .row, .details, .review-item { grid-template-columns: minmax(0, 1fr); }
+/* .overview sets its own single column above, so its 1000px two-column rule is not overridden here. */
+.tab, .facts-col, .summary, .lines, .row, .details, .review-item { grid-template-columns: minmax(0, 1fr); }
 
 /* ---------- Revision 13: out of date, page upkeep, key facts lists, panel questions ---------- */
 .kind-outdated { color: var(--amber-800); }

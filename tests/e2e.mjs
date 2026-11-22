@@ -183,7 +183,7 @@ try {
     check(`${W} no page yet: the price and one research job, directly under the bar`, /No page yet for https:\/\/www\.Example\.com\/about\. Adding one costs 0\.5 IMD and starts one research job\./.test(offer) && (await page.locator("#offer-chain").count()) === 0, offer);
     await page.click("text=Add this project");
     const dlg = await page.waitForSelector('[role="dialog"]', { timeout: 5000 }).then(() => true, () => false);
-    const body = dlg ? await page.locator("pre.body").innerText() : "";
+    const body = dlg ? await page.locator("pre.body").textContent() : "";
     check(`${W} Add this project opens the first-rebuild dialog for the link's host`, dlg && /Create the page of example\.com/.test(await page.locator("#pay-title").innerText()));
     check(`${W} its tag carries the subject and it asks for the page and the logo`, /"subject": "example\.com"/.test(body) && /"kind": "add"/.test(body) && /"name": "logo"/.test(body) && /"mediaType": "image\/png"/.test(body), body.slice(0, 300));
     // The current objective shape (job 6ef62573): the subject, the current rebuild instruction file and its hash, no prior.
@@ -198,7 +198,7 @@ try {
     await page.selectOption("#offer-chain", "8453");
     await page.click("text=Add this project");
     const d2 = await page.waitForSelector('[role="dialog"]', { timeout: 5000 }).then(() => true, () => false);
-    const b2 = d2 ? await page.locator("pre.body").innerText() : "";
+    const b2 = d2 ? await page.locator("pre.body").textContent() : "";
     check(`${W} an address with a chain picked gets its chain:address rebuild`, d2 && /"subject": "8453:0x1111111111111111111111111111111111111111"/.test(b2) && b2.includes("one subject: the project whose main contract is 0x1111111111111111111111111111111111111111 on chain 8453."), b2.slice(0, 200));
     if (d2) await page.keyboard.press("Escape");
     // A subject that exists opens.
@@ -226,7 +226,14 @@ try {
       const s = await page.locator(".summary").boundingBox();
       const h1 = await page.locator("h1").boundingBox();
       const main = await page.locator("main").boundingBox();
-      check(`${W} key facts sit under the name, above the summary, full width`, k.y > h1.y && k.y + k.height <= s.y + 1 && k.width >= main.width - 2 * 16 - 2, JSON.stringify({ k, s }));
+      // Revision 13 (A1): the Summary first; from 1000px Key facts in a column to its right (about 40%), both from the
+      // same height; narrower, stacked Summary then Key facts. This is the check that caught the overridden rule.
+      const sc = await page.locator(".summary-col").boundingBox();
+      const fc = await page.locator(".facts-col").boundingBox();
+      const vw = page.viewportSize().width;
+      const wideOk = Math.abs(sc.y - fc.y) <= 1 && fc.x >= sc.x + sc.width && Math.abs(fc.width / (sc.width + fc.width) - 0.4) < 0.03;
+      const narrowOk = Math.abs(sc.x - fc.x) <= 1 && fc.y >= sc.y + sc.height && Math.abs(sc.width - fc.width) <= 1;
+      check(`${W} the summary comes first under the name; key facts beside it from 1000px (about 40%, same top), stacked below`, sc.y > h1.y && (vw >= 1000 ? wideOk : narrowOk), JSON.stringify({ vw, sc, fc, k, s }));
       check(`${W} key facts come directly after the one_line, with the actions below the summary`, await page.evaluate(() => {
         const lead = document.querySelector("main .lead");
         const actions = document.querySelector("main .tab > .ov-foot .foot-links");
@@ -241,7 +248,13 @@ try {
       check(`${W} one badge per row; the Website row shows only its channel's label, Own domain`, row("Website").join() === "Own domain" && kfRows.every((r) => r.badges.length === 1), JSON.stringify(kfRows));
       check(`${W} the logo shows at 40 pixels (or its real size if smaller than 64) beside the name, from the checked file`, await page.evaluate(() => { const i = document.querySelector(".title-row img.logo, .title-row img.logo-real"); if (!i || !i.getAttribute("src")?.startsWith("data:image/png;base64,")) return false; const r = i.getBoundingClientRect(); return i.classList.contains("logo-real") ? r.width === i.naturalWidth && r.height === i.naturalHeight && i.parentElement.getBoundingClientRect().width >= 40 : r.width === 40; }));
       const rel = await page.locator(".related").innerText().catch(() => "");
-      check(`${W} Related under Key facts: each with its relation; a subject on the site links to its page, else Add this project`, /Ethereum Name Service/.test(rel) && /names its agents/.test(rel) && (await page.locator('.related a[href="#/s/imd.fun"]').count()) === 0 && (await page.locator('.related a[href="#/add/ens.domains"]').count()) === 1, rel);
+      // Revision 13 (A2): Related at the bottom of the Overview, above the footer links; a project not on the site is a
+      // chip that offers "Add this project" on click.
+      const relAtBottom = await page.evaluate(() => { const r = document.querySelector(".related"), o = document.querySelector(".overview"), f = document.querySelector(".foot-links"); return !!r && !!o && !!f && (o.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING) > 0 && (r.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING) > 0; });
+      const addBefore = await page.locator('.related a[href="#/add/ens.domains"]').count();
+      await page.locator('.related button.rel-chip:has-text("Ethereum Name Service")').click().catch(() => {});
+      const addAfter = await page.locator('.related a[href="#/add/ens.domains"]').count();
+      check(`${W} Related at the bottom as chips, each with its relation; a project not on the site offers Add this project on click`, relAtBottom && /Ethereum Name Service/.test(rel) && /names its agents/.test(rel) && addBefore === 0 && addAfter === 1 && (await page.locator(".related .sdot, .related .badge").count()) === 0, rel);
       check(`${W} only Website and Official accounts rows show a channel label`, kfRows.filter((r) => !/^(Website|Official accounts?)$/.test(r.label)).every((r) => r.badges.every((b) => !/Own domain|Verified on chain|Not verified/.test(b))) && row("Seat supply").join() === "Proven on chain", JSON.stringify(kfRows));
       check(`${W} no old tie words anywhere on Overview`, !/Confirmed on chain|Names the contract|Not confirmed/.test(await page.locator("main").innerText()));
       check(`${W} Checked by a panel is gone from Overview`, !/Checked by a panel/.test(await page.locator("main").innerText()));
@@ -336,7 +349,7 @@ try {
     await page.fill("#q-value", "2000");
     await page.click("text=Review the question");
     await page.waitForSelector('[role="dialog"]');
-    const ob = await page.locator("pre.body").innerText();
+    const ob = await page.locator("pre.body").textContent();
     check(`${W} a contract question ends with the filed-under sentence and has no tag`, /return 2000\? This question is filed under the record of imd\.fun\./.test(ob) && !/"tag"/.test(ob));
     await page.keyboard.press("Escape");
     await page.check('input[value="page"]');
@@ -383,7 +396,7 @@ try {
     await page.fill("#offer-chain-other", "137");
     await page.click("text=Add this project");
     const d137 = await page.waitForSelector('[role="dialog"]', { timeout: 5000 }).then(() => true, () => false);
-    const b137 = d137 ? await page.locator("pre.body").innerText() : "";
+    const b137 = d137 ? await page.locator("pre.body").textContent() : "";
     check(`${W} a chain 137 project gets its own rebuild`, d137 && /"subject": "137:0x1111111111111111111111111111111111111111"/.test(b137) && b137.includes("one subject: the project whose main contract is 0x1111111111111111111111111111111111111111 on chain 137."), b137.slice(0, 200));
     if (d137) await page.keyboard.press("Escape");
     // Related's Add this project opens the bar filled in.

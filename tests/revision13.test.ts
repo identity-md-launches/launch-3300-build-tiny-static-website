@@ -86,6 +86,24 @@ describe("A. Overview order", () => {
     expect(css).toMatch(/@media \(min-width: 62\.5rem\) \{\s*\.overview \{ grid-template-columns: minmax\(0, 3fr\) minmax\(0, 2fr\); \}/);
     expect(css).toMatch(/\.facts-col \.keyfacts th \{ grid-column: 1 \/ -1;/);
   });
+  it("no later rule sets .overview's columns, so the 1000px two-column rule is not overridden", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    const wide = css.indexOf(".overview { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }");
+    expect(wide).toBeGreaterThan(0);
+    // Every selector list after the wide rule that sets grid-template-columns must not name .overview.
+    for (const m of css.slice(wide + 10).matchAll(/([^{}]+)\{[^}]*grid-template-columns/g)) {
+      expect(m[1]!.split(",").map((x) => x.trim())).not.toContain(".overview");
+    }
+    // The single column for narrow screens sits on the base rule, before the media query.
+    expect(css.indexOf(".overview { display: grid; grid-template-columns: minmax(0, 1fr);")).toBeLessThan(wide);
+  });
+  it("a summary sentence and its marks sit in a nowrap group joined by U+2060, so its dots never start a line", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    expect(css).toContain(".sent-group { white-space: nowrap; }");
+    expect(css).toContain(".sent-group > .sent { white-space: normal; }");
+    const src = readFileSync("src/Record.tsx", "utf8");
+    expect(src).toMatch(/<span className="sent-group">\s*<Sentence [^\n]+\n[^\n]*\n\s*\{"\\u2060"\}\s*<SentenceDots/);
+  });
 });
 
 describe("B and D12. corrected sentences and patch history", () => {

@@ -82,7 +82,8 @@ No tracked capitals, no eyebrows above headings.
   tab's heading or the target takes focus.
 - **Overview**: h1 name (the subject id until a page names it; headings and paragraphs use
   `overflow-wrap: anywhere`, so a `1:0x…` id or a long domain wraps inside the column), `one_line` as the lead,
-  then **Key facts** full width: a bordered box with a table of label, value (linked when it has a url;
+  any "Out of date" / "A newer source disputes…" note, then `.overview`: the **Summary** (`.summary-col`) first and
+  **Key facts** (`.facts-col`) after it, side by side from 1000px (see Responsive behaviour). Key facts is a bordered box with a table of label, value (linked when it has a url;
   addresses mono, shortened, with a Copy button) and a badge pill ("Proven on chain", "Stated by …", "Reported
   by …", worked out only from the kinds of the row's lines; on the Website and Official accounts rows also the
   channel's "Own domain" (blue) / "Linked from own site" (blue, `.badge-linked`) / "Verified on chain" (green) / "Not
@@ -90,8 +91,10 @@ No tracked capitals, no eyebrows above headings.
   in Record. An Official accounts row listing several accounts shows them as a list (`.kf-accounts`, 4px gap),
   each name linked to its channel with its own label pill. Badges wrap inside their cell (`max-width: 100%`,
   `overflow-wrap: anywhere`), so a long publisher name never widens the page. Without `infobox`, at most four
-  rows: Website, Main contract, token symbol, token supply. Then the **summary** in short paragraphs with one 9px dot per kind after each sentence (24px round
-  target). Each sentence is a `.sent` span (tabindex 0): hover tints it violet-50, a click or Enter opens the change
+  rows: Website, Main contract, token symbol, token supply. The **summary** is in short paragraphs with one 9px dot per kind after each sentence (24px round
+  target). A sentence and its marks (dots, dispute dot, pencil) sit in one `.sent-group` (`white-space: nowrap`, the
+  sentence itself `normal`) joined by a U+2060 word joiner, so a dot never wraps away from its sentence's last word
+  to lead the next line. Each sentence is a `.sent` span (tabindex 0): hover tints it violet-50, a click or Enter opens the change
   panel under its paragraph, and an open one keeps the tint with a 2px violet underline. A kept rewording's dots
   are the lines its own changes result lists (`items[].lines`). Under the summary one small quiet block
   (`.ov-foot`, no card, no border box; a 1px top rule and 16px above it; 13px secondary text): "Something wrong or
@@ -185,8 +188,13 @@ No tracked capitals, no eyebrows above headings.
 
 - Content column at most 60rem (960px), 16px side padding (or the safe-area inset when larger), shared by the
   header row and `main`. Long ids wrap inside it at 320 and 390 wide. `main` and the single-column grids
-  (`.tab`, `.overview`, `.summary`, `.lines`, `.row`, `.details`, Review's blocks) use one `minmax(0, 1fr)`
+  (`.tab`, `.overview` below 1000px, `.summary`, `.lines`, `.row`, `.details`, Review's blocks) use one `minmax(0, 1fr)`
   track, so no content (a change panel, a long URL) can widen the page.
+- Overview from 1000px (`@media (min-width: 62.5rem)`): `.overview` is `minmax(0, 3fr) minmax(0, 2fr)` with a 24px
+  gap, Summary left and Key facts right (about 40%), both starting at the same y (measured at 1440: 542px and 362px,
+  both at y=298). In that column each Key facts row is a small grid: label on its own line, value under it, badge
+  under the value, pencil at the right. Below 1000px the two stack, Summary then Key facts. The `.overview` single
+  column is set on its base rule, before the media query, so the wide rule is not overridden.
 - The change panel's choice tiles: as many 9.5rem columns as fit, one per row below about 20rem of panel width;
   below 384px the panel's padding drops to 12px.
 - Review's footer stays one row (price, Read the full request, Submit). Below 480px the price and the link share

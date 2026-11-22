@@ -551,8 +551,10 @@ No address, no connector id, no session.
   removes every key matching `WALLET_KEY` from localStorage and sessionStorage: `wagmi.*`, `-CBWSDK:*`, `cbwsdk.*`,
   `-walletlink*`, `walletlink*`, `wc@2:*`, `WCM_*`, `@w3m*`, `@appkit*`, `walletconnect*`. The same sweep runs on
   every page load, so keys written by earlier versions of the site (which offered the Coinbase connector) are gone.
-- Other site data, none of it wallet-related: the tray of drafted changes (`imd-record:tray:<subject>`), the
-  read cache (job ids, block times, ENS names, panel reads, sent transaction hashes) and IndexedDB `imd-record`.
+- Other site data, none of it wallet-related: the tray of drafted changes
+  (`localStorage["imd-record:v1:changes:<subject>"]`, `src/changes.ts`), the read cache
+  (`localStorage["imd-record:v1:<key>"]`, `src/api.ts`: job ids, block times, ENS names, panel reads, sent
+  transaction hashes) and the IndexedDB database `imd-record` (stores `scan`, `files`, `digests`, `src/store.ts`).
 
 ## Revision 13: Overview order, corrected sentences, pay dialog
 
@@ -810,6 +812,43 @@ full body is shown before any wallet prompt, and `agents.md` tells agents to run
 pins the site's bodies to them.
 
 ## Validation results
+
+### 2026-11-22, review fixes (after the last source change)
+
+Three findings from the review of revision 13, each reproduced in Chromium before the fix:
+
+- **Key facts beside the Summary at 1000px and wider.** Reproduced: at 1440 `.overview` had one 928px track because
+  the later catch-all `.tab, .overview, … { grid-template-columns: minmax(0, 1fr) }` beat the 62.5rem media rule.
+  Fixed in `src/styles.css`: `.overview` sets its single column on its own base rule (before the media query) and is
+  no longer in the catch-all. Measured after: at 1000 and 1440 the columns are 542px and 362px, both at y=298; at 999
+  and below one column, Summary then Key facts; no horizontal scroll at 320, 390 or 1440.
+- **README storage keys.** The tray key and the read-cache prefix now name what the code writes (see "Exactly which
+  keys the site stores").
+- **A sentence's dot leading the next line.** Reproduced at 320, 390, 800 and 999 wide (imd.fun, uniswap.org). A
+  `white-space: nowrap` wrapper alone did not stop Chrome, and neither did a nowrap span on the last word. Tried on a
+  test page, a word joiner (U+2060) between the sentence and its dots inside the nowrap `.sent-group` did. Measured
+  after: no dot leads a line at 320, 390, 600, 800, 999, 1100 or 1440 on either page.
+
+Commands and results:
+
+- `npm run build` (runs `tsc --noEmit` first): exit 0. `dist/index.html` uses only `./` URLs; `dist/` is 1.2 MB.
+- `npm test`: **331 of 331 pass in 23 files**. New in `tests/revision13.test.ts`: no rule after the 1000px media
+  query names `.overview` in a `grid-template-columns` rule, and the summary's nowrap group with U+2060.
+- `node tests/e2e.mjs` on `dist/` with the fixture (Playwright 1 and Chromium headless shell under `$TMPDIR`, with
+  the system libraries it lacked unpacked there): **245 of 245 pass**. Before these fixes, the committed export
+  passed 224 of 245. The 21 failures (7 checks at each of 3 widths) were stale checks never updated for revision 13:
+  they expected Key facts above the Summary, Related under Key facts, and the request body readable with
+  `innerText` (it now sits in the closed "Show the full request"). Those checks now test the revision 13 order:
+  Summary first, Key facts beside it from 1000px (about 40%, same top), stacked below; Related at the bottom with
+  "Add this project" on click; the body read with `textContent`. Run against the old export, the new layout check
+  fails at 1440 only, which is the bug reported.
+- Design probe `taste.mjs --out test/scratch/taste`: **all 16 checks pass** (render, layout, targets, contrast,
+  casing, tracking, eyebrows, type sizes, type faces, glyphs, slogans, repetition, copy budget, chrome, motion,
+  share). I looked at the 1440 screenshot of uniswap.org: Summary on the left, Key facts beside it from the same
+  height, and each dot right after its sentence.
+- Not tested here: same as below (real wallets, live payments).
+
+### 2026-11-21
 
 Run on this machine on 2026-11-21 after the last source change (revision 11 of this job: the README, the B5 unit
 test and the e2e suite brought up to date with items A to E). Earlier details and the Better Interface reviews are in
