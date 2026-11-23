@@ -258,9 +258,10 @@ the line that disputes it.
 - **Proven**: proof lines, plus statements and claims with a confirming link (to a proof or a panel answer);
 - **Stated**: statements with no confirming link (a partly-confirmed statement is still only stated);
 - **Claimed**: claims with no confirming link;
-- **Contradicted** and **Out of date**: shown only when above zero.
+- **Contradicted** and **Superseded**: shown only when above zero, on Record and in its section headers. The home
+  list shows only Proven, Stated, Claimed and Contradicted, and leaves Superseded out of its counts (`homeGroups`).
 
-The filter is All, Proven, Stated, Claimed, then Contradicted and Out of date when above zero; there is no
+The filter is All, Proven, Stated, Claimed, then Contradicted and Superseded when above zero; there is no
 separate proofs count and no "Only said" filter. Proven shows both kinds, and each row still says which it is:
 "a check in its own right" (a Proof marker) or "<Stated|Claimed> by …, then confirmed". A count counts exactly the
 rows its filter renders: a settled row once, a proof it already shows not again, except a proof with `fact`, which
@@ -270,14 +271,15 @@ settled line never changes who said it: its kind and `by` stay in the file and o
 ### How the record reads
 
 - **One line per row**: the sentence, a coloured marker with its word (Proof, Statement, Claim, or Proven,
-  Contradicted, Out of date for a settled row), who said
+  Contradicted, Superseded for a settled row, with "Newer: <the newer line>" under Superseded), who said
   it (statements and claims) and its source numbers. Clicking the row or pressing Enter on it opens the
   details: quote, re-run steps, how it was checked, who added it (research or source job and its payer) and
   the links. Rows start closed.
-- **Filter**: All, Proven, Stated, Claimed (and Contradicted, Out of date when above zero), each with its count,
+- **Filter**: All, Proven, Stated, Claimed (and Contradicted, Superseded when above zero), each with its count,
   above the sections.
-- **Summary**: when the page has `summary`, it sits at the top under "Summary" with the note "Written by the
-  research job from the lines below. Not itself a checked line." Each sentence ends with links to its line ids;
+- **Summary**: when the page has `summary`, it sits at the top under "Summary" with a one-line key to the dots
+  under it: a green dot "proven on chain", a blue dot "the project says", an orange dot "others say", then "Summary
+  written from the record by a research job." Each sentence ends with links to its line ids;
   a link shows all kinds, opens that line and moves focus to it.
 - **On-chain facts**: in each section, proof lines with `fact` show as a table of name, value (with unit),
   chain and block (from `fact.chain`/`fact.block` if given, else read from the line and its re-run steps). A
@@ -336,14 +338,25 @@ the channels list saying what each label means.
   URL; the row shows the most cautious label among them (one Not verified account makes the row Not verified, then
   Verified on chain, then Own domain). Each account's own label is on Sources.
 - **Rows a rebuild writes** (where they fit the project): Website, Tokens, Main contract, Chains, Supply, Seats,
-  Price, Deployed by, Controlled by, Founder or creator, Contributors, Official accounts, Launched, plus up to 3
-  rows the job chooses. Supply gives each token its own value; Supply and Seats are separate rows. The Main contract
-  and Tokens values include the contract address and chain; Deployed by and Controlled by include the wallet address.
-- **Tokens**: every token the project issues, written `SYM: purpose, <address> on <chain>; …` (up to 30 words).
-  Key facts shows one line per token: the symbol in bold, its purpose, the shortened address with a Copy button,
-  then "on <chain>". An older comma-joined value is split only where the next token's symbol starts, so a chain
-  stays with its address. The row's url links the one token it names (by address, or the only token). A page built
-  before this format with a singular **Token** row keeps its plain linked value.
+  Price, Size, Deployed by, Controlled by, Founder or creator, Run by, Contributors, Official accounts, Launched,
+  plus up to 3 rows the job chooses. **Run by** is the organisation and the person leading it now ("Zora Labs; Dee
+  Goens, chief executive"); Contributors never holds the chief executive. **Launched** is the first live date, with
+  the current version's date in the same value when it is much newer. **Size** comes from an established
+  independent tracker or the project's own published statistics, never an individual's social post.
+- **Values**: a row that lists several things gives `values` as objects with exactly `name`, `text` (may be empty)
+  and optionally `url`, or `address` with `chain` (`valueItemOf` in `src/page.ts`). Key facts shows each entry as
+  the name in bold, then its text, then the link or the shortened address with a Copy button and a block explorer
+  link (`explorerAddressUrl` in `src/subject.ts`; Blockscan for a chain the site does not know). A string entry, or
+  an object of another shape, is shown with its whole text, never only a first word.
+- **Tokens**: at most 3 tokens central to the project (governance, product, staking), each with its contract
+  address and chain; receipt or vault-share tokens, pool positions, collectibles and merchandise tokens belong in
+  lines. One token bridged to several chains is one entry under the name the project uses now. Each entry shows
+  the symbol in bold, its purpose, then the shortened address with Copy and an explorer link, visible without
+  opening the row. An older text value (`SYM: purpose, <address> on <chain>; …`) is split only where the next
+  token's symbol starts, so a chain stays with its address. A page built before this format with a singular
+  **Token** row keeps its plain linked value.
+- **Supply**: only the tokens in Tokens, each as its symbol and amount ("UNI: 1 billion"); a bridged token gives
+  the home chain's total, then each other chain's amount, never a sum. Supply and Seats are separate rows.
 - **Without `infobox`**: at most four rows: Website, Main contract, the token symbol proof and the token supply
   proof. A proof counts as the token's only when its fact is named for the token's symbol or supply ("Token
   symbol", "Symbol", "Ticker", "Token supply", "Total supply", "Supply") or re-run with `symbol()` /
@@ -351,8 +364,10 @@ the channels list saying what each label means.
   token (the contract whose role says token or ERC-20, else the main contract): the proof names that address and its
   re-run reads no other contract. A collectible's or any other contract's symbol or supply, or a proof that names no
   contract, leaves the row out. Overview never lists every channel and contract.
-- **Layout**: from 641px up the table uses a fixed layout and badges wrap inside their cell, so a long publisher
-  name never widens the page; below that each row stacks label, value and badge.
+- **Layout**: Key facts sits below the summary at the full content width, a table with label, value and badge on
+  one row; it shows the first 8 rows (`KEY_FACTS_SHOWN`) and "Show all N" when there are more. From 641px up the
+  table uses a fixed layout and badges wrap inside their cell, so a long publisher name never widens the page;
+  below that each row stacks label, value and badge.
 
 Fetched pages, oracle reads, job ids, ENS names and block times are cached in `localStorage`. Every
 cache access is wrapped in try/catch, and the page renders without it.
@@ -361,25 +376,23 @@ Every value from a result file is rendered as plain React text, never as HTML. L
 `http(s)` URLs. Explorer links go to `https://explorer.imd.fun/jobs/<jobId>`; before a job id is known,
 they go to the transaction on Etherscan.
 
-## Out of date
+## Needs a rebuild, and what readers are told
 
-A page is out of date for either of two reasons, and the note names both when both hold (`outdatedOf` and
-`outdatedText` in `src/model.ts`):
+A page needs a rebuild for either of two reasons (`outdatedOf` in `src/model.ts`):
 
 - **Results not folded in**: completed results or panel answers that are not listed in the `<PRIOR>` of the request
-  that produced the page shown. The note reads "Out of date: N results not folded in" ("1 result" for one).
+  that produced the page shown. A changes result whose patches repaired every part it disputes is not counted
+  (`unfoldedCount`); a rebuild still folds it in.
 - **Built with an older format**: the instruction hash in the objective of the request that produced the page
   differs from the current rebuild instruction file's hash (`matchesTemplate` in `src/bodies.ts`). A page built
-  before instruction files names no hash and counts as older. The note reads
-  "Out of date: built with an older format".
-- **Both**: "Out of date: N results not folded in; built with an older format".
+  before instruction files names no hash and counts as older.
 
-A changes result whose patches repaired every part it disputes is not counted in "results not folded in"
-(`unfoldedCount`); a rebuild still folds it in.
-
-Overview shows the note with a **Rebuild** link to Contribute; its home row shows the same note, and Home has a
-**Needs a rebuild** filter beside All. While reads are outstanding the filter shows no count and
-says "Checking which pages need a rebuild…".
+Readers see a note only when results are not folded in ("N additions not yet merged. Rebuild"; "1 addition" for
+one; `readerNoteText` in `src/model.ts`), on Overview and on the home row, or when a newer source disputes parts no
+change has repaired ("A newer source disputes N parts of this page. Rebuild to update them."). The format reason
+("Out of date: built with an older format", or both reasons as "Out of date: N results not folded in; built with an
+older format"; `outdatedText`) appears only in Home's **Needs a rebuild** filter, on the Contribute tab and under
+Page upkeep. While reads are outstanding the filter shows no count and says "Checking which pages need a rebuild…".
 
 ## What a rebuild is asked to research
 
@@ -558,12 +571,9 @@ No address, no connector id, no session.
 
 ## Revision 13: Overview order, corrected sentences, pay dialog
 
-**Overview order** (`OverviewTab` in `src/Record.tsx`). Under the name and one_line: any "Out of date" or "A newer
-source disputes…" note, directly under the one_line and above both columns. Then the **Summary**; at 1000 px and
-wider, **Key facts** sits in a column to its right (`grid-template-columns: 3fr 2fr`, about 40%), both from the same
-height, and in that column each row's label sits above its value with the badge under it. Key facts shows its first
-8 rows (`KEY_FACTS_SHOWN`) and "Show all N" when there are more. Narrower screens stack Summary, then Key facts.
-**Related** follows at the bottom, above the footer links, as chips.
+**Overview order** (`OverviewTab` in `src/Record.tsx`). Revision 13 put Key facts in a side column at 1000 px and
+wider; revision 15 removed it (see "Revision 15" below). The order now, at every width: the reader's note if any,
+**Summary**, **Key facts**, then **Related** as chips above the footer links.
 
 **Corrected sentences.** A summary sentence a visitor's changes job corrected, reworded or patched carries no
 "corrected by 0x…" text. It gets one small pencil after its dots (`ChangedMark`); clicking it shows who changed it,
@@ -576,7 +586,7 @@ with who changed it and when (`withPatches` in `src/keyfacts.ts`, `applySentence
 
 **Key facts speakers.** The badge's "+N" and the row's details count and list every speaker of the lines the row
 rests on (`speakersOf`): a statement's channel and every name in its `by`, and, for a claim with no named speaker,
-its source's host. A Proven, Contradicted or Out of date row lists its speakers in its details too.
+its source's host. A Proven, Contradicted or Superseded row lists its speakers in its details too.
 
 **Official accounts.** Each account is a link with a short name ("@zora on X", "ourzora on GitHub"; `accountLabel`),
 never with an address in brackets. Its badge comes from its own tie: "Linked from own site" (linked), "Verified on
@@ -598,6 +608,32 @@ the transaction until the job id is known and the job on explorer.imd.fun from t
 button. Under the tabs the page shows "A rebuild is running, started just now" or "Your N changes are being
 checked", each with "Follow on the explorer". If the wallet rejects or fails, the dialog stays open, says what
 happened in one sentence and offers "Try again".
+
+## Revision 15: stacked Overview, whole values, Superseded
+
+- **Overview at every width** (`.overview` in `src/styles.css`): one column, Summary, then Key facts, then Related.
+  The summary's text column is at most 760px (`--read-max: 47.5rem`); Key facts below it uses the full content
+  width as a table (label, value and badge on one row), first 8 rows with "Show all N". There is no side column.
+- **Under the summary**: one line keys the dots (green "proven on chain", blue "the project says", orange "others
+  say"), then "Summary written from the record by a research job." (or, for an accepted edit, who edited it).
+- **Whole values** (B3, F14, F15): each `values` entry is read whole (`valueItemOf` in `src/page.ts`) and shown as
+  name in bold, text, then the link or the shortened address with Copy and an explorer link. Tokens shows symbol,
+  purpose, address, Copy and explorer link without opening the row; Supply reads "UNI: 1 billion". An entry of
+  another shape keeps every part as text; nothing is cut to a first word.
+- **Hosting suffixes** (4c, `src/psl.ts`): the Public Suffix List (`src/psl-rules.txt`, made by
+  `scripts/build-psl.mjs`) plus shared hosts including `imd.site`, `github.io` and `vercel.app`. Each
+  `<name>.imd.site` is its own subject and domain: `record-test-1.imd.site` stays `record-test-1.imd.site`, and two
+  tenants of one suffix never share a domain.
+- **Numbers** (D7, `src/numbers.ts`): a whole number from 1000 to 2999 is left as written unless a unit or token
+  symbol follows it ("founded 2020" stays, "2000 seats" reads "2,000 seats"). Numbers in dates, addresses, hashes,
+  versions and handles are never formatted, nor are numbers after block, id, nonce, chain (also "chain (8453)"),
+  height, timestamp, unix, epoch, port or a standard's prefix ("ERC 4626", "EIP 7702", "BIP 32"):
+  "block 26446763" and "at block height 26446763" are unchanged.
+- **Superseded** (E9): the line status once called "Out of date" reads "Superseded" everywhere, with "Newer: <the
+  newer line>" under it. The home list shows only Proven, Stated, Claimed and Contradicted.
+- **Reader's note** (E8): see "Needs a rebuild, and what readers are told" above.
+- **Instruction files**: new rebuild and changes files (see "Instruction files"); `public/agents.md` is written by
+  `scripts/agents-md.ts` and copied to `dist/agents.md` by the build.
 
 ## Reading whole results
 
@@ -634,10 +670,10 @@ A kept change now repairs the parts it disputes in the same job; it no longer as
   the lines the patch rests on (`withPatches` in `src/keyfacts.ts`). Its details say "Updated by a change from
   <payer>" and "Earlier value: …". A patched summary sentence shows its new text, marked "updated by a change from
   <payer>", and its details give the earlier text (`applySentencePatches` in `src/changeResult.ts`). Record lines
-  take no patch and keep their Out of date or Contradicted markers.
+  take no patch and keep their Superseded or Contradicted markers.
 - **Banner.** "A newer source disputes N parts of this page" counts only parts in `affects` that got no patch
-  (`disputesOf`). A changes result whose disputed parts are all patched (`fullyPatched`) does not make the page
-  "Out of date: N results not folded in".
+  (`disputesOf`). A changes result whose disputed parts are all patched (`fullyPatched`) does not count as an
+  addition not yet merged.
 - **Rebuild.** The rebuild still folds every changes result in later and treats its patches as part of it: "fold
   each patch into the infobox row or summary sentence it names, resting on the lines it gives, unless newer evidence
   says otherwise."
@@ -648,17 +684,20 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-8ba8632e27f2.txt` and `changes-74f6ac6095c4.txt`; still served: `rebuild-77f7165b2051.txt`,
-`changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
-`changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`,
-`changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`, `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`,
-`changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and `changes-8400e6bf9d85.txt`. The current rebuild file adds,
+Current files: `rebuild-936893c77936.txt` and `changes-c7a1725279f5.txt`; still served: `rebuild-8ba8632e27f2.txt`,
+`changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
+`changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
+`changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
+`changes-8400e6bf9d85.txt`. The revision 15 rebuild file carries the new Tokens rule, one token on several chains,
+the attribution rule, readings of one figure kept as history, Launched, Run by (after Founder or creator), Size and
+the one `values` shape; the revision 15 changes file carries the bridge and attribution rules. Before them, the
+revision 13 rebuild file added, 
 to the scope, key facts, size and uncertainty rules, the `linked` channel tie ("A channel on another site that the
 project's own domain links to as its official account has tie linked.") and folding a changes result's patches in
-(see "An edit repairs what it disputes"). The current changes file adds, to the whole-record comparison and the
+(see "An edit repairs what it disputes"), and the revision 13 changes file added, to the whole-record comparison and the
 `affects[{kind,target,type,by_line}]` key (kind `line`, `infobox` or `summary`), the patch rule and the
 `patches[{kind,target,value,lines[]}]` key. Every part in a kept change's `affects` that got no patch is marked
-(lines with their status, a Key facts row with "Out of date" or "Contradicted" in place of its badge, a summary
+(lines with their status, a Key facts row with "Superseded" or "Contradicted" in place of its badge, a summary
 sentence with a red dot or a dark amber ring that opens the new line), and Overview says "A newer source disputes N
 parts of this page. Rebuild to update them." for those parts only. A later source can still dispute a sentence an
 earlier kept change reworded: entries are matched against the displayed text, and only one from before that rewrite
@@ -673,10 +712,13 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreielvbrs4j7spkozxl76gbn5jasfn27iyho4uchtchnxtwcd2e5lii?filename=rebuild-8ba8632e27f2.txt`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreidu62wgbfoex7bv44cktgvck3qz4yaekzz5pgjil2t7ujrrwcagai?filename=changes-74f6ac6095c4.txt`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreietncj4o6jwgagsmay5mz4vt3lbo46yeumuuqd67rnd4ztcej2cwy?filename=rebuild-936893c77936.txt`,
+  sha256 `936893c77936300d26031d667959ed61773d825194a407efc5a3e666222742b6`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreighufzfe6pvxsbyg32shaqetrm7mb4ouwlb5plgb5mljjmeqjvdqe?filename=changes-c7a1725279f5.txt`,
+  sha256 `c7a1725279f5bc83836f52382049c59f6078ea5961ebd660f58b4a584826a381`
 
-These two files are new in revision 13. Like every file before them, they reach the gateways once the site export
+These two files are new in revision 15 (the revision 13 pair, `bafkreielvbrs…e5lii` and `bafkreidu62wg…agai`, is
+still served). Like every file before them, they reach the gateways once the site export
 holding them is pinned; until then the site's preflight refuses to take payment for a rebuild or changes request.
 
 Since this revision the objective names a **second address** for the same raw CID, at `gateway.pinata.cloud`
@@ -812,6 +854,48 @@ full body is shown before any wallet prompt, and `agents.md` tells agents to run
 pins the site's bodies to them.
 
 ## Validation results
+
+### 2026-11-23, revision 15 review fixes (after the last source change)
+
+Three findings from the review of revision 15, each reproduced before the fix:
+
+- **README named the previous instruction files as current.** Reproduced: `npx vitest run` failed 3 of 367, among
+  them `tests/revision7.test.ts` (the README's "Current files" line) and `tests/review2.test.ts` (`dist/agents.md`
+  differed from `public/agents.md`: the export had not been rebuilt after `scripts/agents-md.ts` changed, and
+  `public/agents.md` itself had not been regenerated). Fixed: "Current files" now names `rebuild-936893c77936.txt`
+  and `changes-c7a1725279f5.txt` with their gateway addresses and sha256; `public/agents.md` regenerated with
+  `npx vite-node scripts/agents-md.ts`; `dist/` rebuilt.
+- **"Out of date" still named the line status in docs and comments.** Reproduced with `grep` and
+  `tests/revision15.test.ts` (failing on the comment at `src/keyfacts.ts:40`, then on `src/Home.tsx:36`). Fixed: the
+  README, `scripts/agents-md.ts` (hence `public/agents.md`) and the comments in `src/keyfacts.ts`, `src/Home.tsx`,
+  `src/settle.ts`, `src/page.ts` and `src/changeResult.ts` say Superseded; the page-note passage now says readers
+  see only "N additions not yet merged. Rebuild" or the disputes note, and the format reason only in Needs a
+  rebuild, Contribute and Page upkeep. The UI already said Superseded; the upkeep text "Out of date: built with an
+  older format" stays where the brief keeps it.
+- **Identifiers formatted as quantities.** Reproduced: `formatNumbers("an ERC 4626 vault")` gave "ERC 4,626", and
+  likewise "EIP 7,702", "chain (8,453)", "height 26,446,763" and a timestamp. Fixed in `src/numbers.ts`
+  (`KEEP_AFTER` adds height, timestamp, unix, epoch, port, the standards' prefixes and an opening bracket); the
+  cases are in the D7 test, with controls showing quantities next to them still formatted.
+
+Commands and results (this machine, 2026-11-23):
+
+- `npm run build` (runs `tsc --noEmit` first): exit 0; `dist/index.html` uses only `./` URLs.
+- `npm test`: **368 of 368 pass in 25 files**.
+- `node tests/e2e.mjs` on `dist/` with the fixture (Playwright 1 and Chromium headless shell under `$TMPDIR`, with
+  the system libraries it lacked unpacked there): **248 of 248 pass** at 320, 390 and 1440. The Overview layout
+  check was stale (it expected the revision 13 side column and a `.facts-col` element that revision 15 removed) and
+  stopped the run; it now checks the revision 15 layout: Summary at most 760px, Key facts directly below at the
+  overview's full width, at every width (measured at 1440: summary 760px wide at y=274, Key facts 928px wide at
+  y=453), and no "built with an older format" text on Overview.
+- Design probe `taste.mjs --out test/scratch/taste`: **all 16 checks pass** (render, layout, targets, contrast,
+  casing, tracking, eyebrows, type sizes, type faces, glyphs, slogans, repetition, copy budget, chrome, motion,
+  share). I looked at the 390 screenshot: the header with Connect, the headline, the line saying what the site is,
+  and the "Look it up" bar with its button are all on the first screen.
+- Better Interface review of this round's changes (documentation, comments and `src/numbers.ts`; no layout or style
+  changed): writing (the docs now use the UI's own words, Superseded and "N additions not yet merged"), typography
+  (numbers: identifiers keep their digits, quantities keep separators), accessibility, layout, colours and UI
+  unchanged from the accepted revision and covered by the probe and e2e results above. No new findings.
+- Not tested here: same as below (real wallets, live payments).
 
 ### 2026-11-22, review fixes (after the last source change)
 

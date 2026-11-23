@@ -5,14 +5,17 @@
  *
  * Left as written: anything inside a word or hex string (0x addresses, hashes, L12, F1:L3, v2.1, @handle2000), dotted
  * versions (2.19.5), dates and times (2024-05-01, 12/05/2024, 12:30), hyphen-joined ids such as UUIDs, numbers after
- * "block", "#", "id", "nonce" or "chain" (also with a colon: "Block: 26446763", "Request ID: …"), and every whole
+ * "block", "#", "id", "nonce", "chain", "height", "timestamp", "unix", "epoch", "port" or a standard's prefix (ERC, EIP,
+ * BIP, CIP, SIP, LIP, NIP, AIP, SLIP, CAIP), also with a colon or an opening bracket ("Block: 26446763",
+ * "Request ID: …", "Base chain (8453)", "EIP 7702", "ERC 4626"), and every whole
  * four-digit number from 1000 to 2999: a year or a plain identifier ("founded 2020", "EIP 1559"). Such a number is
  * a quantity only when a unit or a token symbol follows it directly, or a currency sign comes before it:
  * "2000 seats" reads "2,000 seats", "2500 IMD" reads "2,500 IMD", "$1500" reads "$1,500".
  */
 
 const NUM = /(?<![\p{L}\p{N}_.,:#/@]|[\p{L}\p{N}]-)(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(?![\p{L}\p{N}_:/@]|[.,]\d|-[\p{N}a-fA-F])/gu;
-const KEEP_AFTER = /(?:\bblocks?|\bid|\bids|\bnonce|\bchain(?:\s*id)?|\bchainid|\btoken\s*id|\bno\.|\bnumber)\s*[:#]?\s*#?\s*$/i;
+const KEEP_AFTER =
+  /(?:\bblocks?|\bid|\bids|\bnonce|\bchain(?:\s*id)?|\bchainid|\btoken\s*id|\bno\.|\bnumber|\bheight|\b(?:unix\s*)?timestamp|\bunix(?:\s*time)?|\bepoch|\bport|\b(?:erc|eip|bip|cip|sip|lip|nip|aip|slip|caip)s?)\s*[:#(]?\s*#?\s*$/i;
 /**
  * What makes a whole number from 1000 to 2999 a quantity: a unit or a token symbol directly after it ("2000 seats",
  * "2500 IMD", "1200 sIMD", "1500%"). A token symbol has two capitals in a row, perhaps after a short lowercase prefix.

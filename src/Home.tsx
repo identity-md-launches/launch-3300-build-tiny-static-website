@@ -33,7 +33,7 @@ export function ReaderNote({ o, href }: { o: SubjectSummary["outdated"]; href: s
   );
 }
 
-/** "Out of date: …" with the reason, for upkeep only: the Contribute tab and Page upkeep. */
+/** The upkeep note (Out of date, with its reason), for upkeep only: the Contribute tab and Page upkeep. */
 export function OutdatedNote({ o, href }: { o: NonNullable<SubjectSummary["outdated"]>; href: string }) {
   return (
     <p className="outdated small">

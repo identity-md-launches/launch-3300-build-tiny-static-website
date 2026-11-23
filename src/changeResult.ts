@@ -156,7 +156,7 @@ export interface Dispute {
   job?: string;
 }
 export interface Disputes {
-  /** Record line ids marked Contradicted or Out of date by an affects entry. */
+  /** Record line ids marked Contradicted or Superseded by an affects entry. */
   lines: Map<string, Dispute>;
   /** Key facts rows by lower-case label. */
   infobox: Map<string, Dispute>;

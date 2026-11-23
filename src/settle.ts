@@ -64,7 +64,7 @@ export function settleOf(line: Pick<Line, "kind" | "links">, proofIds: Set<strin
   const confirms = pick("confirms");
   const contradicts = pick("contradicts");
   const partly = pick("partly");
-  // Out of date: a newer line of any kind (or a panel answer) shows that what this line reported has since changed.
+  // Superseded: a newer line of any kind (or a panel answer) shows that what this line reported has since changed.
   const outdates = line.links.filter((k) => k.type === "outdates" && (isAnswerRef(k.target) || lineIds.has(k.target.trim()))).map((k) => k.target.trim());
   // A proof is never proven. A proof read at an older block can be out of date, and a newer line an affects list
   // names (or a newer proof) can contradict it: it then leaves Proven for Contradicted, like any disputed line.

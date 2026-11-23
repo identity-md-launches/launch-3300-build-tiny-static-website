@@ -226,22 +226,24 @@ try {
       const s = await page.locator(".summary").boundingBox();
       const h1 = await page.locator("h1").boundingBox();
       const main = await page.locator("main").boundingBox();
-      // Revision 13 (A1): the Summary first; from 1000px Key facts in a column to its right (about 40%), both from the
-      // same height; narrower, stacked Summary then Key facts. This is the check that caught the overridden rule.
+      // Revision 15 (A1, A2): stacked at every width, Summary, then Key facts, then Related; no side column. The
+      // summary's text column is at most 760px; Key facts below it takes the overview's full width.
       const sc = await page.locator(".summary-col").boundingBox();
-      const fc = await page.locator(".facts-col").boundingBox();
+      const ov = await page.locator(".overview").boundingBox();
       const vw = page.viewportSize().width;
-      const wideOk = Math.abs(sc.y - fc.y) <= 1 && fc.x >= sc.x + sc.width && Math.abs(fc.width / (sc.width + fc.width) - 0.4) < 0.03;
-      const narrowOk = Math.abs(sc.x - fc.x) <= 1 && fc.y >= sc.y + sc.height && Math.abs(sc.width - fc.width) <= 1;
-      check(`${W} the summary comes first under the name; key facts beside it from 1000px (about 40%, same top), stacked below`, sc.y > h1.y && (vw >= 1000 ? wideOk : narrowOk), JSON.stringify({ vw, sc, fc, k, s }));
-      check(`${W} key facts come directly after the one_line, with the actions below the summary`, await page.evaluate(() => {
+      const stacked = Math.abs(sc.x - k.x) <= 1 && k.y >= sc.y + sc.height && Math.abs(k.width - ov.width) <= 1 && sc.width <= 760.5 && (ov.width <= 760 ? Math.abs(sc.width - ov.width) <= 1 : true);
+      check(`${W} the summary comes first under the name (at most 760px wide); key facts below it at full width, at every width`, sc.y > h1.y && stacked, JSON.stringify({ vw, sc, k, ov, s }));
+      check(`${W} the overview holds the summary then key facts, with the actions below the summary`, await page.evaluate(() => {
         const lead = document.querySelector("main .lead");
         const actions = document.querySelector("main .tab > .ov-foot .foot-links");
         const summary = document.querySelector(".summary");
-        // The one-line "Out of date" note may sit between the one_line and the facts.
-        const next = lead?.nextElementSibling?.classList.contains("outdated") ? lead.nextElementSibling.nextElementSibling : lead?.nextElementSibling;
-        return next?.classList.contains("overview") && document.querySelector(".overview .facts-col")?.firstElementChild?.classList.contains("keyfacts") && !!actions && !!summary && (summary.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING) > 0;
-      }), await page.evaluate(() => JSON.stringify({ afterLead: document.querySelector("main .lead")?.nextElementSibling?.className, factsFirst: document.querySelector(".overview .facts-col")?.firstElementChild?.className, actions: [...document.querySelectorAll("main .row-actions")].map((e) => e.parentElement?.className), summary: !!document.querySelector(".summary") })));
+        const o = document.querySelector(".overview");
+        // A reader's note ("N additions not yet merged") may sit between the one_line and the overview.
+        let next = lead?.nextElementSibling;
+        while (next && !next.classList.contains("overview") && /outdated|reader-note|disputes|note/.test(next.className)) next = next.nextElementSibling;
+        return next === o && o?.children[0]?.classList.contains("summary-col") && o?.children[1]?.classList.contains("keyfacts") && !!actions && !!summary && (summary.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING) > 0;
+      }), await page.evaluate(() => JSON.stringify({ afterLead: document.querySelector("main .lead")?.nextElementSibling?.className, children: [...(document.querySelector(".overview")?.children ?? [])].map((e) => e.className) })));
+      check(`${W} no instruction-format note for readers on Overview`, !/built with an older format/.test(await page.locator("main").innerText()));
       check(`${W} every key fact row has a status badge`, (await page.locator(".keyfacts .badge").count()) >= 1);
       const kfRows = await page.$$eval(".keyfacts tbody tr", (trs) => trs.map((tr) => ({ label: tr.querySelector("th")?.textContent?.trim() ?? "", badges: [...tr.querySelectorAll(".badge")].map((b) => b.textContent?.trim() ?? "") })));
       const row = (l) => kfRows.find((r) => r.label === l)?.badges ?? [];
@@ -288,7 +290,7 @@ try {
     await page.locator(".section-toggle", { hasText: "What it does" }).click();
     // Job 8: a contradicted line is ONE row led by a red Contradicted marker, with both sentences and its speaker.
     const filters = await page.$$eval(".filter .btn-filter", (bs) => bs.map((b) => b.textContent?.replace(/\s+/g, " ").trim()));
-    // Brief C: All, Proven, Stated, Claimed always; Contradicted and Out of date only above zero; no Proof or Only said.
+    // Brief C: All, Proven, Stated, Claimed always; Contradicted and Superseded only above zero; no Proof or Only said.
     check(`${W} filter buttons All, Proven, Stated, Claimed and Contradicted (above zero) with counts; no Proof or Only said`, filters.length === 5 && /^All\d+$/.test(filters[0]) && /^Proven\d+$/.test(filters[1]) && /^Stated\d+$/.test(filters[2]) && /^Claimed\d+$/.test(filters[3]) && /^Contradicted1$/.test(filters[4]) && !filters.some((f) => /^(Proof|Only said)/.test(f)), JSON.stringify(filters));
     await page.click(".filter .btn-filter >> text=Contradicted");
     const contra = await page.$$eval(".section .lines .row", (rs) => rs.map((r) => ({ text: r.querySelector(".row-toggle")?.textContent?.replace(/\s+/g, " ").trim(), lead: r.querySelector(".row-text > .kind")?.textContent?.trim(), color: r.querySelector(".row-text > .kind") ? getComputedStyle(r.querySelector(".row-text > .kind")).color : "" })));

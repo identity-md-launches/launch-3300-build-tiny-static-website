@@ -21,6 +21,7 @@ Taken from `src/styles.css`, `src/App.tsx`, `src/Home.tsx`, `src/Record.tsx`, `s
 | Spacing | 4, 8, 12, 16, 24, 32px (`--space-1` to `--space-8`) | All gaps and padding |
 | `--shadow-sheet` | two soft shadows | Dialogs only |
 | `--shadow-menu` | `0 1px 2px` + `0 6px 20px`, 6–12% black | The account menu only |
+| `--read-max` | 47.5rem (760px) | The summary's text column on Overview (`.summary-col`, `.summary-col .prose`) |
 | `--page-max` / `--page-pad` | 60rem / `max(16px, safe-area insets)` | The one content column: the header row and `main` both use it, so the brand sits at the content's left edge and the wallet at its right edge at every width |
 | Change tags (`.ctag-*`) | wrong red-800 on red-50; context and links blue-800 on blue-50; backing green-800 on green-50; reword and new line violet-800 on violet-50; "No source" orange-800 on orange-50 | Review's type tag and the amber "No source" tag |
 
@@ -82,9 +83,14 @@ No tracked capitals, no eyebrows above headings.
   tab's heading or the target takes focus.
 - **Overview**: h1 name (the subject id until a page names it; headings and paragraphs use
   `overflow-wrap: anywhere`, so a `1:0x…` id or a long domain wraps inside the column), `one_line` as the lead,
-  any "Out of date" / "A newer source disputes…" note, then `.overview`: the **Summary** (`.summary-col`) first and
-  **Key facts** (`.facts-col`) after it, side by side from 1000px (see Responsive behaviour). Key facts is a bordered box with a table of label, value (linked when it has a url;
-  addresses mono, shortened, with a Copy button) and a badge pill ("Proven on chain", "Stated by …", "Reported
+  the reader's note only when results are not folded in ("N additions not yet merged. Rebuild") or a newer source
+  disputes parts ("A newer source disputes…"), then `.overview`, one column at every width: the **Summary**
+  (`.summary-col`, at most `--read-max` 760px wide), then **Key facts** (`.keyfacts`, a direct child of `.overview`) at the full content width,
+  then **Related** chips. Key facts is a bordered box with a table, one row per fact: label, value (linked when it
+  has a url; addresses mono, shortened, with a Copy button) and badge; the first 8 rows, then a "Show all N" text
+  button (`.kf-more`). A row with `values` lists its entries (`.kf-items`, `.kf-tokens`; flex rows that wrap): the
+  name in bold, its text, then the link or the shortened address (`.tok-addr`, nowrap) with Copy and an explorer
+  link, visible without opening the row; Supply reads "UNI: 1 billion" and a badge pill ("Proven on chain", "Stated by …", "Reported
   by …", worked out only from the kinds of the row's lines; on the Website and Official accounts rows also the
   channel's "Own domain" (blue) / "Linked from own site" (blue, `.badge-linked`) / "Verified on chain" (green) / "Not
   verified" (grey)); a badge opens the lines
@@ -96,7 +102,10 @@ No tracked capitals, no eyebrows above headings.
   sentence itself `normal`) joined by a U+2060 word joiner, so a dot never wraps away from its sentence's last word
   to lead the next line. Each sentence is a `.sent` span (tabindex 0): hover tints it violet-50, a click or Enter opens the change
   panel under its paragraph, and an open one keeps the tint with a 2px violet underline. A kept rewording's dots
-  are the lines its own changes result lists (`items[].lines`). Under the summary one small quiet block
+  are the lines its own changes result lists (`items[].lines`). Directly under the summary one 13px line keys the
+  dots (`.dot-key`, flex, wraps between its items, each item nowrap): green dot "proven on chain", blue dot "the
+  project says", orange dot "others say", then "Summary written from the record by a research job." Below
+  Key facts, one small quiet block
   (`.ov-foot`, no card, no border box; a 1px top rule and 16px above it; 13px secondary text): "Something wrong or
   missing? Hover any row or click a sentence to suggest a change." and, on the next line, four 13px underlined text
   links of one style (`.foot-links`, 32px tall, 16px apart), all four real links: "Add a missing line"
@@ -188,13 +197,13 @@ No tracked capitals, no eyebrows above headings.
 
 - Content column at most 60rem (960px), 16px side padding (or the safe-area inset when larger), shared by the
   header row and `main`. Long ids wrap inside it at 320 and 390 wide. `main` and the single-column grids
-  (`.tab`, `.overview` below 1000px, `.summary`, `.lines`, `.row`, `.details`, Review's blocks) use one `minmax(0, 1fr)`
+  (`.tab`, `.overview`, `.summary`, `.lines`, `.row`, `.details`, Review's blocks) use one `minmax(0, 1fr)`
   track, so no content (a change panel, a long URL) can widen the page.
-- Overview from 1000px (`@media (min-width: 62.5rem)`): `.overview` is `minmax(0, 3fr) minmax(0, 2fr)` with a 24px
-  gap, Summary left and Key facts right (about 40%), both starting at the same y (measured at 1440: 542px and 362px,
-  both at y=298). In that column each Key facts row is a small grid: label on its own line, value under it, badge
-  under the value, pencil at the right. Below 1000px the two stack, Summary then Key facts. The `.overview` single
-  column is set on its base rule, before the media query, so the wide rule is not overridden.
+- Overview at every width: `.overview` is one `minmax(0, 1fr)` track with a 24px gap: Summary (its text column at
+  most 760px), then Key facts at the full 960px content width, then Related. There is no side column at any width,
+  so a long Key facts table never leaves an empty area under the summary. From 641px the Key facts table keeps
+  label, value and badge on one row (fixed layout, badges wrap in their cell); below that each row stacks label,
+  value and badge.
 - The change panel's choice tiles: as many 9.5rem columns as fit, one per row below about 20rem of panel width;
   below 384px the panel's padding drops to 12px.
 - Review's footer stays one row (price, Read the full request, Submit). Below 480px the price and the link share

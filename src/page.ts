@@ -73,7 +73,7 @@ export interface LineLink {
   target: string;
   /**
    * Set on a link a changes result's affects list put on an existing line: the newer line it names marks this one
-   * Contradicted or Out of date at once, whatever its kind, until a rebuild folds the change in.
+   * Contradicted or Superseded at once, whatever its kind, until a rebuild folds the change in.
    */
   affects?: boolean;
 }

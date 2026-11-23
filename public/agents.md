@@ -166,8 +166,9 @@ A line a proof or panel answer settles is kept with links to what confirms or co
 read at deployment confirms "was X at launch", not "is X"); `partly` when it establishes only part; `contradicts`
 when it shows the sentence was wrong when written; `outdates` (on the older line, targeting the newer one) when a
 newer source shows that something it reported has since changed while it was accurate about its own source.
-Settling a line never changes its `kind` or `by`. When an infobox value lists several things the job also gives
-them in `values`, one entry each; the infobox has at most 15 rows and never a value of "unverified" or "unknown".
+Settling a line never changes its `kind` or `by`. When an infobox value lists several things the job gives
+them in `values` as objects with exactly the keys `name`, `text` (what follows the name; may be empty) and
+optionally `url`, or `address` with `chain`, and no other shape; the infobox has at most 15 rows and never a value of "unverified" or "unknown".
 For Founder or creator, Contributors and any line about a person's role the job uses every speaker, strongest first:
 the project on its own channels, another person at the project, an outside publication, the person about themselves.
 
@@ -307,8 +308,8 @@ only its target, and links clear cases: `confirms`, `partly`, `contradicts`, `ou
 thing said by another speaker; shown as "Also said by another speaker"). A link from a new statement or claim to an
 existing proof line or panel answer says what that proof or answer does to the new line, and stays on it (it can
 make the new line Proven or Contradicted). Everything a new line contradicts or outdates is listed in `affects`,
-and the site marks it all at once: a line with its Contradicted or Out of date status; a Key facts row (by label)
-with "Contradicted" or "Out of date" in place of its badge; a summary sentence (by its exact text) with a small red
+and the site marks it all at once: a line with its Contradicted or Superseded status; a Key facts row (by label)
+with "Contradicted" or "Superseded" in place of its badge; a summary sentence (by its exact text) with a small red
 or amber dot that opens the new line. Only the sentence the visitor targeted is rewritten; the rest wait for the
 rebuild. When a changes job with a kept change lists anything in `affects`, Overview says "A newer source disputes
 N parts of this page. Rebuild to update them." until a rebuild folds that job in.
@@ -464,19 +465,32 @@ URL and the subject's domain (Own domain for the domain or a subdomain, even whe
 Official accounts from each account's own tie in the result: "Linked from own site" (tie linked), "Verified on chain"
 (tie strong), else "Not verified"; when the accounts' labels differ, each account shows its own badge beside it.
 Each account is a link with a short name ("@zora on X", "ourzora on GitHub"), never an address in brackets: give
-Official accounts `values` as entries `{"name": "@zora on X", "url": "https://x.com/zora"}`. Without `infobox`, the table shows at most: Website (the channel at
+Official accounts `values` as entries `{"name": "@zora on X", "text": "", "url": "https://x.com/zora"}`. Without `infobox`, the table shows at most: Website (the channel at
 the subject's domain), Main contract, and one token symbol proof and one token supply proof (a proof named for
 the token's symbol or supply, or re-run with `symbol()` or `totalSupply()`; never a seat count; and only a proof
 that names the subject's own token contract and whose re-run reads no other contract); it never
 lists every channel and contract. The infobox rows a rebuild writes are, in order: Website, **Tokens**,
-Main contract, Chains, Supply, Seats, Price, Deployed by, Controlled by, Founder or creator, Contributors, Official
-accounts, Launched, and up to 3 rows of its own. **Tokens** lists every token the project issues, each as
-`SYM: purpose, <address> on <chain>`, tokens joined by `; ` (up to 30 words; every other value at most 12).
-Key facts shows it one line per token: the symbol in bold, its purpose, the shortened address with a Copy button,
-then the chain. An older comma-joined value is split only where the next token's symbol starts, so a chain stays
-with its address; the row's url links the one token it names. A page built before this format with a singular
-**Token** row keeps its linked value. **Supply** gives each token its own value. The Main contract and Tokens
-values include the contract address and chain; Deployed by and Controlled by include the wallet address. Every completed panel answer of the subject
+Main contract, Chains, Supply, Seats, Price, Size, Deployed by, Controlled by, Founder or creator, **Run by**, Contributors,
+Official accounts, Launched, and up to 3 rows of its own. **Tokens** lists at most 3 tokens central to the project
+(governance, product, staking); receipt or vault-share tokens, pool positions, collectibles and merchandise tokens
+belong in lines, and a token with no contract address found is not listed. Each entry is
+`{"name": "UNI", "text": "governance token", "address": "0x…", "chain": "Ethereum"}`. **One token on several
+chains:** before listing tokens the job checks each for a bridge (on a LayerZero token it reads the peers, and on a
+peer that is an adapter `token()`); a token and its bridged forms are one token even when the names differ, listed
+once under the name the project uses now with its home chain and other chains, with a proof line of the contract
+reads that show the link (or the project's own statement, marked stated). **Supply** covers only the Tokens entries,
+each with its amount (`{"name": "UNI", "text": "1 billion"}`): the home chain's total, then each other chain's
+amount, never added together. **Run by** is the organisation and the person leading it now ("Zora Labs; Dee Goens,
+chief executive"); Contributors is for other people and teams, never the chief executive. **Launched** is the date
+the project first went live, with the current version's date in the same value when it is much newer ("November 2018;
+current version since January 2025"). **Size** comes from an established independent tracker or the project's own
+published statistics, never an individual's social post. Key facts shows each `values` entry on its own line: the
+name in bold, then its text, then its link, or the shortened address with a Copy button and a link to the chain's
+block explorer (Etherscan, Basescan, Arbiscan and the like; Blockscan for other chains), visible without opening
+the row. Supply reads "UNI: 1 billion". An entry of another shape shows all of its text, never only a first word.
+An older Tokens text value (`SYM: purpose, <address> on <chain>` joined by `; `) is still read per token. A
+page built before the Tokens format with a singular **Token** row keeps its linked value. The Main contract and
+Tokens values include the contract address and chain; Deployed by and Controlled by include the wallet address. Every completed panel answer of the subject
 is listed under "Panel answers", always the last section of the Record tab, also before the first page.
 **Settled lines.** A statement or claim with a `confirms` link to a proof line or a panel answer (`A<n>` from
 the rebuild's `<PRIOR>`) is shown as ONE row: the sentence, a green "Proven" marker ("Confirmed by a panel, N of
@@ -487,11 +501,23 @@ Its details show the proof's re-run steps and the original quote. The proof is n
 Contradicts wins over confirms. A `partly` link keeps the line's own kind marker, with "Partly confirmed by: ..."
 under it. Every count (the home list, section headers and the filter buttons) uses the same groups: **Proven** =
 proof lines plus statements and claims with a confirming link; **Stated** = statements with no confirming link;
-**Claimed** = claims with no confirming link; **Contradicted** and **Out of date** only when above zero. A settled
+**Claimed** = claims with no confirming link; **Contradicted** and **Superseded** only when above zero (the home
+list shows proven, stated, claimed and contradicted only, and leaves superseded lines out of its counts). A settled
 row counts once, and a proof a settled row already shows is not counted again. The Record filter's Proven button
 shows both kinds; each row still says which it is: a proof row reads "Proof, a check in its own right", a confirmed
 row "Proven" with "Stated by <channel>, then confirmed" or "Claimed by <who>, then confirmed". The Key facts badges
 read "Proven", "Contradicted", else "Proven on chain" / "Stated by" / "Reported by". The speaker always stays on the row.
+
+**Summary wording.** Plain descriptions of what the project is and how it is used carry no attribution in words
+when they rest on the project's own statements; the dots show that. A sentence is attributed in words, once and
+after the fact, only for money flows, fees, control, safety or performance, a claim by someone else, or sources that
+disagree, and never with the same phrase in two sentences running. Under the summary a one-line key reads: green dot
+"proven on chain", blue dot "the project says", orange dot "others say", then "Summary written from the record by a
+research job."
+
+**Numbers.** Quantities get thousands separators ("2000 seats" reads "2,000 seats"). A whole four-digit number from
+1000 to 2999 is left as written ("founded 2020") unless a unit or token symbol follows it directly, and numbers in
+dates, addresses, hashes, version names, handles and after "block" are never changed ("block 26446763").
 
 **Loading.** The site keeps the last block it scanned and the requests and completions it found in the browser's
 IndexedDB (database `imd-record`, store `scan`), shows them at once on a return visit, then reads only
@@ -506,9 +532,11 @@ result files failed is still shown, with "Counts may be short" and Try again; a 
 error and Try again. A logo that failed is read again on the next visit. A lookup by contract address waits for
 those reads ("Checking project contracts…") before it offers "Add this project".
 
-**Out of date lines.** A line with an `outdates` link shows an amber "Out of date" marker with "Newer: <the newer
+**Superseded lines.** A line with an `outdates` link shows an amber "Superseded" marker with "Newer: <the newer
 line>" under it, and is counted apart from Contradicted (its own filter button and section count). A Key facts row
-whose lines are all out of date shows "Out of date" in place of its badge. A kept "This is wrong" on a summary sentence
+whose lines are all superseded shows "Superseded" in place of its badge. When the same source reports the same figure
+at different times (a tracker's value locked, a supply reading), the rebuild keeps one line with the newest reading
+and the older readings in `history`, never a second line linked by `outdates`. A kept "This is wrong" on a summary sentence
 with `final_text` replaces that sentence, marked "corrected by <payer>"; the visitor may send a suggested corrected
 sentence with the change (`; suggested final_text: "…"` after its links).
 
@@ -529,11 +557,13 @@ and the EIP-6963 injected connector; browser-extension wallets only) is loaded o
 Connect. The site stores one wallet key, `imd-record:wallet-connected` = `1`, and no address. While a rebuild of a subject is pending, its Rebuild button is replaced by "A rebuild is running, started
 <time> by <payer>" with a link to it.
 
-**Out of date.** A page is out of date when completed results or panel answers are not folded in (not listed in
+**Needs a rebuild.** A page needs a rebuild when completed results or panel answers are not folded in (not listed in
 the `<PRIOR>` of the request that produced it), or when that request's objective differs from what
-`templates/rebuild.txt` sends now apart from `<PRIOR>`. Its Overview and its home row say "Out of date: N
-results not folded in" or "Out of date: built with an older format", with a Rebuild link to Contribute; Home has a
-"Needs a rebuild" filter, which says "Checking which pages need a rebuild…" while reads are outstanding. When an RPC fails or limits a range, the scan tries the next RPC with half
+`templates/rebuild.txt` sends now apart from `<PRIOR>`. Readers are told only about
+results not folded in: Overview and the home row say "N additions not yet merged. Rebuild", and Overview says "A
+newer source disputes N parts of this page" while a kept change's disputes wait. Which instruction format built a
+page ("Out of date: built with an older format") is shown only on the Contribute tab and under Page upkeep, and
+counts in Home's "Needs a rebuild" filter, which says "Checking which pages need a rebuild…" while reads are outstanding. When an RPC fails or limits a range, the scan tries the next RPC with half
 the range, and the page says "Still reading the chain" rather than showing an empty list.
 
 ## Read routes

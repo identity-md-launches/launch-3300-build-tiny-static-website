@@ -37,7 +37,7 @@ export interface KeyRow {
   /** The Tokens row: one entry per token the value lists, each shown on its own line. Empty on other rows. */
   tokens: TokenItem[];  /**
    * Set when a newer source a kept change found contradicts or outdates this row (its affects list): the record
-   * id of that newer line. The badge then reads "Contradicted" or "Out of date" in place of its usual one.
+   * id of that newer line. The badge then reads "Contradicted" or "Superseded" in place of its usual one.
    */
   disputedBy?: string;
   /**
@@ -368,7 +368,7 @@ export function speakerShort(names: string[]): string {
 export function speakersField(badge: Badge | null, lines: Line[], sourceUrl: (l: Line) => string = () => ""): { speakers?: string[] } {
   const names = speakersOf(lines, sourceUrl);
   // A Stated by / Reported by badge names the first: the details list all once there is more than one. Any other
-  // badge (Proven, Contradicted, Out of date) names none, so the details list every speaker there is.
+  // badge (Proven, Contradicted, Superseded) names none, so the details list every speaker there is.
   const named = !!badge && (badge.tone === "statement" || badge.tone === "claim");
   return names.length > (named ? 1 : 0) ? { speakers: names } : {};
 }

@@ -495,7 +495,7 @@ and the EIP-6963 injected connector; browser-extension wallets only) is loaded o
 Connect. The site stores one wallet key, \`imd-record:wallet-connected\` = \`1\`, and no address. While a rebuild of a subject is pending, its Rebuild button is replaced by "A rebuild is running, started
 <time> by <payer>" with a link to it.
 
-**Out of date.** A page is out of date when completed results or panel answers are not folded in (not listed in
+**Needs a rebuild.** A page needs a rebuild when completed results or panel answers are not folded in (not listed in
 the \`<PRIOR>\` of the request that produced it), or when that request's objective differs from what
 \`templates/rebuild.txt\` sends now apart from \`<PRIOR>\`. Readers are told only about
 results not folded in: Overview and the home row say "N additions not yet merged. Rebuild", and Overview says "A

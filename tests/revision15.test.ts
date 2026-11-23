@@ -57,6 +57,18 @@ describe("D7. numbers: years and plain identifiers are not quantities", () => {
     expect(formatNumbers("3000 users")).toBe("3,000 users");
     expect(formatNumbers("about 1000000000 UNI")).toBe("about 1,000,000,000 UNI");
   });
+  it("leaves standard and chain identifiers, heights and timestamps alone (review 8cee2fa0)", () => {
+    expect(formatNumbers("an ERC 4626 vault")).toBe("an ERC 4626 vault");
+    expect(formatNumbers("EIP 7702 accounts")).toBe("EIP 7702 accounts");
+    expect(formatNumbers("BIP 32 and SLIP 44")).toBe("BIP 32 and SLIP 44");
+    expect(formatNumbers("Base chain (8453)")).toBe("Base chain (8453)");
+    expect(formatNumbers("at block height 26446763")).toBe("at block height 26446763");
+    expect(formatNumbers("launched at timestamp 1732300000")).toBe("launched at timestamp 1732300000");
+    expect(formatNumbers("block number 26446763")).toBe("block number 26446763");
+    // Quantities next to them still read as quantities.
+    expect(formatNumbers("an ERC 4626 vault holding 1500000 USDC")).toBe("an ERC 4626 vault holding 1,500,000 USDC");
+    expect(formatNumbers("a chain with 15000 validators")).toBe("a chain with 15,000 validators");
+  });
   it("never changes numbers in dates, addresses, hashes, version names or handles", () => {
     for (const t of ["2024-05-01", "12/05/2024", "Nov 23, 2026", UNI, "0xabc123def4567890", "v2.1.0", "version 2.19.5", "@user2000", "Block: 26446763", "(2021)", "2021–2023"])
       expect(formatNumbers(t)).toBe(t);
