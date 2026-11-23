@@ -613,13 +613,16 @@ happened in one sentence and offers "Try again".
 
 - **Overview at every width** (`.overview` in `src/styles.css`): one column, Summary, then Key facts, then Related.
   The summary's text column is at most 760px (`--read-max: 47.5rem`); Key facts below it uses the full content
-  width as a table (label, value and badge on one row), first 8 rows with "Show all N". There is no side column.
+  width as a table (label, value and badge on one row, at phone widths too: narrower label and badge columns
+  whose text wraps, the pencil in its own column), first 8 rows with "Show all N". There is no side column.
 - **Under the summary**: one line keys the dots (green "proven on chain", blue "the project says", orange "others
-  say"), then "Summary written from the record by a research job." (or, for an accepted edit, who edited it).
+  say"), then "Summary written from the record by a research job." in every state; an accepted edit adds its
+  credit as its own sentence below ("Edited by 0x… and checked by a research job.", `.edit-credit`).
 - **Whole values** (B3, F14, F15): each `values` entry is read whole (`valueItemOf` in `src/page.ts`) and shown as
   name in bold, text, then the link or the shortened address with Copy and an explorer link. Tokens shows symbol,
   purpose, address, Copy and explorer link without opening the row; Supply reads "UNI: 1 billion". An entry of
-  another shape keeps every part as text; nothing is cut to a first word.
+  another shape keeps every part as text, a list of strings under `text` joined in its order; nothing is cut to a
+  first word. Official accounts entries use the same layout (bold short name, text, link) with their own label.
 - **Hosting suffixes** (4c, `src/psl.ts`): the Public Suffix List (`src/psl-rules.txt`, made by
   `scripts/build-psl.mjs`) plus shared hosts including `imd.site`, `github.io` and `vercel.app`. Each
   `<name>.imd.site` is its own subject and domain: `record-test-1.imd.site` stays `record-test-1.imd.site`, and two
@@ -628,7 +631,9 @@ happened in one sentence and offers "Try again".
   symbol follows it ("founded 2020" stays, "2000 seats" reads "2,000 seats"). Numbers in dates, addresses, hashes,
   versions and handles are never formatted, nor are numbers after block, id, nonce, chain (also "chain (8453)"),
   height, timestamp, unix, epoch, port or a standard's prefix ("ERC 4626", "EIP 7702", "BIP 32"):
-  "block 26446763" and "at block height 26446763" are unchanged.
+  "block 26446763" and "at block height 26446763" are unchanged, as is a number after "version", "ver." or
+  "release" ("Protocol version 2.250"). An opening bracket does not make a number a year: "(2000 seats)" reads
+  "(2,000 seats)".
 - **Superseded** (E9): the line status once called "Out of date" reads "Superseded" everywhere, with "Newer: <the
   newer line>" under it. The home list shows only Proven, Stated, Claimed and Contradicted.
 - **Reader's note** (E8): see "Needs a rebuild, and what readers are told" above.
@@ -684,11 +689,14 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-936893c77936.txt` and `changes-c7a1725279f5.txt`; still served: `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-323385aa01ae.txt` and `changes-c7a1725279f5.txt`; still served: `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
-`changes-8400e6bf9d85.txt`. The revision 15 rebuild file carries the new Tokens rule, one token on several chains,
+`changes-8400e6bf9d85.txt`. The revision 16 rebuild file merges the Size sentences into one rule: an established
+independent tracker or the project's own published statistics, with the figure, its source and its date, and the row
+left out only when neither publishes a figure about the project itself (the revision 15 file still said "Leave the
+row out if no tracker reports that"). The revision 15 rebuild file carries the new Tokens rule, one token on several chains,
 the attribution rule, readings of one figure kept as history, Launched, Run by (after Founder or creator), Size and
 the one `values` shape; the revision 15 changes file carries the bridge and attribution rules. Before them, the
 revision 13 rebuild file added, 
@@ -712,12 +720,13 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreietncj4o6jwgagsmay5mz4vt3lbo46yeumuuqd67rnd4ztcej2cwy?filename=rebuild-936893c77936.txt`,
-  sha256 `936893c77936300d26031d667959ed61773d825194a407efc5a3e666222742b6`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreibsgoc2uanom5lemynhuhoevwi3vmosr3lkmr65bilxwckdrbbk2e?filename=rebuild-323385aa01ae.txt`,
+  sha256 `323385aa01ae67564661a7a1dc4ad91bab1d28ed6a647dd0a177b09438842ad1`
 - changes: `https://ipfs.filebase.io/ipfs/bafkreighufzfe6pvxsbyg32shaqetrm7mb4ouwlb5plgb5mljjmeqjvdqe?filename=changes-c7a1725279f5.txt`,
   sha256 `c7a1725279f5bc83836f52382049c59f6078ea5961ebd660f58b4a584826a381`
 
-These two files are new in revision 15 (the revision 13 pair, `bafkreielvbrs…e5lii` and `bafkreidu62wg…agai`, is
+The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,
+`bafkreietncj4…ej2cwy`, and the revision 13 pair, `bafkreielvbrs…e5lii` and `bafkreidu62wg…agai`, is
 still served). Like every file before them, they reach the gateways once the site export
 holding them is pinned; until then the site's preflight refuses to take payment for a rebuild or changes request.
 

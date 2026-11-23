@@ -262,13 +262,15 @@ describe("F. instructions", () => {
   // Revision 15 replaced "Attribute once per sentence." with the attribution rule (C5); the fact-first wording stays.
   const F16 = "When you do attribute, state the fact first and put who said it in a short clause after it, such as 'Dee Goens is taking over as chief executive from Jacob Horne, who announced the change on X.' Never open a sentence with 'a post says' or 'an article says', and never describe a speaker by role alone: name them.";
   const F17 = "When a person reports their own action, appointment or departure, treat it as first-hand: say it plainly with one attribution and no further hedging. Keep 'self-described' for someone asserting a role or credit that others would normally confirm.";
-  const F18 = "The Size row must measure the project itself, such as its app's users, volume or value locked; never a side product such as a bridge. Leave the row out if no tracker reports that.";
+  // Revision 16: the Size row may rest on the project's own statistics, so "Leave the row out if no tracker reports that" is gone.
+  const F18 = "The Size row must measure the project itself, such as its app's users, volume or value locked; never a side product such as a bridge.";
   it("rebuild and changes carry F16 and F17; rebuild carries F18 and the account entries", () => {
     for (const t of [r, c]) {
       expect(t).toContain(F16);
       expect(t).toContain(F17);
     }
     expect(r).toContain(F18);
+    expect(r).not.toContain("Leave the row out if no tracker reports that");
     expect(r).toContain('Official accounts: "values": [{"name": "@zora on X", "text": "", "url": "https://x.com/zora"}]');
   });
   it("the current files are new files with new hashes", () => {

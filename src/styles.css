@@ -131,6 +131,7 @@ section { display: grid; gap: var(--space-4); min-width: 0; }
 .dot-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); }
 .dot-key .dk { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .dot-key .dot { width: 9px; height: 9px; }
+.edit-credit { margin-top: calc(-1 * var(--space-2)); }
 .kf-more { justify-self: start; font-size: var(--text-small); }
 .keyfacts { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
 .keyfacts h2 { font-size: var(--text-heading); }
@@ -143,12 +144,21 @@ section { display: grid; gap: var(--space-4); min-width: 0; }
 .kf-badge .badge, .kf-accounts .badge { max-width: 100%; overflow-wrap: anywhere; text-align: start; }
 .kf-accounts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
 .kf-accounts li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
-/* Phones: label above value, badge under the value, so nothing is squeezed. */
+/* Phones: still one table row of label, value and badge, with narrower label (30%) and badge (24%) columns whose text
+   wraps inside each cell (by words, hyphenated where the browser can), and the pencil in its own 36px column. The
+   card's padding drops to 12px (8px below 360px) and values use the 14px navigation size, so the value keeps room. */
 @media (max-width: 40rem) {
-  .keyfacts tr { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--color-border); padding: var(--space-2) 0; }
-  .keyfacts th, .keyfacts td { border-top: 0; padding: 0; width: auto; }
-  .kf-badge { text-align: start !important; white-space: normal; padding-top: var(--space-1) !important; }
+  .keyfacts { padding: var(--space-3); }
+  .keyfacts table { hyphens: auto; -webkit-hyphens: auto; }
+  .keyfacts th { width: 30%; padding-inline-end: 6px; overflow-wrap: break-word; }
+  .kf-value { padding-inline-end: 6px !important; font-size: var(--text-nav); }
+  .kf-badge { width: 24%; }
+  .kf-badge .badge { padding-inline: 6px; border-radius: 8px; overflow-wrap: break-word; }
+  .keyfacts .kf-badge .badge + .badge { margin-inline-start: 0; }
+  .keyfacts .kf-edit { width: 36px; padding-inline-start: 0 !important; }
+  .keyfacts .kf-edit .pencil { width: 36px; height: 36px; }
 }
+@media (max-width: 22.5rem) { .keyfacts { padding: var(--space-2); } }
 .badge {
   display: inline-flex; align-items: center; min-height: 24px; padding: 2px var(--space-2); border-radius: 999px;
   font-size: var(--text-small); font-weight: 600; text-decoration: none; background: var(--color-bg-hover); color: var(--color-text);
@@ -699,11 +709,6 @@ body.has-tray main { padding-bottom: 9rem; }
 .addlink label, .addlink textarea { flex: 1 1 100%; min-width: 0; margin-top: 0; }
 .addlink .row-actions .btn { margin-top: 0; }
 .tray .linklike:focus-visible { outline: 2px solid var(--gray-0); outline-offset: 2px; }
-@media (max-width: 40rem) {
-  .keyfacts tr.has-pencil { position: relative; }
-  .keyfacts tr.has-pencil th { padding-inline-end: 44px; }
-  .keyfacts .kf-edit { position: absolute; top: 2px; inset-inline-end: 0; width: auto; padding: 0 !important; }
-}
 
 /* The connected wallet: a chip as tall as Connect, with a small menu. */
 .acct { position: relative; flex: none; }

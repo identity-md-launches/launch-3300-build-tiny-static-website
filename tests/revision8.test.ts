@@ -73,7 +73,9 @@ describe("B. rebuild instructions", () => {
     for (const s of [
       "The subject is the whole project behind the domain: its protocol or contracts, its apps and the organisation that runs them. Say in one_line and in the summary which of these exist. Do not narrow the record to one app.",
       "No market prices: never a row for a token's trading price. One Supply row, never for testnet or retired tokens.",
-      "When independent trackers publish usage figures for the project, such as value locked, trading volume or active users, add one infobox row 'Size' with the figure, the tracker's name and the date, as a claim. For a project with wide coverage, read at least 8 outside sources.",
+      // Revision 16 merged the Size sentences into one rule (tracker or the project's own statistics).
+      "Size is one infobox row with a usage figure for the project, such as value locked, trading volume or active users.",
+      "For a project with wide coverage, read at least 8 outside sources.",
       "End the summary on an uncertainty only if it matters to a newcomer: who controls the project, a conflict between what the project says and what the chain shows, or a fact that has just changed. Rounding differences between data providers are not such a thing.",
     ])
       expect(t).toContain(s);

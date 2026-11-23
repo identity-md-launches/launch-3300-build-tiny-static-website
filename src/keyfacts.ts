@@ -184,12 +184,14 @@ export interface Account {
   /** Where the account's link goes: the entry's url, else its channel's, else "" (plain text). */
   url: string;
   channel: Channel | null;
+  /** What the entry says about the account ("Launch announcements"), shown after its name; "" when none. */
+  text: string;
   /** From the account's own tie: Linked from own site (linked), Verified on chain (strong), else Not verified. */
   status: Badge | null;
 }
 
 /** An Official accounts entry as the result may give it: a name with a url. */
-export type AccountEntry = { name: string; url: string };
+export type AccountEntry = { name: string; url: string; text?: string };
 
 const SITES: Array<[RegExp, string, boolean]> = [
   [/^(?:x|twitter)\.com$/, "X", true],
@@ -295,17 +297,17 @@ export function accountsOf(channels: Channel[], value: string | string[] | Accou
   // stays one entry. A structured entry's own url is used first.
   const parts: AccountEntry[] = (typeof value === "string" ? [value] : value)
     .flatMap((p): AccountEntry[] => {
-      if (typeof p !== "string") return [{ name: p.name.trim(), url: p.url.trim() }];
+      if (typeof p !== "string") return [{ name: p.name.trim(), url: p.url.trim(), text: (p.text ?? "").trim() }];
       const found = accountEntriesIn(p, channels);
       return found.length ? found : [{ name: p.trim(), url: "" }];
     })
     .filter((p) => p.name || p.url);
-  return parts.map(({ name, url: given }) => {
+  return parts.map(({ name, url: given, text = "" }) => {
     const own = /^https?:\/\//i.test(name) ? name : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(name) ? `https://${name}` : "";
     const url0 = safeHref(given) ? given : own;
     const channel = channelFor(channels, name, url0 ? [url0] : []);
     const url = url0 || (channel && safeHref(channel.url) ? channel.url : "");
-    return { name: accountLabel(name, url), url, channel, status: toBadge(accountStatus(url || name, channel, domain)) };
+    return { name: accountLabel(name, url), url, channel, text, status: toBadge(accountStatus(url || name, channel, domain)) };
   });
 }
 

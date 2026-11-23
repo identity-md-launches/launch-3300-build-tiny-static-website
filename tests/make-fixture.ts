@@ -23,6 +23,9 @@ const page2 = put({
     { label: "Token", value: "IMD", url: "https://etherscan.io/token/0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7", lines: ["L2"] },
     { label: "Seat supply", value: "2,000", lines: ["L2"] },
     { label: "Website", value: "imd.fun", url: "https://imd.fun/", lines: ["L1"] },
+    // Revision 16 review: structured accounts keep their bold name and text; a text array in a values entry is shown whole.
+    { label: "Official accounts", value: "X and GitHub", values: [{ name: "@uniswap on X", text: "Launch announcements", url: "https://x.com/uniswap" }, { name: "Uniswap on GitHub", text: "Smart contract releases", url: "https://github.com/Uniswap" }], lines: ["L1"] },
+    { label: "Contributors", value: "Bridge contributors", values: [{ name: "Bridge team", text: ["Operates the bridge", "Maintains the verifier"] }, { name: "SDK team", text: "Maintains the SDK" }], lines: ["L1"] },
   ],
   summary: [
     { text: "IMD is a swarm.", lines: ["L1"], paragraph: 1 },

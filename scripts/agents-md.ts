@@ -422,7 +422,8 @@ amount, never added together. **Run by** is the organisation and the person lead
 chief executive"); Contributors is for other people and teams, never the chief executive. **Launched** is the date
 the project first went live, with the current version's date in the same value when it is much newer ("November 2018;
 current version since January 2025"). **Size** comes from an established independent tracker or the project's own
-published statistics, never an individual's social post. Key facts shows each \`values\` entry on its own line: the
+published statistics, never an individual's social post, with the figure, its source and its date; the row is left
+out only when neither publishes a figure about the project itself. Key facts shows each \`values\` entry on its own line: the
 name in bold, then its text, then its link, or the shortened address with a Copy button and a link to the chain's
 block explorer (Etherscan, Basescan, Arbiscan and the like; Blockscan for other chains), visible without opening
 the row. Supply reads "UNI: 1 billion". An entry of another shape shows all of its text, never only a first word.

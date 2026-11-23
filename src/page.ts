@@ -86,7 +86,7 @@ export interface InfoRow {
   /** When the value lists several things, each one: shown as separate lines. Empty for a single value. */
   values: string[];
   /** Entries the result gave as { name, url } (Official accounts): each account's name and link. */
-  entries?: { name: string; url: string }[];
+  entries?: { name: string; url: string; text?: string }[];
   /** Each values entry in parts (name, text, url, address, chain), set whenever values is. */
   items?: ValueItem[];
 }
@@ -112,6 +112,15 @@ const NAME_KEYS = ["name", "symbol", "label", "title", "token", "ticker"];
 const ADDRESS_KEYS = ["address", "contract", "contract_address", "token_address"];
 const CHAIN_KEYS = ["chain", "network", "chain_id", "chainId"];
 
+/** The readable strings of a value: a string, number or true/false as one, a list of them in its order; else none. */
+function readable(v: unknown): string[] {
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+    const t = String(v).trim();
+    return t ? [t] : [];
+  }
+  return Array.isArray(v) ? v.slice(0, 20).flatMap((x) => (typeof x === "string" || typeof x === "number" || typeof x === "boolean" ? readable(x) : [])) : [];
+}
+
 /** One values entry, read whole; null when it is empty. Pure, for tests. */
 export function valueItemOf(x: unknown): ValueItem | null {
   if (typeof x === "string" || typeof x === "number") {
@@ -133,12 +142,12 @@ export function valueItemOf(x: unknown): ValueItem | null {
   const url = str(o.url, 400).trim();
   const address = ad && /^0x[0-9a-fA-F]{40}$/.test(ad.v) ? ad.v : "";
   const used = new Set([nm?.key, address ? ad?.key : "", ch?.key, "url"].filter(Boolean) as string[]);
-  // text as given; then every other part of an entry of another shape, in order, so nothing it says is lost.
+  // text as given (a list of strings under text is joined in its order); then every other readable part of an entry
+  // of another shape, in order, so nothing it says is lost.
   const extra = Object.entries(o)
-    .filter(([k, v]) => k !== "text" && !used.has(k) && !ENTRY_KEYS.has(k) && (typeof v === "string" || typeof v === "number" || typeof v === "boolean"))
-    .map(([, v]) => String(v).trim())
-    .filter(Boolean);
-  const own = str(o.text, 300).trim();
+    .filter(([k]) => k !== "text" && !used.has(k) && !ENTRY_KEYS.has(k))
+    .flatMap(([, v]) => readable(v));
+  const own = readable(o.text).join(", ");
   // An address under an unexpected key that is not a 0x address stays readable as text.
   const badAddr = ad && !address ? [ad.v] : [];
   const text = [own, ...extra, ...badAddr].filter(Boolean).join(", ").slice(0, 300);
@@ -614,7 +623,11 @@ export function parsePage(text: string, domain = ""): Page {
         // plain string. Every entry is kept whole: values holds each entry's full text, items its parts.
         const raw = arr(o.values).slice(0, 20);
         const items = raw.map(valueItemOf).filter((e): e is ValueItem => !!e);
-        const entries = raw.filter((x) => x && typeof x === "object").map((x) => ({ name: str(obj(x).name, 200).trim(), url: str(obj(x).url, 400).trim() })).filter((e) => e.name || e.url);
+        // Official accounts entries keep their own text ("Launch announcements") beside their name and url.
+        const entries = raw
+          .filter((x) => x && typeof x === "object" && !Array.isArray(x))
+          .map((x) => ({ name: str(obj(x).name, 200).trim(), url: str(obj(x).url, 400).trim(), text: valueItemOf(x)?.text ?? "" }))
+          .filter((e) => e.name || e.url);
         const values = items.map(valueItemText).filter(Boolean);
         const listed = values.length > 1 || items.some((e) => e.shaped);
         return {

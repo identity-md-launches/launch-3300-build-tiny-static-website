@@ -4,7 +4,7 @@
  * The arithmetic is on the digit strings (BigInt), so a 30-digit raw supply keeps every digit.
  *
  * Left as written: anything inside a word or hex string (0x addresses, hashes, L12, F1:L3, v2.1, @handle2000), dotted
- * versions (2.19.5), dates and times (2024-05-01, 12/05/2024, 12:30), hyphen-joined ids such as UUIDs, numbers after
+ * versions (2.19.5), a number after "version", "ver." or "release" ("Protocol version 2.250", "release 3.10"), dates and times (2024-05-01, 12/05/2024, 12:30), hyphen-joined ids such as UUIDs, numbers after
  * "block", "#", "id", "nonce", "chain", "height", "timestamp", "unix", "epoch", "port" or a standard's prefix (ERC, EIP,
  * BIP, CIP, SIP, LIP, NIP, AIP, SLIP, CAIP), also with a colon or an opening bracket ("Block: 26446763",
  * "Request ID: …", "Base chain (8453)", "EIP 7702", "ERC 4626"), and every whole
@@ -15,7 +15,7 @@
 
 const NUM = /(?<![\p{L}\p{N}_.,:#/@]|[\p{L}\p{N}]-)(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(?![\p{L}\p{N}_:/@]|[.,]\d|-[\p{N}a-fA-F])/gu;
 const KEEP_AFTER =
-  /(?:\bblocks?|\bid|\bids|\bnonce|\bchain(?:\s*id)?|\bchainid|\btoken\s*id|\bno\.|\bnumber|\bheight|\b(?:unix\s*)?timestamp|\bunix(?:\s*time)?|\bepoch|\bport|\b(?:erc|eip|bip|cip|sip|lip|nip|aip|slip|caip)s?)\s*[:#(]?\s*#?\s*$/i;
+  /(?:\bversions?|\bver\.?|\breleases?|\bblocks?|\bid|\bids|\bnonce|\bchain(?:\s*id)?|\bchainid|\btoken\s*id|\bno\.|\bnumber|\bheight|\b(?:unix\s*)?timestamp|\bunix(?:\s*time)?|\bepoch|\bport|\b(?:erc|eip|bip|cip|sip|lip|nip|aip|slip|caip)s?)\s*[:#(]?\s*#?\s*$/i;
 /**
  * What makes a whole number from 1000 to 2999 a quantity: a unit or a token symbol directly after it ("2000 seats",
  * "2500 IMD", "1200 sIMD", "1500%"). A token symbol has two capitals in a row, perhaps after a short lowercase prefix.
@@ -37,8 +37,11 @@ const UNIT_AFTER = new RegExp(
 const SYMBOL_AFTER = /^\s\$?[a-z]{0,3}[A-Z]{2,}[A-Za-z0-9.]*(?![a-z])/;
 /** A currency sign just before the number: "$1500", "€2000". */
 const MONEY_BEFORE = /[$€£¥]\s?$/;
-/** Words before a year, which keep it a year even when a symbol follows: "In 2024 IMD launched", "since 2021", "March 2024". */
-const YEAR_BEFORE = /(?:\b(?:in|since|until|till|during|early|mid|late|circa|around|before|after|fy|q[1-4]|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+\d{1,2}(?:st|nd|rd|th)?,?)?)|[(–])\s*$/i;
+/**
+ * Words before a year, which keep it a year even when a symbol follows: "In 2024 IMD launched", "since 2021", "March 2024",
+ * "2023–2024". An opening bracket is not one of them: "(2000 seats)" is a quantity and reads "(2,000 seats)".
+ */
+const YEAR_BEFORE = /(?:\b(?:in|since|until|till|during|early|mid|late|circa|around|before|after|fy|q[1-4]|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+\d{1,2}(?:st|nd|rd|th)?,?)?)|–)\s*$/i;
 /** A whole four-digit number from 1000 to 2999 with no separators: a year or identifier unless a unit follows. */
 const yearLike = (int: string, frac: string, commas: boolean) => !frac && !commas && /^[12]\d{3}$/.test(int);
 

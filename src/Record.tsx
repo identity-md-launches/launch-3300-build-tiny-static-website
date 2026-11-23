@@ -119,7 +119,8 @@ function KeyValue({ row }: { row: KeyRow }) {
       <ul className="kf-accounts">
         {row.accounts.map((a, i) => (
           <li key={i}>
-            {safeHref(a.url) ? <ExtLink url={a.url} className="break">{a.name}</ExtLink> : <span className="break">{a.name}</span>}
+            {/* The shared values layout (name in bold, text, link), with the account's own badge on the same item. */}
+            <ItemValue v={{ name: a.name, text: a.text, url: safeHref(a.url) ? a.url : "", address: "", chain: "", explorer: "" }} />
             {row.perAccount && a.status && <AccountBadge b={a.status} />}
           </li>
         ))}
@@ -616,16 +617,14 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
         <span className="dk">
           <span className="dot kind-claim" aria-hidden="true" /> others say
         </span>
-        <span className="dk-by">
-          {m.edit ? (
-            <>
-              Summary edited by <span className="mono">{payerName(m.edit.activity)}</span> and checked by a research job.
-            </>
-          ) : (
-            "Summary written from the record by a research job."
-          )}
-        </span>
+        <span className="dk-by">Summary written from the record by a research job.</span>
       </p>
+      {/* An accepted edit keeps its credit, as its own sentence under the key. */}
+      {m.edit && (
+        <p className="small edit-credit">
+          Edited by <span className="mono">{payerName(m.edit.activity)}</span> and checked by a research job.
+        </p>
+      )}
     </div>
   );
 }

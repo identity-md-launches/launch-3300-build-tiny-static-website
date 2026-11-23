@@ -94,8 +94,9 @@ No tracked capitals, no eyebrows above headings.
   by …", worked out only from the kinds of the row's lines; on the Website and Official accounts rows also the
   channel's "Own domain" (blue) / "Linked from own site" (blue, `.badge-linked`) / "Verified on chain" (green) / "Not
   verified" (grey)); a badge opens the lines
-  in Record. An Official accounts row listing several accounts shows them as a list (`.kf-accounts`, 4px gap),
-  each name linked to its channel with its own label pill. Badges wrap inside their cell (`max-width: 100%`,
+  in Record. An Official accounts row lists its accounts (`.kf-accounts`, 4px gap) in the same layout as every
+  values entry: the account's short name in bold, its text, then its link; when the accounts carry different labels
+  each item also has its own label pill. An entry whose text is a list shows every string, joined with commas. Badges wrap inside their cell (`max-width: 100%`,
   `overflow-wrap: anywhere`), so a long publisher name never widens the page. Without `infobox`, at most four
   rows: Website, Main contract, token symbol, token supply. The **summary** is in short paragraphs with one 9px dot per kind after each sentence (24px round
   target). A sentence and its marks (dots, dispute dot, pencil) sit in one `.sent-group` (`white-space: nowrap`, the
@@ -201,9 +202,8 @@ No tracked capitals, no eyebrows above headings.
   track, so no content (a change panel, a long URL) can widen the page.
 - Overview at every width: `.overview` is one `minmax(0, 1fr)` track with a 24px gap: Summary (its text column at
   most 760px), then Key facts at the full 960px content width, then Related. There is no side column at any width,
-  so a long Key facts table never leaves an empty area under the summary. From 641px the Key facts table keeps
-  label, value and badge on one row (fixed layout, badges wrap in their cell); below that each row stacks label,
-  value and badge.
+  so a long Key facts table never leaves an empty area under the summary. The Key facts table keeps label, value
+  and badge on one row at every width (fixed layout, badges wrap in their cell); see Key facts below.
 - The change panel's choice tiles: as many 9.5rem columns as fit, one per row below about 20rem of panel width;
   below 384px the panel's padding drops to 12px.
 - Review's footer stays one row (price, Read the full request, Submit). Below 480px the price and the link share
@@ -213,8 +213,10 @@ No tracked capitals, no eyebrows above headings.
   first screen); from 832px the list and a 20rem Add form side by side, and the jump button is hidden.
 - The subject tab bar wraps instead of scrolling: below 512px the tabs use 14px and spread across the width;
   every tab keeps its full label and a 44px target.
-- Key facts: below 640px each row stacks label, value, then badge; from 640px label (11rem), value and badge
-  (16rem) are three columns of a fixed-layout table, and badges wrap within the badge column.
+- Key facts: always one table row per fact, label, value, badge and the pencil side by side with one top edge.
+  From 641px the label column is 11rem, the badge column 16rem and the pencil 2.5rem. At 640px and below the card's
+  padding drops to 12px, the label column is 26% and the badge column 24% of the table, the pencil keeps its own
+  40px column, and label and badge text wrap inside their cells (measured at 320 and 390 in `tests/e2e.mjs`).
 - Below 640px the facts table becomes stacked rows. Contribute's cards are always one full-width column.
 - What to check: one column of equal buttons below 640px (40rem), three equal columns from 640px, so the longest
   label ("A contract returns") fits on one line inside its button.
