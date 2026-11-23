@@ -1,6 +1,6 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
-import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page } from "./page";
-import { chainIdOf, chainName } from "./subject";
+import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem } from "./page";
+import { chainIdOf, chainLabel, chainName, explorerAddressUrl } from "./subject";
 import { proofIdsOf, settleOf } from "./settle";
 
 export type Badge = { text: string; tone: "proof" | "statement" | "claim" | "proven" | "contradicted" | "outdated" | ChannelStatus };
@@ -27,8 +27,13 @@ export interface KeyRow {
    * can link there. Their individual labels are listed on Sources; the row shows only its one status badge.
    */
   accounts: Account[];
-  /** The value as a list, only when the result gave one (infobox values): each entry on its own line. */
+  /** The value as a list, only when the result gave one (infobox values): each entry on its own line, in full. */
   values: string[];
+  /**
+   * The same list in parts, when the result gave values: each entry's name (bold), text, and link or address with
+   * its chain and explorer link. Rows of tokens and accounts use tokens and accounts instead.
+   */
+  items?: ShownItem[];
   /** The Tokens row: one entry per token the value lists, each shown on its own line. Empty on other rows. */
   tokens: TokenItem[];  /**
    * Set when a newer source a kept change found contradicts or outdates this row (its affects list): the record
@@ -67,6 +72,32 @@ export interface TokenItem {
   chain: string;
   /** A safe explorer link for this token, when the row's url clearly points at it. */
   url: string;
+}
+
+/** A values entry as Overview shows it: name in bold, then text, then the link or the shortened address. */
+export interface ShownItem {
+  name: string;
+  text: string;
+  url: string;
+  address: string;
+  /** The chain's readable name, "" when not given. */
+  chain: string;
+  /** The address's block explorer page, "" without an address. */
+  explorer: string;
+}
+
+/** A values entry for display, its chain written readably and its address with an explorer link. Pure, for tests. */
+export function shownItemOf(e: ValueItem): ShownItem {
+  const chain = e.chain ? chainLabel(e.chain) : "";
+  return { name: e.name, text: e.text, url: safeHref(e.url) ? e.url : "", address: e.address, chain, explorer: e.address ? explorerAddressUrl(e.address, e.chain) : "" };
+}
+
+/** A Tokens entry from a values object: symbol, purpose, address, chain and explorer link, each in full. */
+export function tokenOfItem(e: ValueItem): TokenItem {
+  const s = shownItemOf(e);
+  // A string entry ("UNI: governance, 0x… on Ethereum") is read as the older Tokens text was.
+  if (!e.shaped) return tokensOf(e.text, "", [e.text])[0] ?? { symbol: "", purpose: e.text, address: "", chain: "", url: "" };
+  return { symbol: s.name, purpose: s.text, address: s.address, chain: s.chain, url: s.explorer || s.url };
 }
 
 /**
@@ -287,7 +318,7 @@ function accountStatus(target: string, ch: Channel | null, domain: string): Chan
   return "unverified";
 }
 
-const OUTDATED: Badge = { text: "Out of date", tone: "outdated" };
+const OUTDATED: Badge = { text: "Superseded", tone: "outdated" };
 /** True when a row rests on lines and every one has a newer line showing it changed. */
 export function allOutdated(lines: Line[], all: Line[] = lines): boolean {
   if (!lines.length) return false;
@@ -319,7 +350,7 @@ export function badgeOf(lines: Line[], all: Line[] = lines, sourceUrl: (l: Line)
   const states = lines.map((l) => settleOf(l, proofs, ids).state);
   if (states.includes("contradicted")) return { text: "Contradicted", tone: "contradicted" };
   // Every line the row rests on has a newer line showing it changed: the row says so in place of its badge.
-  if (states.length && states.every((s) => s === "outdated")) return { text: "Out of date", tone: "outdated" };
+  if (states.length && states.every((s) => s === "outdated")) return { text: "Superseded", tone: "outdated" };
   if (states.includes("proven")) return { text: "Proven", tone: "proven" };
   if (lines.some((l) => l.kind === "proof")) return { text: "Proven on chain", tone: "proof" };
   const names = speakersOf(lines, sourceUrl);
@@ -379,7 +410,7 @@ function patchRow(r: KeyRow, p: RowPatchIn, all: Line[], sourceUrl: (l: Line) =>
     const shown = displayedOf(r);
     const before = shown.length > 1 ? shown.join("; ") : shown[0] ?? "";
     const history: RowChange[] = [{ value: before, ...(shown.length > 1 ? { values: shown } : {}), by: p.payer, at: p.at ?? null }, ...(r.history ?? [])];
-    return { ...rest, ...link, value: p.value, values: [], tokens: [], accounts: [], perAccount: false, lines: p.lines, badge, updatedBy: p.payer, earlier: before, history, ...speakersField(badge, p.lines, sourceUrl) };
+    return { ...rest, ...link, value: p.value, values: [], items: [], tokens: [], accounts: [], perAccount: false, lines: p.lines, badge, updatedBy: p.payer, earlier: before, history, ...speakersField(badge, p.lines, sourceUrl) };
   }
 }
 
@@ -389,7 +420,7 @@ function patchRow(r: KeyRow, p: RowPatchIn, all: Line[], sourceUrl: (l: Line) =>
  */
 export function displayedOf(r: Pick<KeyRow, "value" | "values" | "tokens" | "accounts">): string[] {
   if (r.accounts.length) return r.accounts.map((a) => a.name);
-  if (r.tokens.length) return r.tokens.map((t) => [t.symbol, t.purpose ? `(${t.purpose})` : ""].filter(Boolean).join(" "));
+  if (r.tokens.length) return r.tokens.map((t) => [t.symbol, t.purpose ? `(${t.purpose})` : ""].filter(Boolean).join(" ") || t.address);
   if (r.values.length) return [...r.values];
   return r.value ? [r.value] : [];
 }
@@ -566,11 +597,14 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       const badge = tied ? null : badgeOf(lines, all, sourceUrl);
       // Tokens one per line only when the result gave them as a list (values); a text value stays one text value.
       const isTokens = TOKEN_ROWS.test(r.label.trim());
-      const tokens = isTokens && r.values?.length ? tokensOf(r.value, safeHref(r.url) ? r.url : "", r.values) : [];
+      const tokens = isTokens && r.items?.length ? r.items.map(tokenOfItem) : isTokens && r.values?.length ? tokensOf(r.value, safeHref(r.url) ? r.url : "", r.values) : [];
+      // Every token with an address links to its block explorer, on its own chain or the single chain named.
+      const oneChain = singleChain ? chainsRow!.values?.[0] ?? chainsRow!.value : "";
+      for (const t of tokens) if (t.address && !t.url) t.url = explorerAddressUrl(t.address, t.chain || oneChain);
       // "on <chain>" says nothing when the Chains row names a single chain.
       if (singleChain) for (const t of tokens) t.chain = "";
       const value = isTokens && singleChain && !tokens.length ? withoutChain(r.value, chainsRow!.values?.[0] ?? chainsRow!.value) : r.value;
-      return { label: r.label, value, url: r.url, note: "", lines, channel, badge, status, accounts, perAccount, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...speakersField(badge, lines, sourceUrl) };
+      return { label: r.label, value, url: r.url, note: "", lines, channel, badge, status, accounts, perAccount, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...(!tokens.length && !accounts.length && r.items?.length ? { items: r.items.map(shownItemOf) } : {}), ...speakersField(badge, lines, sourceUrl) };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }

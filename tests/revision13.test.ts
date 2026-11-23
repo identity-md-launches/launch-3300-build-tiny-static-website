@@ -61,7 +61,7 @@ describe("A. Overview order", () => {
   const { html } = render([pageJob("0xa1", "proj.example", page, h("1"))], "proj.example");
   it("puts the Summary before Key facts and Related after both, above the footer links", () => {
     const sum = html.indexOf('class="summary-col"');
-    const kf = html.indexOf('class="facts-col"');
+    const kf = html.indexOf('class="keyfacts"');
     const rel = html.indexOf('class="related"');
     const foot = html.indexOf('class="ov-foot"');
     expect(sum).toBeGreaterThan(html.indexOf('class="lead"'));
@@ -81,21 +81,17 @@ describe("A. Overview order", () => {
     expect(rel).toMatch(/<button type="button" class="rel-chip" aria-expanded="false"><span class="rel-name">Other<\/span>/);
     expect(rel).not.toMatch(/sdot|badge/);
   });
-  it("the wide layout is 60/40 from 1000px with the label above the value", () => {
+  it("is stacked at every width: no side column, the summary at a reading width, Key facts full width (revision 15)", () => {
     const css = readFileSync("src/styles.css", "utf8");
-    expect(css).toMatch(/@media \(min-width: 62\.5rem\) \{\s*\.overview \{ grid-template-columns: minmax\(0, 3fr\) minmax\(0, 2fr\); \}/);
-    expect(css).toMatch(/\.facts-col \.keyfacts th \{ grid-column: 1 \/ -1;/);
-  });
-  it("no later rule sets .overview's columns, so the 1000px two-column rule is not overridden", () => {
-    const css = readFileSync("src/styles.css", "utf8");
-    const wide = css.indexOf(".overview { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }");
-    expect(wide).toBeGreaterThan(0);
-    // Every selector list after the wide rule that sets grid-template-columns must not name .overview.
-    for (const m of css.slice(wide + 10).matchAll(/([^{}]+)\{[^}]*grid-template-columns/g)) {
-      expect(m[1]!.split(",").map((x) => x.trim())).not.toContain(".overview");
+    expect(css).toContain(".overview { display: grid; grid-template-columns: minmax(0, 1fr);");
+    expect(css).not.toContain("minmax(0, 3fr) minmax(0, 2fr)");
+    expect(css).not.toContain(".facts-col");
+    expect(css).toContain("--read-max: 47.5rem;");
+    expect(css).toMatch(/\.summary-col \{[^}]*max-width: var\(--read-max\)/);
+    // Every selector list that sets grid-template-columns and names .overview keeps one column.
+    for (const m of css.matchAll(/([^{}]+)\{([^}]*grid-template-columns[^}]*)\}/g)) {
+      if (m[1]!.split(",").map((x) => x.trim()).includes(".overview")) expect(m[2]).toContain("minmax(0, 1fr)");
     }
-    // The single column for narrow screens sits on the base rule, before the media query.
-    expect(css.indexOf(".overview { display: grid; grid-template-columns: minmax(0, 1fr);")).toBeLessThan(wide);
   });
   it("a summary sentence and its marks sit in a nowrap group joined by U+2060, so its dots never start a line", () => {
     const css = readFileSync("src/styles.css", "utf8");
@@ -263,7 +259,8 @@ describe("D10. wallet storage", () => {
 describe("F. instructions", () => {
   const r = readFileSync("templates/instructions/rebuild.txt", "utf8");
   const c = readFileSync("templates/instructions/changes.txt", "utf8");
-  const F16 = "In the summary, state the fact first and put who said it in a short clause after it, such as 'Dee Goens is taking over as chief executive from Jacob Horne, who announced the change on X.' Never open a sentence with 'a post says' or 'an article says', and never describe a speaker by role alone: name them. Attribute once per sentence.";
+  // Revision 15 replaced "Attribute once per sentence." with the attribution rule (C5); the fact-first wording stays.
+  const F16 = "When you do attribute, state the fact first and put who said it in a short clause after it, such as 'Dee Goens is taking over as chief executive from Jacob Horne, who announced the change on X.' Never open a sentence with 'a post says' or 'an article says', and never describe a speaker by role alone: name them.";
   const F17 = "When a person reports their own action, appointment or departure, treat it as first-hand: say it plainly with one attribution and no further hedging. Keep 'self-described' for someone asserting a role or credit that others would normally confirm.";
   const F18 = "The Size row must measure the project itself, such as its app's users, volume or value locked; never a side product such as a bridge. Leave the row out if no tracker reports that.";
   it("rebuild and changes carry F16 and F17; rebuild carries F18 and the account entries", () => {
@@ -272,7 +269,7 @@ describe("F. instructions", () => {
       expect(t).toContain(F17);
     }
     expect(r).toContain(F18);
-    expect(r).toContain('"values": [{"name": "@zora on X", "url": "https://x.com/zora"}]');
+    expect(r).toContain('Official accounts: "values": [{"name": "@zora on X", "text": "", "url": "https://x.com/zora"}]');
   });
   it("the current files are new files with new hashes", () => {
     const m = JSON.parse(readFileSync("src/instructions.json", "utf8")) as Record<string, { file: string }>;

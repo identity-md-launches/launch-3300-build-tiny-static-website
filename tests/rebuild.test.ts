@@ -26,7 +26,7 @@ const PRIOR: Prior = {
   answers: [{ title: "The docs price a job at 0.5 IMD", answer: "true", agreed: 5, size: 5, url: "https://explorer.imd.fun/jobs/j-1" }],
 };
 const INFOBOX =
-  "Write infobox rows, where they fit: Website, Tokens (every token the project issues, each with its symbol, what it is for in a few words, and its contract address, as 'SYM: purpose, address on chain; …'), Main contract, Chains, Supply, Seats, Price (what the project charges, named for what it means here), Size, Deployed by, Controlled by (owner wallet, multisig with threshold, or no owner, for settings and upgrades; prove it where possible), Founder or creator, Contributors, Official accounts, Launched, and up to 3 rows of your own. Each row has label, value, optional url and the line ids it rests on. Deployed by only from a proof; Founder or creator only from a source.";
+  "Write infobox rows, where they fit: Website, Tokens (per the Tokens rule below), Main contract, Chains, Supply, Seats, Price (what the project charges, named for what it means here), Size, Deployed by, Controlled by (owner wallet, multisig with threshold, or no owner, for settings and upgrades; prove it where possible), Founder or creator, Run by, Contributors, Official accounts, Launched, and up to 3 rows of your own. Each row has label, value, optional url and the line ids it rests on. Deployed by only from a proof; Founder or creator only from a source.";
 const SUMMARY =
   "Write summary: 5 to 9 plain sentences in 2 or 3 paragraphs for a friend new to it: what it is, who runs it, how to use it, what it costs, what is uncertain; no block numbers, raw token values, contract names or addresses.";
 const AMOUNTS = "Line text uses whole token units, such as 0.5 IMD; raw values, blocks and addresses go in fact and rerun.";
@@ -73,7 +73,7 @@ describe("rebuild", () => {
       expect(x).toContain(VISITOR);
     }
     expect(t).toContain(
-      "contracts[{address,chain,role,main}]}, infobox[{label,value,values[],url,lines[]}], summary[{text,lines[],paragraph}], lines[{id,section,text,kind,by,sources[],quote,rerun,fact{name,value,unit},history[{block,value}],from[],links[{type,target}]}], related[{name,id,relation,lines[]}], logo{url,fetched_at}, differs[{lines[],why,level}], dropped[{id,why}], open_questions[]",
+      "contracts[{address,chain,role,main}]}, infobox[{label,value,values[{name,text,url,address,chain}],url,lines[]}], summary[{text,lines[],paragraph}], lines[{id,section,text,kind,by,sources[],quote,rerun,fact{name,value,unit},history[{block,value}],from[],links[{type,target}]}], related[{name,id,relation,lines[]}], logo{url,fetched_at}, differs[{lines[],why,level}], dropped[{id,why}], open_questions[]",
     );
   });
   it("adds this job's rules word for word and keeps the earlier jobs' rules: merging, proofs read more than once, plain words, claim wording, related, logo", () => {

@@ -3,9 +3,9 @@
  * how it works. Submitting the bar opens a subject that exists, or offers "Add this project", which opens the
  * first-rebuild dialog.
  */
-import { GROUP_TONE, GROUP_WORDS, shownGroups } from "./settle";
+import { GROUP_TONE, GROUP_WORDS, homeGroups } from "./settle";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { outdatedText, statusText, subjectSummaries, type Digest, type SubjectSummary } from "./model";
+import { outdatedText, readerNoteText, statusText, subjectSummaries, type Digest, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
@@ -19,7 +19,21 @@ function when(t: number | null) {
   return new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-/** "Out of date: …" with a Rebuild link to the subject's Contribute tab: on Overview and on a home row. */
+/**
+ * The reader's note on Overview and on a home row: "2 additions not yet merged. Rebuild", only when results are not
+ * folded in. An older instruction format alone shows nothing here (see OutdatedNote).
+ */
+export function ReaderNote({ o, href }: { o: SubjectSummary["outdated"]; href: string }) {
+  const text = readerNoteText(o);
+  if (!text) return null;
+  return (
+    <p className="outdated small" role="note">
+      <span>{text}.</span> <a href={href}>Rebuild</a>
+    </p>
+  );
+}
+
+/** "Out of date: …" with the reason, for upkeep only: the Contribute tab and Page upkeep. */
 export function OutdatedNote({ o, href }: { o: NonNullable<SubjectSummary["outdated"]>; href: string }) {
   return (
     <p className="outdated small">
@@ -79,7 +93,7 @@ function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading
         <p className="subject-meta small">
           {s.counts && (
             <>
-              {shownGroups(s.counts).map((g) => (
+              {homeGroups(s.counts).map((g) => (
                 <span key={g} className={`count-kind kind-${GROUP_TONE[g]}`}>
                   <span className="dot" aria-hidden="true" />
                   {s.counts![g].toLocaleString("en-US")} {GROUP_WORDS[g].toLowerCase()}
@@ -96,7 +110,7 @@ function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading
             {reading ? "Reading its files again…" : <>Counts may be short: {plural(s.incomplete, "result file")} could not be read. <RetryButton id={s.id} retry={retry} /></>}
           </p>
         )}
-        {s.outdated && <OutdatedNote o={s.outdated} href={subjectHref(s.id, "rebuild")} />}
+        <ReaderNote o={s.outdated} href={subjectHref(s.id, "rebuild")} />
       </div>
     </li>
   );

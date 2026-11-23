@@ -38,7 +38,7 @@ import { jobLink, lineAnchor, payerName } from "./format";
 import { readDate } from "./dates";
 import { TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, to } from "./route";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
-import { Home, StillReading } from "./Home";
+import { Home, OutdatedNote, StillReading } from "./Home";
 import { useDigests } from "./digest";
 import type { Activity } from "./useActivity";
 import { AddButtons, SuggestProvider, TrayBar, type Quote } from "./Suggest";
@@ -407,6 +407,7 @@ function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { o
         Contribute
       </h1>
       <p className="lead">Every action is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
+      {rec.page && rec.outdated && <OutdatedNote o={rec.outdated} href={to("rebuild")} />}
       <div className="stack">
         <div className="card" id="suggest-changes" tabIndex={-1}>
           <h3>Suggest changes</h3>

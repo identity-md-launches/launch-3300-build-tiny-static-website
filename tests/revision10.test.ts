@@ -86,7 +86,7 @@ describe("36faaca9: a later source flags a reworded summary sentence on the asse
     expect(html).toContain(NEW);
     expect(dots(html)).toBe(1);
     expect(html).toContain('class="dispute-dot dispute-outdates"');
-    expect(html).toMatch(/aria-label="Out of date: open the newer line that disputes this sentence"/);
+    expect(html).toMatch(/aria-label="Superseded: open the newer line that disputes this sentence"/);
     expect(notice(html)).toBe("1");
     expect(html).toContain("A newer source disputes 1 part of this page.");
   });

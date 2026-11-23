@@ -87,6 +87,71 @@ export interface InfoRow {
   values: string[];
   /** Entries the result gave as { name, url } (Official accounts): each account's name and link. */
   entries?: { name: string; url: string }[];
+  /** Each values entry in parts (name, text, url, address, chain), set whenever values is. */
+  items?: ValueItem[];
+}
+
+/**
+ * One entry of an infobox row's values. The instructions ask for objects with exactly name, text and optionally url
+ * or address with chain: "UNI" / "governance token" / 0x1f98… / "Ethereum", or "UNI" / "1 billion". A string entry
+ * is all text. An entry of another shape keeps every one of its parts in text, so it is never cut to a first word.
+ */
+export interface ValueItem {
+  name: string;
+  text: string;
+  url: string;
+  address: string;
+  chain: string;
+  /** True when the entry was an object (any shape), false for a plain string. */
+  shaped: boolean;
+}
+
+const ENTRY_KEYS = new Set(["name", "text", "url", "address", "chain"]);
+/** A name, under the keys results have used for it. */
+const NAME_KEYS = ["name", "symbol", "label", "title", "token", "ticker"];
+const ADDRESS_KEYS = ["address", "contract", "contract_address", "token_address"];
+const CHAIN_KEYS = ["chain", "network", "chain_id", "chainId"];
+
+/** One values entry, read whole; null when it is empty. Pure, for tests. */
+export function valueItemOf(x: unknown): ValueItem | null {
+  if (typeof x === "string" || typeof x === "number") {
+    const text = str(x, 300).trim();
+    return text ? { name: "", text, url: "", address: "", chain: "", shaped: false } : null;
+  }
+  if (!x || typeof x !== "object" || Array.isArray(x)) return null;
+  const o = x as Record<string, unknown>;
+  const pick = (keys: string[], max: number) => {
+    for (const k of keys) {
+      const v = str(o[k], max).trim();
+      if (v) return { key: k, v };
+    }
+    return null;
+  };
+  const nm = pick(NAME_KEYS, 120);
+  const ad = pick(ADDRESS_KEYS, 80);
+  const ch = pick(CHAIN_KEYS, 60);
+  const url = str(o.url, 400).trim();
+  const address = ad && /^0x[0-9a-fA-F]{40}$/.test(ad.v) ? ad.v : "";
+  const used = new Set([nm?.key, address ? ad?.key : "", ch?.key, "url"].filter(Boolean) as string[]);
+  // text as given; then every other part of an entry of another shape, in order, so nothing it says is lost.
+  const extra = Object.entries(o)
+    .filter(([k, v]) => k !== "text" && !used.has(k) && !ENTRY_KEYS.has(k) && (typeof v === "string" || typeof v === "number" || typeof v === "boolean"))
+    .map(([, v]) => String(v).trim())
+    .filter(Boolean);
+  const own = str(o.text, 300).trim();
+  // An address under an unexpected key that is not a 0x address stays readable as text.
+  const badAddr = ad && !address ? [ad.v] : [];
+  const text = [own, ...extra, ...badAddr].filter(Boolean).join(", ").slice(0, 300);
+  const name = nm?.v ?? "";
+  if (!name && !text && !url && !address) return null;
+  return { name, text, url, address, chain: ch?.v ?? "", shaped: true };
+}
+
+/** An entry as one line of text: "UNI: governance token, 0x1f98… on Ethereum", "UNI: 1 billion". */
+export function valueItemText(e: ValueItem): string {
+  const head = e.name && e.text ? `${e.name}: ${e.text}` : e.name || e.text;
+  const addr = e.address ? `${head ? ", " : ""}${e.address}${e.chain ? ` on ${e.chain}` : ""}` : "";
+  return `${head}${addr}` || e.url;
 }
 export interface Dropped {
   id: string;
@@ -545,11 +610,22 @@ export function parsePage(text: string, domain = ""): Page {
     infobox: arr(j.infobox)
       .map((r) => {
         const o = obj(r);
-        // A value entry is a string, or { name, url } (Official accounts): its name is the value, its url the link.
+        // A value entry is { name, text, url } or { name, text, address, chain } (the instructions' one shape), or a
+        // plain string. Every entry is kept whole: values holds each entry's full text, items its parts.
         const raw = arr(o.values).slice(0, 20);
+        const items = raw.map(valueItemOf).filter((e): e is ValueItem => !!e);
         const entries = raw.filter((x) => x && typeof x === "object").map((x) => ({ name: str(obj(x).name, 200).trim(), url: str(obj(x).url, 400).trim() })).filter((e) => e.name || e.url);
-        const values = raw.map((x) => (x && typeof x === "object" ? str(obj(x).name, 300) || str(obj(x).url, 300) : str(x, 300)).trim()).filter(Boolean);
-        return { label: str(o.label, 80), value: str(o.value, 300) || values.join("; "), url: str(o.url, 400), lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean), values: values.length > 1 ? values : [], ...(entries.length ? { entries } : {}) };
+        const values = items.map(valueItemText).filter(Boolean);
+        const listed = values.length > 1 || items.some((e) => e.shaped);
+        return {
+          label: str(o.label, 80),
+          value: str(o.value, 300) || values.join("; "),
+          url: str(o.url, 400),
+          lines: arr(o.lines).map((x) => str(x, 64)).filter(Boolean),
+          values: listed ? values : [],
+          ...(listed ? { items } : {}),
+          ...(entries.length ? { entries } : {}),
+        };
       })
       // A row never shows "unverified" or "unknown" as its value: it is left out, as the instructions say.
       .filter((r) => r.label && r.value && !/^\s*(unverified|unknown|not known|n\/a)\.?\s*$/i.test(r.value)),

@@ -3,19 +3,41 @@
  * significant digits for values below 1. "59822.623566003452582778 imdUSD" shows as "59,822.62 imdUSD".
  * The arithmetic is on the digit strings (BigInt), so a 30-digit raw supply keeps every digit.
  *
- * Left as written: anything inside a word or hex string (0x addresses, hashes, L12, F1:L3, v2.1), dotted versions
- * (2.19.5), dates and times (2024-05-01, 12:30), hyphen-joined ids such as UUIDs, numbers after "block", "#", "id",
- * "nonce" or "chain" (also with a colon: "Block: 26445600", "Request ID: …"), and four-digit years (1800 to 2199)
- * where a date is meant: after "in", "since", "until", a month and the like, or in "(2021)". "2000 tokens" is a
- * quantity and reads "2,000 tokens".
+ * Left as written: anything inside a word or hex string (0x addresses, hashes, L12, F1:L3, v2.1, @handle2000), dotted
+ * versions (2.19.5), dates and times (2024-05-01, 12/05/2024, 12:30), hyphen-joined ids such as UUIDs, numbers after
+ * "block", "#", "id", "nonce" or "chain" (also with a colon: "Block: 26446763", "Request ID: …"), and every whole
+ * four-digit number from 1000 to 2999: a year or a plain identifier ("founded 2020", "EIP 1559"). Such a number is
+ * a quantity only when a unit or a token symbol follows it directly, or a currency sign comes before it:
+ * "2000 seats" reads "2,000 seats", "2500 IMD" reads "2,500 IMD", "$1500" reads "$1,500".
  */
 
 const NUM = /(?<![\p{L}\p{N}_.,:#/@]|[\p{L}\p{N}]-)(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(?![\p{L}\p{N}_:/@]|[.,]\d|-[\p{N}a-fA-F])/gu;
 const KEEP_AFTER = /(?:\bblocks?|\bid|\bids|\bnonce|\bchain(?:\s*id)?|\bchainid|\btoken\s*id|\bno\.|\bnumber)\s*[:#]?\s*#?\s*$/i;
-/** Words before a year: "in 2024", "since 2021", "March 2024", "Q3 2025", "FY 2024", "early 2023". */
-const YEAR_BEFORE = /(?:\b(?:in|since|until|till|during|year|years|early|mid|late|circa|around|before|after|fy|q[1-4]|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+\d{1,2}(?:st|nd|rd|th)?,?)?)|[(–])\s*$/i;
-/** After a year: "2024)", "2021–2023", "2024 AD". */
-const YEAR_AFTER = /^(?:\)|\s*[–/]\s*\d|\s*(?:AD|BC|CE|BCE)\b)/;
+/**
+ * What makes a whole number from 1000 to 2999 a quantity: a unit or a token symbol directly after it ("2000 seats",
+ * "2500 IMD", "1200 sIMD", "1500%"). A token symbol has two capitals in a row, perhaps after a short lowercase prefix.
+ */
+const UNIT_AFTER = new RegExp(
+  "^(?:\\s?%|\\s(?:" +
+    [
+      "seats?", "tokens?", "coins?", "shares?", "units?", "users?", "holders?", "wallets?", "addresses", "accounts?", "members?", "people",
+      "persons?", "transactions?", "txs?", "trades?", "swaps?", "nfts?", "items?", "passes", "mints?", "validators?", "nodes?", "pools?",
+      "markets?", "projects?", "apps?", "developers?", "contributors?", "employees?", "followers?", "stars?", "downloads?", "votes?",
+      "voters?", "proposals?", "days?", "hours?", "minutes?", "seconds?", "weeks?", "months?", "blocks", "gwei", "wei", "ether",
+      "dollars?", "euros?", "bps", "basis points?", "percent", "times", "kb", "mb", "gb", "tb", "requests?", "jobs?", "chains?",
+      "contracts?", "copies", "editions?", "pieces?", "collectors?", "creators?", "artists?", "customers?", "clients?", "subscribers?",
+    ].join("|") +
+    ")\\b)",
+  "i",
+);
+/** A token symbol directly after the number: IMD, USDC.e, sIMD, veCRV, $UNI. Case matters here. */
+const SYMBOL_AFTER = /^\s\$?[a-z]{0,3}[A-Z]{2,}[A-Za-z0-9.]*(?![a-z])/;
+/** A currency sign just before the number: "$1500", "€2000". */
+const MONEY_BEFORE = /[$€£¥]\s?$/;
+/** Words before a year, which keep it a year even when a symbol follows: "In 2024 IMD launched", "since 2021", "March 2024". */
+const YEAR_BEFORE = /(?:\b(?:in|since|until|till|during|early|mid|late|circa|around|before|after|fy|q[1-4]|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+\d{1,2}(?:st|nd|rd|th)?,?)?)|[(–])\s*$/i;
+/** A whole four-digit number from 1000 to 2999 with no separators: a year or identifier unless a unit follows. */
+const yearLike = (int: string, frac: string, commas: boolean) => !frac && !commas && /^[12]\d{3}$/.test(int);
 
 const group = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
@@ -55,9 +77,11 @@ export function formatNumbers(text: string): string {
     const int = intPart.replace(/,/g, "");
     const frac = fracPart ? fracPart.slice(1) : "";
     if (KEEP_AFTER.test(text.slice(Math.max(0, offset - 16), offset))) return match;
-    if (!frac && !commas && int.length === 4 && Number(int) >= 1800 && Number(int) <= 2199) {
-      const before = text.slice(Math.max(0, offset - 24), offset);
-      if (YEAR_BEFORE.test(before) || YEAR_AFTER.test(text.slice(offset + match.length, offset + match.length + 8))) return match;
+    if (yearLike(int, frac, commas)) {
+      const after = text.slice(offset + match.length, offset + match.length + 32);
+      const before = text.slice(Math.max(0, offset - 2), offset);
+      if (YEAR_BEFORE.test(text.slice(Math.max(0, offset - 24), offset))) return match;
+      if (!UNIT_AFTER.test(after) && !SYMBOL_AFTER.test(after) && !MONEY_BEFORE.test(before)) return match;
     }
     if (alreadyShort(int, frac, commas)) return match;
     return formatDigits(int, frac);

@@ -144,7 +144,7 @@ describe("13ce86fb: out of date on fact rows and channel badges", () => {
       ],
     });
     const row = keyFacts(p, (id) => p.lines.find((l) => l.id === id), p.lines).rows[0]!;
-    expect(row.status).toEqual({ text: "Out of date", tone: "outdated" });
+    expect(row.status).toEqual({ text: "Superseded", tone: "outdated" });
   });
   it("the facts table shows the amber mark, Newer and Also said by", () => {
     const src = readFileSync("src/Record.tsx", "utf8");

@@ -155,3 +155,51 @@ export function chainIdOf(v: string): number | null {
   const c = CHAIN_CHOICES.find((x) => x.name.toLowerCase() === t || t.startsWith(x.name.toLowerCase()));
   return c ? c.id : null;
 }
+
+/** Block explorers by chain id, for a token's or contract's address link. */
+const EXPLORERS: Record<number, string> = {
+  1: "https://etherscan.io",
+  8453: "https://basescan.org",
+  42161: "https://arbiscan.io",
+  10: "https://optimistic.etherscan.io",
+  137: "https://polygonscan.com",
+  56: "https://bscscan.com",
+  11155111: "https://sepolia.etherscan.io",
+  130: "https://uniscan.xyz",
+  324: "https://explorer.zksync.io",
+  59144: "https://lineascan.build",
+  81457: "https://blastscan.io",
+  534352: "https://scrollscan.com",
+  43114: "https://snowtrace.io",
+  7777777: "https://explorer.zora.energy",
+};
+/** Chain names results write that the form's list does not hold. */
+const MORE_CHAINS: Record<string, number> = {
+  optimism: 10, "op mainnet": 10, polygon: 137, "polygon pos": 137, arbitrum: 42161, bnb: 56, bsc: 56, "bnb smart chain": 56,
+  unichain: 130, zksync: 324, "zksync era": 324, linea: 59144, blast: 81457, scroll: 534352, avalanche: 43114, "avalanche c-chain": 43114, zora: 7777777,
+};
+/** A chain id from a chain as a result writes it ("Ethereum", "Base", "8453", "Polygon"); null when unknown. */
+export function anyChainIdOf(v: string): number | null {
+  const known = chainIdOf(v);
+  if (known !== null) return known;
+  return MORE_CHAINS[v.trim().toLowerCase()] ?? null;
+}
+/** A readable chain name: "Base" for "8453" or "base"; the text as written when unknown. */
+export function chainLabel(v: string): string {
+  const id = anyChainIdOf(v);
+  if (id === null) return v.trim();
+  const listed = CHAIN_CHOICES.find((c) => c.id === id);
+  if (listed) return listed.name;
+  const name = Object.entries(MORE_CHAINS).find(([, x]) => x === id)?.[0] ?? "";
+  return /^\d+$/.test(v.trim()) ? (name ? name.replace(/\b\w/g, (c) => c.toUpperCase()) : `chain ${id}`) : v.trim();
+}
+/**
+ * The block explorer page of an address: the chain's own explorer when known, else Blockscan's search across chains.
+ * "" when it is not an address.
+ */
+export function explorerAddressUrl(address: string, chain = ""): string {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return "";
+  const id = chain ? anyChainIdOf(chain) : null;
+  const base = id !== null ? EXPLORERS[id] : undefined;
+  return base ? `${base}/address/${address}` : `https://blockscan.com/address/${address}`;
+}

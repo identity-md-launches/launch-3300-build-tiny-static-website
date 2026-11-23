@@ -1006,7 +1006,17 @@ export function outdatedOf(core: Pick<Core, "latest" | "page" | "unfolded" | "un
   return outdated(unfoldedCount(core), !matchesTemplate(core.latest.req.bodyJson?.objective));
 }
 
-/** "Out of date: 2 results not folded in", "Out of date: built with an older format", or both. */
+/**
+ * What a reader is told about a page that is behind (Overview and home rows): only results not folded in yet,
+ * "2 additions not yet merged". Which instruction format built a page is for upkeep only (the "Needs a rebuild"
+ * filter, Contribute and Page upkeep, through outdatedText), so an older format alone gives readers no note.
+ */
+export function readerNoteText(o: Outdated): string | null {
+  if (!o || o.kind !== "results") return null;
+  return `${o.n.toLocaleString("en-US")} ${o.n === 1 ? "addition" : "additions"} not yet merged`;
+}
+
+/** For upkeep: "Out of date: 2 results not folded in", "Out of date: built with an older format", or both. */
 export function outdatedText(o: NonNullable<Outdated>): string {
   if (o.kind === "format") return "Out of date: built with an older format";
   const results = `${o.n.toLocaleString("en-US")} result${o.n === 1 ? "" : "s"} not folded in`;

@@ -3,7 +3,7 @@ import { disputedCount, rowPatchListsOf, sentenceDispute, type Dispute, type Dis
 import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
-import { keyFacts, splitAddresses, withPatches, type Badge, type KeyRow, type RowChange } from "./keyfacts";
+import { keyFacts, splitAddresses, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
 import { addHref, subjectHref, to } from "./route";
 import { SubjectLogo } from "./Logo";
 import { findSubject, parseLookup, rowMatches, type Findable } from "./lookup";
@@ -26,7 +26,7 @@ import {
 import { readDate } from "./dates";
 import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, isInstructionsUnavailable, statusText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
-import { OutdatedNote, StillReading } from "./Home";
+import { OutdatedNote, ReaderNote, StillReading } from "./Home";
 import { AddButtons, ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest } from "./Suggest";
 import { formatNumbers } from "./numbers";
 import { keyFactTarget, lineTarget, sentenceTarget } from "./changes";
@@ -94,6 +94,16 @@ function Copy({ value }: { value: string }) {
 
 /** A value with every 0x address shortened in monospace, each with a copy button; linked when it has a url. */
 function KeyValue({ row }: { row: KeyRow }) {
+  if (row.items?.length)
+    return (
+      <ul className="kf-values kf-items">
+        {row.items.map((v, i) => (
+          <li key={i}>
+            <ItemValue v={v} />
+          </li>
+        ))}
+      </ul>
+    );
   if (row.values.length)
     return (
       <ul className="kf-values">
@@ -125,16 +135,7 @@ function KeyValue({ row }: { row: KeyRow }) {
               {t.symbol && t.purpose ? ": " : ""}
               {t.purpose && formatNumbers(t.purpose)}
             </span>
-            {t.address && (
-              <span className="tok-addr">
-                {t.url ? (
-                  <ExtLink url={t.url} className="mono">{shortHex(t.address)}</ExtLink>
-                ) : (
-                  <span className="mono">{shortHex(t.address)}</span>
-                )}
-                <Copy value={t.address} />
-              </span>
-            )}
+            {t.address && <AddressParts address={t.address} explorer={t.url} />}
             {!t.address && t.url && (
               <>
                 {" "}
@@ -150,6 +151,48 @@ function KeyValue({ row }: { row: KeyRow }) {
     <>
       <ValueText text={row.value} url={row.url} />
       {row.note && <span className="small"> {row.note}</span>}
+    </>
+  );
+}
+
+/** A shortened address in monospace, its copy button and its block explorer link, kept together. */
+function AddressParts({ address, explorer }: { address: string; explorer: string }) {
+  return (
+    <span className="tok-addr">
+      <span className="mono" title={address}>{shortHex(address)}</span>
+      <Copy value={address} />
+      {safeHref(explorer) && (
+        <ExtLink url={explorer} className="explorer-link">
+          Explorer<span className="sr-only"> page of {address}</span>
+        </ExtLink>
+      )}
+    </span>
+  );
+}
+
+/** "example.com/docs" for a link shown after an entry's text. */
+const linkText = (url: string) => url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "");
+
+/** One values entry: its name in bold, then its text, then its link or its shortened address with copy and explorer. */
+function ItemValue({ v }: { v: ShownItem }) {
+  return (
+    <>
+      <span className="tok-name">
+        {v.name && <strong>{v.name}</strong>}
+        {v.name && v.text ? ": " : ""}
+        {v.text && <ValueText text={v.text} />}
+      </span>
+      {v.address ? (
+        <AddressParts address={v.address} explorer={v.explorer} />
+      ) : (
+        v.url && (
+          <>
+            {" "}
+            <ExtLink url={v.url} className="break item-link">{linkText(v.url)}</ExtLink>
+          </>
+        )
+      )}
+      {v.chain && <span className="small"> on {v.chain}</span>}
     </>
   );
 }
@@ -226,7 +269,7 @@ function ChangeHistory({ items }: { items: Array<RowChange | (SentenceChange & {
 }
 
 /** Every full address a key facts row names, for its details: the table itself shows them shortened. */
-const rowAddresses = (r: KeyRow) => [...new Set([r.value, ...r.values, ...r.tokens.map((t) => t.address)].flatMap((v) => splitAddresses(v).filter((p) => p.address).map((p) => p.text)))];
+const rowAddresses = (r: KeyRow) => [...new Set([r.value, ...r.values, ...r.tokens.map((t) => t.address), ...(r.items ?? []).map((t) => t.address)].flatMap((v) => splitAddresses(v).filter((p) => p.address).map((p) => p.text)))];
 /** Every name, in full: "A", "A and B", "A, B and C". */
 const allNames = (n: string[]) => (n.length < 2 ? n[0] ?? "" : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`);
 /** A row opens details when it has full addresses, more speakers than its badge names, or a patch from a change. */
@@ -385,12 +428,12 @@ export function useKeyFacts(m: RecordModel) {
   return { ...kf, rows: withDisputes(withPatches(kf.rows, patches, all, sourceUrl, { channels: m.page?.channels ?? [], domain: m.page?.domain ?? "" }), m.disputes) };
 }
 
-/** A Key facts row a newer source contradicts or outdates reads "Contradicted" or "Out of date" in place of its badge. */
+/** A Key facts row a newer source contradicts or outdates reads "Contradicted" or "Superseded" in place of its badge. */
 export function withDisputes(rows: KeyRow[], d: Pick<Disputes, "infobox">): KeyRow[] {
   return rows.map((r) => {
     const hit = d.infobox.get(r.label.trim().toLowerCase());
     if (!hit) return r;
-    const badge: KeyRow["badge"] = hit.type === "contradicts" ? { text: "Contradicted", tone: "contradicted" } : { text: "Out of date", tone: "outdated" };
+    const badge: KeyRow["badge"] = hit.type === "contradicts" ? { text: "Contradicted", tone: "contradicted" } : { text: "Superseded", tone: "outdated" };
     return { ...r, status: null, badge, disputedBy: hit.by };
   });
 }
@@ -449,7 +492,7 @@ function Sentence({ text, active, onOpen }: { text: string; active: boolean; onO
 /** A small amber (out of date) or red (contradicted) dot after a summary sentence a newer line disputes; it opens that line. */
 function DisputeDot({ d, ui }: { d: Dispute | null; ui: Ui }) {
   if (!d) return null;
-  const word = d.type === "contradicts" ? "Contradicted" : "Out of date";
+  const word = d.type === "contradicts" ? "Contradicted" : "Superseded";
   return (
     <a
       className={`dispute-dot dispute-${d.type}`}
@@ -563,15 +606,25 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
           {changed === 1 ? "1 sentence" : `${changed} sentences`} corrected by visitors since the last rebuild.
         </p>
       )}
-      <p className="small">
-        {m.edit ? (
-          <>
-            Edited by <span className="mono">{payerName(m.edit.activity)}</span>, checked by a research job. Not itself a checked line.
-          </>
-        ) : (
-          "Written from Record by a research job. Not itself a checked line."
-        )}{" "}
-        Dots open supporting lines.
+      <p className="small dot-key">
+        <span className="dk">
+          <span className="dot kind-proof" aria-hidden="true" /> proven on chain
+        </span>
+        <span className="dk">
+          <span className="dot kind-statement" aria-hidden="true" /> the project says
+        </span>
+        <span className="dk">
+          <span className="dot kind-claim" aria-hidden="true" /> others say
+        </span>
+        <span className="dk-by">
+          {m.edit ? (
+            <>
+              Summary edited by <span className="mono">{payerName(m.edit.activity)}</span> and checked by a research job.
+            </>
+          ) : (
+            "Summary written from the record by a research job."
+          )}
+        </span>
       </p>
     </div>
   );
@@ -688,7 +741,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
         <h1 id="record-title" tabIndex={-1}>{name}</h1>
       </div>
       <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
-      {m.outdated && <OutdatedNote o={m.outdated} href={to("rebuild")} />}
+      <ReaderNote o={m.outdated} href={to("rebuild")} />
       <DisputedNote m={m} />
       {rejectedCard && (first?.kind === "instructions" || isInstructionsUnavailable(m.rejected!.rejected)) && (
         <div className="card empty" id="rejected">
@@ -751,9 +804,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
               </p>
             )}
           </div>
-          <div className="facts-col">
-            <KeyFacts m={m} ui={ui} />
-          </div>
+          <KeyFacts m={m} ui={ui} />
         </div>
       )}
       {page && <Related m={m} subjects={subjects} />}
@@ -1044,7 +1095,7 @@ function LinkNotes({ line, ctx }: { line: Line; ctx: Ctx }) {
   // What a settled row already leads with is not repeated under it.
   const st = ctx.settled.by.get(line.id);
   const lead = new Set(st?.state === "proven" ? st.confirms.map((t) => `confirms:${t}`) : st?.state === "contradicted" ? st.contradicts.map((t) => `contradicts:${t}`) : []);
-  // Out of date is the row's lead with "Newer:" under it; a link to nothing the record shows is left out.
+  // Superseded is the row's lead with "Newer:" under it; a link to nothing the record shows is left out.
   const links = line.links.filter((k) => k.type !== "outdates" && !lead.has(`${k.type}:${k.target.trim()}`) && (ctx.m.resolve(k.target) || ctx.m.answerRef(k.target)));
   if (!links.length) return null;
   return (
@@ -1102,7 +1153,7 @@ export function SettleMark({ s, ctx }: { s: Settle; ctx: Ctx }) {
     return (
       <span className="kind kind-outdated">
         <span className="dot" aria-hidden="true" />
-        Out of date
+        Superseded
       </span>
     );
   if (s.state === "contradicted")
@@ -1134,7 +1185,7 @@ function shownBy(t: string, ctx: Ctx): { who: string; text: string } {
   return { who: "The panel answered", text: a?.text || "an answer not shown in this record" };
 }
 
-/** "Newer: <the newer line>" under an Out of date row, each opening that line. */
+/** "Newer: <the newer line>" under a Superseded row, each opening that line. */
 function NewerNotes({ ids, ctx, contradicted }: { ids: string[]; ctx: Ctx; contradicted?: boolean }) {
   return (
     <ul className="settled">
@@ -1393,6 +1444,7 @@ function PageUpkeep({ m }: { m: RecordModel }) {
         {missing.length > 0 && <span className="upkeep-dot" role="img" aria-label="Earlier lines unaccounted for" />}
       </summary>
       <div className="upkeep-body small">
+        {m.outdated && <OutdatedNote o={m.outdated} href={to("rebuild")} />}
         {a.state === "loading" && <p>Checking the last rebuild against the {a.files} earlier files it was given…</p>}
         {a.state === "error" && <p>Unable to check the last rebuild against its earlier files: {a.error}</p>}
         <h3>Dropped in the last rebuild</h3>

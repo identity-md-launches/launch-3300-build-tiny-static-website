@@ -230,7 +230,7 @@ describe("Tokens values (436ed92e, 11a41834)", () => {
     expect(keyFacts(q, () => undefined, q.lines).rows[0]!.tokens.map((t) => t.symbol)).toEqual(["GOV", "PAY"]);
     const src = readFileSync("src/Record.tsx", "utf8");
     expect(src).toContain("<strong>{t.symbol}</strong>");
-    expect(src).toContain("<Copy value={t.address} />");
+    expect(src).toContain("<AddressParts address={t.address} explorer={t.url} />");
   });
 });
 

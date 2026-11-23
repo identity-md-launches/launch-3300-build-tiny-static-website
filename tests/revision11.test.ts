@@ -101,5 +101,5 @@ describe("B5: a changes result is read whole", () => {
     expect(tooLargeText(n)).toBe("This result is too large to show in full: 20,001 lines");
     const html = activityHtml([pageJob("0xa3", "proj.example", page, PH), job], "proj.example");
     expect(html).toContain(tooLargeText(n));
-  });
+  }, 60_000); // builds a 20,001-entry result; over 5 s on a slow machine
 });

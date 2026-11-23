@@ -112,8 +112,8 @@ export function rowClass(line: Pick<Line, "kind">, s: Settle | undefined): RowCl
  */
 export type Group = "proven" | "stated" | "claimed" | "contradicted" | "outdated";
 export const groupOf = (k: RowClass): Group => (k === "proof" || k === "proven" ? "proven" : k === "statement" ? "stated" : k === "claim" ? "claimed" : k);
-export const GROUP_WORDS: Record<Group, string> = { proven: "Proven", stated: "Stated", claimed: "Claimed", contradicted: "Contradicted", outdated: "Out of date" };
-/** The kind colour each group shows in: proven green, stated blue, claimed orange, contradicted red, out of date amber. */
+export const GROUP_WORDS: Record<Group, string> = { proven: "Proven", stated: "Stated", claimed: "Claimed", contradicted: "Contradicted", outdated: "Superseded" };
+/** The kind colour each group shows in: proven green, stated blue, claimed orange, contradicted red, superseded amber. */
 export const GROUP_TONE: Record<Group, string> = { proven: "proven", stated: "statement", claimed: "claim", contradicted: "contradicted", outdated: "outdated" };
 
 /** all and each group; `checks` and `confirmed` split proven into proof rows and said-then-confirmed rows. */
@@ -138,10 +138,13 @@ export function countLines(lines: Pick<Line, "id" | "kind" | "links">[], settled
   return c;
 }
 
-/** The groups shown: Proven, Stated and Claimed always; Contradicted and Out of date only when above zero. */
+/** The groups shown: Proven, Stated and Claimed always; Contradicted and Superseded only when above zero. */
 export function shownGroups(c: Counts): Group[] {
   return (["proven", "stated", "claimed", "contradicted", "outdated"] as Group[]).filter((g) => g === "proven" || g === "stated" || g === "claimed" || c[g] > 0);
 }
+
+/** The home list's counts: proven, stated, claimed and contradicted; superseded lines are left out of them there. */
+export const homeGroups = (c: Counts): Group[] => shownGroups(c).filter((g) => g !== "outdated");
 
 export type Filter = "all" | Group;
 export const FILTERS: Filter[] = ["all", "proven", "stated", "claimed", "contradicted", "outdated"];
@@ -162,9 +165,9 @@ export function speakerText(line: Pick<Line, "kind" | "by" | "channel">): string
   return "";
 }
 
-/** "5 proven, 2 stated, 3 claimed", then contradicted and out of date only when there are any. */
+/** "5 proven, 2 stated, 3 claimed", then contradicted and superseded only when there are any. */
 export function countsWords(c: Counts): string {
   return shownGroups(c)
-    .map((g) => `${c[g].toLocaleString("en-US")} ${g === "outdated" ? "out of date" : g}`)
+    .map((g) => `${c[g].toLocaleString("en-US")} ${g === "outdated" ? "superseded" : g}`)
     .join(", ");
 }

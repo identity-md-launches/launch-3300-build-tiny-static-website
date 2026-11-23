@@ -72,7 +72,7 @@ describe("B. rebuild instructions", () => {
   it("adds scope, key facts, size and uncertainty word for word", () => {
     for (const s of [
       "The subject is the whole project behind the domain: its protocol or contracts, its apps and the organisation that runs them. Say in one_line and in the summary which of these exist. Do not narrow the record to one app.",
-      "No market prices: never a row for a token's trading price. One Supply row covering only the project's live main-network tokens; never testnet, retired or bridged copies. In Tokens, list a token once and name its chains.",
+      "No market prices: never a row for a token's trading price. One Supply row, never for testnet or retired tokens.",
       "When independent trackers publish usage figures for the project, such as value locked, trading volume or active users, add one infobox row 'Size' with the figure, the tracker's name and the date, as a claim. For a project with wide coverage, read at least 8 outside sources.",
       "End the summary on an uncertainty only if it matters to a newcomer: who controls the project, a conflict between what the project says and what the chain shows, or a fact that has just changed. Rounding differences between data providers are not such a thing.",
     ])
@@ -111,7 +111,7 @@ describe("C. counts read at a glance", () => {
   it("Home and Record show the groups, without Only said or a proofs count", () => {
     const home = readFileSync("src/Home.tsx", "utf8");
     const rec = readFileSync("src/Record.tsx", "utf8");
-    expect(home).toContain("shownGroups(s.counts)");
+    expect(home).toContain("homeGroups(s.counts)");
     expect(home).not.toContain('plural(s.counts.proof, "proof")');
     expect(rec).toContain("filtersFor(counts)");
     expect(rec).not.toContain("Only said");
@@ -213,7 +213,7 @@ describe("D. a new source is checked against the whole record", () => {
     expect(d.fromKept).toBe(true);
     expect(d.lines.get("L1")).toMatchObject({ type: "outdates", by: "0xc1:N1" });
     const rows = withDisputes([{ label: "Supply", badge: { text: "Stated by Example", tone: "statement" }, status: null } as KeyRow, { label: "Website", badge: null, status: { text: "Own domain", tone: "own" } } as KeyRow], d);
-    expect(rows[0]).toMatchObject({ badge: { text: "Out of date", tone: "outdated" }, disputedBy: "0xc1:N1" });
+    expect(rows[0]).toMatchObject({ badge: { text: "Superseded", tone: "outdated" }, disputedBy: "0xc1:N1" });
     expect(rows[1]!.disputedBy).toBeUndefined();
     expect(sentenceDispute({ text: "Example has about 1 million tokens" }, d)).toMatchObject({ type: "outdates", by: "0xc1:N1" });
     // The sentence the visitor targeted was rewritten: it is not marked again.

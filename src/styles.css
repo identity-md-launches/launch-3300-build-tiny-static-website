@@ -57,6 +57,7 @@
   --shadow-menu: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 20px rgb(0 0 0 / 0.12);
   /* The one content column: the header row and main share its width and side padding at every width. */
   --page-max: 60rem;
+  --read-max: 47.5rem; /* 760px: the summary's text column */
   --page-pad: max(var(--space-4), env(safe-area-inset-left), env(safe-area-inset-right));
 }
 
@@ -121,22 +122,15 @@ section { display: grid; gap: var(--space-4); min-width: 0; }
 .tab > h1:focus, .tab-title:focus, .section-head h1:focus { outline: none; }
 .tab-title { font-size: var(--text-title); letter-spacing: -0.01em; }
 
-/* Overview: the summary first; at 1000px and wider, Key facts in a column to its right (about 40%), both from the
-   same height. Narrower screens stack them: Summary, then Key facts. */
+/* Overview: stacked at every width: Summary, then Key facts, then Related. The summary's text column keeps a
+   reading width of about 760px; Key facts below it use the full width as a table (label, value, badge in one row). */
 .overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); align-items: start; }
-.summary-col { display: grid; gap: var(--space-3); min-width: 0; align-content: start; }
-@media (min-width: 62.5rem) {
-  .overview { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
-  /* In the narrower column a row's label sits above its value; the badge under the value, the pencil at the end. */
-  .facts-col .keyfacts tr:not(.kf-details):not(.kf-panel) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-2); border-top: 1px solid var(--color-border); padding: var(--space-2) 0; }
-  .facts-col .keyfacts tr.kf-details, .facts-col .keyfacts tr.kf-panel { display: block; }
-  .facts-col .keyfacts tr.kf-details td, .facts-col .keyfacts tr.kf-panel td { display: block; }
-  .facts-col .keyfacts th, .facts-col .keyfacts td { border-top: 0; padding: 0; width: auto; }
-  .facts-col .keyfacts th { grid-column: 1 / -1; padding-bottom: var(--space-1); }
-  .facts-col .kf-value { grid-column: 1; padding-inline-end: 0 !important; }
-  .facts-col .kf-badge { grid-column: 1; grid-row: 3; text-align: start !important; padding-top: var(--space-1) !important; }
-  .facts-col .kf-edit { grid-column: 2; grid-row: 2 / span 2; width: auto; }
-}
+.summary-col { display: grid; gap: var(--space-3); min-width: 0; align-content: start; max-width: var(--read-max); }
+.summary-col .prose { max-width: var(--read-max); }
+/* The one-line key to the summary's dots. */
+.dot-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); }
+.dot-key .dk { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.dot-key .dot { width: 9px; height: 9px; }
 .kf-more { justify-self: start; font-size: var(--text-small); }
 .keyfacts { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
 .keyfacts h2 { font-size: var(--text-heading); }
@@ -283,7 +277,6 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .title-row h1 { min-width: 0; }
 
 /* Related, at the bottom of Overview above the footer links: a compact row of chips, no dots or badges. */
-.facts-col { display: grid; gap: var(--space-4); min-width: 0; align-content: start; }
 .related { display: grid; gap: var(--space-2); min-width: 0; }
 .related h2 { font-size: var(--text-heading); }
 .related-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
@@ -742,7 +735,7 @@ body.has-tray main { padding-bottom: 9rem; }
 
 /* Single-column grids take the column's width, never their content's: nothing inside widens the page. */
 /* .overview sets its own single column above, so its 1000px two-column rule is not overridden here. */
-.tab, .facts-col, .summary, .lines, .row, .details, .review-item { grid-template-columns: minmax(0, 1fr); }
+.tab, .summary, .lines, .row, .details, .review-item { grid-template-columns: minmax(0, 1fr); }
 
 /* ---------- Revision 13: out of date, page upkeep, key facts lists, panel questions ---------- */
 .kind-outdated { color: var(--amber-800); }
@@ -756,7 +749,7 @@ body.has-tray main { padding-bottom: 9rem; }
 .kf-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .kf-details .facts { margin: 0; }
 /* A token keeps together: symbol and purpose, then its address with the copy button. */
-.kf-tokens li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
+.kf-tokens li, .kf-items li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
 .tok-name { min-width: 0; }
 .tok-addr { display: inline-flex; align-items: baseline; gap: var(--space-1); white-space: nowrap; }
 /* A logo under 64 px: its tile grows to the image's own size, and the image sits centred at that size. */
