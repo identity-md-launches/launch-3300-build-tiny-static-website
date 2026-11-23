@@ -45,6 +45,10 @@ export interface Line {
   fact: Fact | null;
   /** The earlier lines a rebuilt line came from, as file number and id, such as F2:L14. */
   from: string[];
+  /** The permanent address this line was first written at: "<job id>:<line id>" or "F2:L14" (see addresses.ts). */
+  origin?: string;
+  /** The other origins of a merged line. */
+  also?: string[];
   /** Proof lines or panel answers (A1...) that settle this line. */
   links: LineLink[];
   /** Older readings of the same check, as block and value; the line itself holds the newest. */
@@ -600,6 +604,8 @@ export function parsePage(text: string, domain = ""): Page {
         // Every origin of a merged line is kept, however many: dropping one would also raise a false
         // "unaccounted for" warning.
         from: arr(o.from).map((x) => str(x, 64).trim()).filter(Boolean),
+        origin: str(o.origin, 120).trim() || undefined,
+        also: arr(o.also).map((x) => str(x, 120).trim()).filter(Boolean),
         links: parseLinks(o.links),
         history: parseHistory(o.history),
       };

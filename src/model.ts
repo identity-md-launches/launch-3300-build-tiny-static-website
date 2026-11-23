@@ -40,6 +40,8 @@ import { applyChangeLinks, applySentenceChanges, carriedOf, disputesOf, repaired
 import { mergeRepeats, type KnownContract } from "./lookup";
 import { dropUnresolvedAnswers, type UnresolvedRef } from "./settle";
 import { readDate } from "./dates";
+import { countedOf, NOT_READ } from "./counts";
+import { originsOf, type Origin } from "./addresses";
 
 export interface Accounting {
   /** none: the shown page was not a rebuild from earlier files. */
@@ -167,13 +169,22 @@ export interface Core {
   counts: ReturnType<typeof countKinds>;
   /** Dropped entries of earlier pages whose files a rebuild was not given for space: owed to the next rebuild. */
   carried: CarriedDrop[];
+  /** Request ids of completed results that are not read, with the one reason the site gives (counts.ts). */
+  notRead: Map<string, string>;
+  /** Each record line's permanent address, by the line id it is shown under (addresses.ts). */
+  origins: Map<string, Origin>;
 }
 
 /** The earlier files' line ids of each older page with bare dropped ids, by the request id that produced it. */
 export type HistoryReads = Map<string, PriorLines[]>;
 
-export function coreOf(items: Activity[], history?: HistoryReads): Core {
-  const done = items.filter(isResult).sort(completionOrder);
+/** Every completed result with whether it counts, for a subject's own page: the full files are read there. */
+const counting = (items: Activity[]) => countedOf(items as never, (id) => subjectRefFor(id, items, null));
+
+export function coreOf(items: Activity[], history?: HistoryReads, counted?: Set<string>): Core {
+  const count = counted ?? counting(items).counted;
+  const done = items.filter((a) => isResult(a) && count.has(a.req.requestId)).sort(completionOrder);
+  const notRead = new Map(items.filter(isResult).filter((a) => !count.has(a.req.requestId)).map((a) => [a.req.requestId, NOT_READ] as const));
   const latest = done.filter((a) => isPageJob(a.req)).at(-1);
   const page = latest?.page ?? null;
   const results = done.filter((a) => a !== latest);
@@ -206,7 +217,8 @@ export function coreOf(items: Activity[], history?: HistoryReads): Core {
   const alias = repeats.alias;
   const merged = repeats.merged;
   const carried = carriedDrops(done.filter((a) => isPageJob(a.req) && a.page), history);
-  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest, lineage), after, jobs, scope, sections, alias, merged, unresolved, counts: countKinds(sections), carried };
+  const origins = originsOf(items, latest);
+  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest, lineage), after, jobs, scope, sections, alias, merged, unresolved, counts: countKinds(sections), carried, notRead, origins };
 }
 
 /** An answer as the record shown numbers it: A<n>, its text, the URL it was listed under, and keys that identify its request. */

@@ -19,6 +19,12 @@ export interface Route {
   bad?: string;
   /** "#/add/<domain or chain:0x…>": home, with the bar filled in to add that project. */
   add?: string;
+  /** "#/docs": how the site works. */
+  docs?: boolean;
+  /** "#/w/<address>": one wallet's profile page. */
+  wallet?: string;
+  /** "#/s/<subject>/l/<job id>:<line id>": the Record at that line, highlighted. */
+  address?: string;
 }
 
 /** Which tab a part after the subject opens, and the element inside it. */
@@ -51,6 +57,9 @@ export function routeOf(hash: string): Route {
   if (h === "" || h === "/") return { subject: null, tab: "overview", target: null };
   // "#/add/" with nothing after it: home with the lookup field empty and focused, for a related project whose
   // record gives no usable domain or contract.
+  if (h === "/docs" || h === "/docs/") return { subject: null, tab: "overview", target: null, docs: true };
+  const w = /^\/w\/(0x[0-9a-fA-F]{40})\/?$/.exec(h);
+  if (w) return { subject: null, tab: "overview", target: null, wallet: w[1]!.toLowerCase() };
   if (h === "/add" || h === "/add/") return { subject: null, tab: "overview", target: null, add: "" };
   const add = /^\/add\/(.+)$/.exec(h);
   if (add) return { subject: null, tab: "overview", target: null, add: add[1]!.trim().slice(0, 300) };
@@ -58,6 +67,9 @@ export function routeOf(hash: string): Route {
   if (m) {
     const id = m[1]!.toLowerCase();
     if (!isSubjectId(id)) return { subject: null, tab: "overview", target: null, bad: m[1]! };
+    // A line's permanent address (#/s/<subject>/l/<job id>:<line id>) opens the Record at that line.
+    const at = /^l\/([^/]+)$/.exec(m[2] ?? "");
+    if (at) return { subject: canonicalId(id), tab: "record", target: null, address: decodeURIComponent(at[1]!) };
     // An older link to a subdomain id (#/s/app.uniswap.org) opens the registrable domain's record (uniswap.org).
     return { subject: canonicalId(id), ...inSubject(m[2] ?? "") };
   }
@@ -85,6 +97,13 @@ export function canonicalHash(hash: string): string | null {
 
 /** Home with the bar filled in to add a project ("Add this project" under Related). */
 export const addHref = (id: string) => `#/add/${encodeURIComponent(id)}`;
+
+/** The link to a line's permanent address on a subject's record: "#/s/<subject>/l/<job id>:<line id>". */
+export const lineAddressHref = (subject: string, address: string) => `#/s/${subject}/l/${encodeURIComponent(address)}`;
+/** The link to a wallet's profile. */
+export const walletHref = (address: string) => `#/w/${address.toLowerCase()}`;
+/** How the site works. */
+export const DOCS_HREF = "#/docs";
 
 /** The link to a subject, or to one of its tabs or elements. */
 export const subjectHref = (subject: string, part = "") => `#/s/${subject}${part ? `/${part}` : ""}`;

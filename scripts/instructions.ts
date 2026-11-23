@@ -6,7 +6,7 @@
  * Run: npx vite-node scripts/instructions.ts (then npx vite-node scripts/agents-md.ts and npm run build).
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 
 const NAMES = ["rebuild", "changes"] as const;
 const manifest: Record<string, { file: string; sha256: string }> = {};
@@ -22,3 +22,11 @@ for (const name of NAMES) {
   console.log(`${name}: ${file} (${bytes.length} bytes)`);
 }
 writeFileSync("src/instructions.json", JSON.stringify(manifest, null, 2) + "\n");
+// Every instruction file ever published, current and past: the sha256 a tagged job's objective may name. Counted
+// jobs (src/counts.ts) read a result only when it was sent through one of these files.
+const published = readdirSync("public/instructions")
+  .filter((f) => /^(?:rebuild|changes)-[0-9a-f]{12}\.txt$/.test(f))
+  .sort()
+  .map((file) => ({ file, sha256: createHash("sha256").update(readFileSync(`public/instructions/${file}`)).digest("hex") }));
+writeFileSync("src/instructions.published.json", JSON.stringify(published, null, 2) + "\n");
+console.log(`${published.length} instruction files published`);

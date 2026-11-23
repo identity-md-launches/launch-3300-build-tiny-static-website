@@ -3,6 +3,8 @@ import { disputedCount, rowPatchListsOf, sentenceDispute, type Dispute, type Dis
 import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
+import { shortJobId } from "./addresses";
+import { explorerAddressUrl } from "./subject";
 import { keyFacts, splitAddresses, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
 import { addHref, subjectHref, to } from "./route";
 import { SubjectLogo } from "./Logo";
@@ -47,6 +49,8 @@ export interface Ui {
   target: string | null;
   /** Counts link changes, so following the same link again acts again. */
   routeN?: number;
+  /** The record line a permanent address (#/s/<subject>/l/<job id>:<line id>) opened: shown highlighted. */
+  highlight?: string;
 }
 
 export function KindMark({ kind }: { kind: string }) {
@@ -73,13 +77,13 @@ const panelAnchor = (a: Activity) => `panel-${a.req.requestId.slice(2, 14)}`;
 
 /* ---------- Overview ---------- */
 
-function Copy({ value }: { value: string }) {
+function Copy({ value, label }: { value: string; label?: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
       type="button"
       className="copy"
-      aria-label={done ? "Copied" : `Copy address ${value}`}
+      aria-label={done ? "Copied" : `${label ?? "Copy address"} ${value}`}
       onClick={() => {
         void navigator.clipboard?.writeText(value).then(() => {
           setDone(true);
@@ -87,7 +91,7 @@ function Copy({ value }: { value: string }) {
         });
       }}
     >
-      {done ? "Copied" : "Copy"}
+      {done ? "Copied" : label ?? "Copy"}
     </button>
   );
 }
@@ -126,28 +130,42 @@ function KeyValue({ row }: { row: KeyRow }) {
         ))}
       </ul>
     );
-  if (row.tokens.length)
+  if (row.tokens.length) {
+    // One line per token that never wraps oddly: symbol, purpose, the address as a link with its copy icon, chain.
+    // A chain every token shares is shown once, after the list, instead of once per line.
+    const chains = [...new Set(row.tokens.map((t) => t.chain).filter(Boolean))];
+    const shared = chains.length === 1 ? chains[0]! : "";
     return (
-      <ul className="kf-tokens">
-        {row.tokens.map((t, i) => (
-          <li key={i}>
-            <span className="tok-name">
-              {t.symbol && <strong>{t.symbol}</strong>}
-              {t.symbol && t.purpose ? ": " : ""}
-              {t.purpose && formatNumbers(t.purpose)}
-            </span>
-            {t.address && <AddressParts address={t.address} explorer={t.url} />}
-            {!t.address && t.url && (
-              <>
-                {" "}
-                <ExtLink url={t.url}>Explorer</ExtLink>
-              </>
-            )}
-            {t.chain && <span className="small"> on {t.chain}</span>}
-          </li>
-        ))}
-      </ul>
+      <>
+        <ul className="kf-tokens">
+          {row.tokens.map((t, i) => (
+            <li key={i} className="tok-line">
+              {t.symbol && <strong className="tok-symbol">{t.symbol}</strong>}
+              {t.purpose && <span className="tok-purpose">{formatNumbers(t.purpose)}</span>}
+              {t.address && (
+                <span className="tok-addr">
+                  <a
+                    className="tok-addr-link"
+                    href={safeHref(t.url) ? t.url : explorerAddressUrl(t.address, t.chain)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={t.address}
+                    aria-label={`${t.address} on the block explorer`}
+                  >
+                    <span className="mono">{shortHex(t.address)}</span>
+                  </a>
+                  <Copy value={t.address} label="Copy address" />
+                </span>
+              )}
+              {!t.address && t.url && <span className="tok-addr"><ExtLink url={t.url} className="break item-link">{linkText(t.url)}</ExtLink></span>}
+              {t.chain && !shared && <span className="tok-chain">{t.chain}</span>}
+            </li>
+          ))}
+        </ul>
+        {shared && <p className="tok-chain-row"><span className="tok-chain">{shared}</span></p>}
+      </>
     );
+  }
   return (
     <>
       <ValueText text={row.value} url={row.url} />
@@ -872,6 +890,8 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
   // This row's own earlier origins: those of the lines folded into it are listed with each of them.
   const ownFrom = line.from.filter((f) => !(row.same ?? []).some((o) => o.line.from.includes(f)));
   const job = origin ? { what: origin.raised ? "A changes job a visitor raised" : "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
+  // Where the line was first written: the job and its line id, a permanent address (addresses.ts).
+  const written = ctx.m.origins.get(line.id);
   return (
     <div className="details" id={id}>
       <dl className="facts">
@@ -956,6 +976,18 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
           <>
             <dt>First recorded</dt>
             <dd>{readDate(String(first))}</dd>
+          </>
+        )}
+        {written && (
+          <>
+            <dt>Written in job</dt>
+            <dd>
+              <a href={jobLink(written.jobId, written.tx)} target="_blank" rel="noopener noreferrer" title={written.jobId ?? written.tx}>
+                {written.jobId ? `${shortJobId(written.jobId)}…` : "open the transaction"}
+              </a>{" "}
+              <span className="small">line {written.lineId}</span>{" "}
+              <Copy value={`${jobLink(written.jobId, written.tx)} line ${written.lineId}`} label="Copy citation" />
+            </dd>
           </>
         )}
         {!!line.history?.length && (
@@ -1272,7 +1304,7 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
   const target = lineTarget(line.id || line.text.slice(0, 40), line.text, line.id ? originOfLine(line.id, ctx.m.scope) : null);
   const srcUrl = line.srcKeys.map((k) => ctx.numbers.get(k)?.url).find(Boolean) ?? "";
   return (
-    <li className={`row has-pencil${row.differsWith ? ` row-differs row-${row.level}` : ""}${settled ? ` row-${settled.state}` : ""}${open ? " is-open" : ""}`} id={anchor}>
+    <li className={`row has-pencil${row.differsWith ? ` row-differs row-${row.level}` : ""}${settled ? ` row-${settled.state}` : ""}${open ? " is-open" : ""}${ctx.ui.highlight === row.line.id ? " is-addressed" : ""}`} id={anchor}>
       <DiffersNote row={row} facts={facts} />
       <div className="row-main" onClick={onRowClick(toggle)}>
         <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={toggle}>
