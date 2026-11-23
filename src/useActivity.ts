@@ -9,12 +9,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Hex } from "viem";
 import { fromStored, loadTaggedRequests, stateOf, getBlockTime, toStored, type Completion, type ScanState, type TaggedRequest } from "./chain";
 import { dropOldFileCache, kvGet, kvSet } from "./store";
-import { cacheGet, cacheSet, fetchLogo, fetchOracle, fetchResearchPage, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
+import { cacheGet, cacheSet, fetchLogo, fetchOracle, fetchResearchPage, fetchResultHash, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
 import { parseChanges, parseEdit, parseLines, parsePage, rejectionOf, type ChangesResult, type EditResult, type Page, type SourceLines } from "./page";
 import { publicClient } from "./reads";
 import { domainOfId } from "./subject";
-import { countedOf, NOT_READ, shapeOf } from "./counts";
+import { countedOf, firstNamedBlock, NOT_READ, shapeOf } from "./counts";
 
 export interface Activity {
   req: TaggedRequest;
@@ -107,7 +107,14 @@ async function timeOf(r: { blockNumber: bigint }): Promise<number | null> {
   return t;
 }
 
-async function follow(req: TaggedRequest, completion: Completion | undefined, withFiles: boolean): Promise<Activity> {
+/**
+ * How much of a request to read: false, nothing but its state; "meta", the hashes its job result lists (and a panel
+ * answer) but no result file; true, its result files.
+ */
+export type ReadMode = boolean | "meta";
+
+async function follow(req: TaggedRequest, completion: Completion | undefined, mode: ReadMode): Promise<Activity> {
+  const withFiles = mode === true;
   const state = stateOf(completion);
   const final = state !== "pending";
   const jobKey = `job:${req.requestId}`;
@@ -131,7 +138,7 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, wi
     }
   }
   let oracle: OracleRead | null = null;
-  if (withFiles && req.action.startsWith("oracle.") && oracleId) {
+  if (mode !== false && req.action.startsWith("oracle.") && oracleId) {
     try {
       oracle = await fetchOracle(oracleId, final);
       jobId ??= oracle.jobId;
@@ -156,6 +163,15 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, wi
   const shape = research ? shapeOf(req) : null;
   const notRead = shape && !shape.ok && !shape.legacy ? NOT_READ : null;
   const hasFiles = research && !notRead && state === "completed" && !!completion;
+  if (hasFiles && mode === "meta") {
+    // Only the hash the job result lists: the gate checks earlier results and channels before any byte is read.
+    const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : isChangesJob(req) ? "changes" : "lines";
+    try {
+      fileHash = await fetchResultHash(req, jobId, name);
+    } catch (e) {
+      sourcesError = e instanceof Error ? e.message : `The ${name} file could not be read`;
+    }
+  }
   if (hasFiles && withFiles && completion) {
     const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : isChangesJob(req) ? "changes" : "lines";
     try {
@@ -190,7 +206,8 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, wi
   const [time, ens, doneTime] = await Promise.all([timeOf(req), ensOf(req.payer), completion ? timeOf(completion) : Promise.resolve(null)]);
   // A completed panel request's answer is read like a result file: the out-of-date count needs it.
   const hasAnswer = req.action.startsWith("oracle.") && state === "completed" && !!oracleId;
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: !(hasFiles || hasAnswer) || withFiles, notRead };
+  const read = mode === "meta" ? !hasFiles : !(hasFiles || hasAnswer) || withFiles;
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: read, notRead };
 }
 
 const SCAN_KEY = "intake";
@@ -231,18 +248,46 @@ export function memoRead<T extends { sourcesError: string | null }>(memo: Map<st
  * Marks every completed result that does not count (counts.ts: its objective, its earlier results or its channels
  * fail) as not read. The site's pages, sources, counts and home list leave those out; Activity shows why.
  */
-export function markNotRead(items: Activity[]): Activity[] {
-  const { counted } = countedOf(items);
+export function markNotRead(items: Activity[], opts: { firstNamed?: bigint | null; verdicts?: Map<string, boolean> } = {}): Activity[] {
+  const { counted } = countedOf(items, opts.firstNamed !== undefined ? { firstNamed: opts.firstNamed } : {});
   return items.map((a) => {
     if (a.notRead || a.state !== "completed" || !(isSourceJob(a.req) || isEditJob(a.req) || isPageJob(a.req) || isChangesJob(a.req))) return a;
+    // A full read of its subject already decided this job (verdicts): one found not to count stays out of Home, its
+    // totals and digests, even in a light read that cannot check its earlier results.
+    if (!a.fileHash && opts.verdicts?.get(a.req.requestId) === false) return { ...a, notRead: NOT_READ };
     if (counted.has(a.req.requestId)) return a;
-    // A light read (home list) judges a job whose file is not read yet on its shape only; its page is judged in full.
+    // A light read (home list) judges a job whose file is not read yet on its shape.
     if (!a.fileHash && a.filesRead === false) {
       const s = shapeOf(a.req);
       if (s.ok || s.legacy) return a;
     }
     return { ...a, notRead: NOT_READ };
   });
+}
+
+/**
+ * Reads the result files of the requests that count, and only those. Starts from requests read in "meta" mode (the
+ * hashes their job results list): the gate decides with those, the files of the jobs that count are read, and the gate
+ * runs again with the pages read (a channel an earlier page lists), until nothing more counts. A job that does not
+ * count never has its file read.
+ */
+export async function settleReads(items: Activity[], full: (a: Activity) => Promise<Activity>, opts: { firstNamed?: bigint | null; verdicts?: Map<string, boolean> } = {}): Promise<Activity[]> {
+  let cur = items;
+  const tried = new Set<string>();
+  for (let round = 0; round < 64; round++) {
+    const { counted } = countedOf(cur, opts.firstNamed !== undefined ? { firstNamed: opts.firstNamed } : {});
+    const todo = cur.filter((a) => a.filesRead === false && !tried.has(a.req.requestId) && counted.has(a.req.requestId) && (a.fileHash || a.sourcesError));
+    if (!todo.length) break;
+    for (const a of todo) tried.add(a.req.requestId);
+    const done = new Map((await Promise.all(todo.map(full))).map((a) => [a.req.requestId, a] as const));
+    cur = cur.map((a) => done.get(a.req.requestId) ?? a);
+  }
+  return markNotRead(cur, opts);
+}
+
+/** Records what a full read decided for each result it judged with its file hash. */
+export function noteVerdicts(verdicts: Map<string, boolean>, items: Activity[]) {
+  for (const a of items) if (a.state === "completed" && a.fileHash && (isSourceJob(a.req) || isEditJob(a.req) || isPageJob(a.req) || isChangesJob(a.req))) verdicts.set(a.req.requestId, !a.notRead);
 }
 
 /** The requests that count or are not results, for every view but Activity. */
@@ -262,20 +307,35 @@ export function useActivity(subject: string | null = null): ActivityState {
   open.current = subject;
   // Finished requests are followed once per mode; a request still open is followed again on each read.
   const memo = useRef(new Map<string, Promise<Activity>>());
-  const followed = useCallback((r: TaggedRequest, c: Completion | undefined, withFiles: boolean) => {
+  const followed = useCallback((r: TaggedRequest, c: Completion | undefined, mode: ReadMode) => {
     const state = stateOf(c);
-    const key = `${r.requestId}|${state}|${withFiles}`;
-    if (state === "pending") return follow(r, c, withFiles);
-    return memoRead(memo.current, key, () => follow(r, c, withFiles));
+    const key = `${r.requestId}|${state}|${mode}`;
+    if (state === "pending") return follow(r, c, mode);
+    return memoRead(memo.current, key, () => follow(r, c, mode));
   }, []);
+  // What full reads decided, kept for the visit: the light list (Home) leaves out what a full read did not count.
+  const verdicts = useRef(new Map<string, boolean>());
+  const firstNamed = useRef<{ of: ScanState | null; block: bigint | null }>({ of: null, block: null });
+  const firstOf = (s: ScanState) => {
+    if (firstNamed.current.of !== s) firstNamed.current = { of: s, block: firstNamedBlock(s.requests) };
+    return firstNamed.current.block;
+  };
+  /** A subject's requests read in full: meta first, then only the files of the jobs that count. */
+  const readFull = useCallback(async (s: ScanState, reqs: TaggedRequest[], pick: (r: TaggedRequest) => boolean) => {
+    const opts = { firstNamed: firstOf(s), verdicts: verdicts.current };
+    const base = await Promise.all(reqs.map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), pick(r) ? "meta" : false)));
+    const out = await settleReads(base, (a) => followed(a.req, a.completion, true), opts);
+    noteVerdicts(verdicts.current, out);
+    return out;
+  }, [followed]);
 
   const build = useCallback(async () => {
     const s = scan.current;
     if (!s) return;
     const sub = open.current;
-    const out = markNotRead(await Promise.all(s.requests.map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), r.subject === sub))));
+    const out = await readFull(s, s.requests, (r) => r.subject === sub);
     if (scan.current === s && open.current === sub) setItems(out);
-  }, [followed]);
+  }, [readFull]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -329,9 +389,13 @@ export function useActivity(subject: string | null = null): ActivityState {
       const s = scan.current;
       if (!s) return [];
       const research = (r: TaggedRequest) => isPageJob(r) || isSourceJob(r) || isEditJob(r) || isChangesJob(r) || r.action.startsWith("oracle.");
-      return readable(markNotRead(await Promise.all(s.requests.filter((r) => r.subject === id).map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), research(r))))));
+      const out = readable(await readFull(s, s.requests.filter((r) => r.subject === id), research));
+      // A job a full read did not count leaves the light list too (Home, its totals and digests, Profile).
+      const v = verdicts.current;
+      setItems((prev) => (prev && prev.some((a) => v.get(a.req.requestId) === false && !a.notRead && a.state === "completed") ? prev.map((a) => (v.get(a.req.requestId) === false && !a.notRead && a.state === "completed" ? { ...a, notRead: NOT_READ } : a)) : prev));
+      return out;
     },
-    [followed],
+    [readFull],
   );
 
   return { items, error, loading, retrying, cached, reload: load, readSubject };

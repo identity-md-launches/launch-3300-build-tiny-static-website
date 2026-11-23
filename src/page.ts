@@ -837,7 +837,7 @@ export function parseLines(text: string, opts: { changes?: boolean } = {}): Sour
 /** A record row: a research line, or a line added by a source job (with who paid and where the job is). */
 export interface RecordRow extends Row {
   /** raised: the line came from a visitor's changes job ("raised by <payer>"). */
-  origin: { payer: string; jobHref: string; raised?: boolean; time?: number | null } | null;
+  origin: { payer: string; payerAddr?: string; jobHref: string; raised?: boolean; time?: number | null } | null;
   /** Other lines with the same text (ignoring case and punctuation), shown as this ONE row: their origins, speakers and sources. */
   same?: RecordRow[];
 }
@@ -847,6 +847,8 @@ export interface SourceJob {
   key: string;
   data: SourceLines;
   payer: string;
+  /** The requesting wallet, for its profile link. */
+  payerAddr?: string;
   jobHref: string;
   raised?: boolean;
   /** When the job completed (unix seconds), for a line's "First recorded". */
@@ -898,7 +900,7 @@ export function mergeRecord(page: Page | null, jobs: SourceJob[], domain = page?
     .map((section) => {
       const rows: RecordRow[] = page ? orderSection(page, section, placedResearch).map((r) => ({ ...r, origin: null })) : [];
       for (const p of pages)
-        rows.push(...orderSection(p.page, section, p.placed).map((r) => ({ ...r, origin: { payer: p.job.payer, jobHref: p.job.jobHref, raised: p.job.raised, time: p.job.time ?? null } })));
+        rows.push(...orderSection(p.page, section, p.placed).map((r) => ({ ...r, origin: { payer: p.job.payer, payerAddr: p.job.payerAddr, jobHref: p.job.jobHref, raised: p.job.raised, time: p.job.time ?? null } })));
       return { section, rows };
     })
     .filter((s) => s.rows.length > 0);

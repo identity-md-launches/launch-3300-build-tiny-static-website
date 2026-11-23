@@ -41,7 +41,7 @@ import { mergeRepeats, type KnownContract } from "./lookup";
 import { dropUnresolvedAnswers, type UnresolvedRef } from "./settle";
 import { readDate } from "./dates";
 import { countedOf, NOT_READ } from "./counts";
-import { originsOf, type Origin } from "./addresses";
+import { historicLines, originsOf, type HistoricLine, type Origin } from "./addresses";
 
 export interface Accounting {
   /** none: the shown page was not a rebuild from earlier files. */
@@ -173,6 +173,8 @@ export interface Core {
   notRead: Map<string, string>;
   /** Each record line's permanent address, by the line id it is shown under (addresses.ts). */
   origins: Map<string, Origin>;
+  /** Lines of earlier counted pages the page shown no longer carries, by their permanent address (lowercase). */
+  historic: Map<string, HistoricLine>;
 }
 
 /** The earlier files' line ids of each older page with bare dropped ids, by the request id that produced it. */
@@ -194,7 +196,7 @@ export function coreOf(items: Activity[], history?: HistoryReads, counted?: Set<
   const after = unfolded.filter((a) => isSourceJob(a.req) || isEditJob(a.req) || isChangesJob(a.req));
   const jobs: SourceJob[] = after
     .filter((a) => a.sources)
-    .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), jobHref: jobLink(a.jobId, a.req.transactionHash), raised: isChangesJob(a.req), time: a.doneTime ?? null }));
+    .map((a) => ({ key: a.req.requestId, data: a.sources!, payer: payerName(a), payerAddr: a.req.payer, jobHref: jobLink(a.jobId, a.req.transactionHash), raised: isChangesJob(a.req), time: a.doneTime ?? null }));
   // A changes result's new lines point at the line they are about; the target row shows what each does to it,
   // also when a rebuild has since carried that line forward under another id.
   // The panel answers the record can name: the rebuild's own A1… and, after them, answers completed since.
@@ -218,7 +220,8 @@ export function coreOf(items: Activity[], history?: HistoryReads, counted?: Set<
   const merged = repeats.merged;
   const carried = carriedDrops(done.filter((a) => isPageJob(a.req) && a.page), history);
   const origins = originsOf(items, latest);
-  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest, lineage), after, jobs, scope, sections, alias, merged, unresolved, counts: countKinds(sections), carried, notRead, origins };
+  const historic = historicLines(items, done.filter((a) => isPageJob(a.req) && a.page), latest, origins);
+  return { latest, page, results, folded, unfolded, unfoldedAnswers: unfoldedAnswersOf(items, latest, lineage), after, jobs, scope, sections, alias, merged, unresolved, counts: countKinds(sections), carried, notRead, origins, historic };
 }
 
 /** An answer as the record shown numbers it: A<n>, its text, the URL it was listed under, and keys that identify its request. */
@@ -672,6 +675,8 @@ export interface RecordModel {
   subject: SubjectRef;
   /** Each record line's permanent address, by the id the record shows it under (addresses.ts). */
   origins: Map<string, Origin>;
+  /** Lines of earlier counted pages the page shown no longer carries, by their permanent address (lowercase). */
+  historic: Map<string, HistoricLine>;
   latest: Activity | undefined;
   /** The newest completed job whose file said found: false, with its notes; shown on Overview when there is no page. */
   rejected: Activity | undefined;
@@ -947,6 +952,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   return {
     subject,
     origins: core.origins,
+    historic: core.historic,
     latest,
     rejected: rejectedOf(items ?? []).at(-1),
     page,

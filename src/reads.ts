@@ -5,4 +5,6 @@
 import { createPublicClient, http } from "viem";
 import { CHAIN, RPCS } from "./config";
 
-export const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPCS[0]!.url) });
+// ccipRead: false: an ENS resolver that answers with an off-chain lookup (EIP-3668) is not followed to its gateway.
+// Names are read only through the site's public RPC; such a name is not shown.
+export const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPCS[0]!.url), ccipRead: false });

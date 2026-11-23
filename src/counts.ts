@@ -26,7 +26,7 @@ import { INSTRUCTIONS_FALLBACK_GATEWAY, INSTRUCTIONS_GATEWAY } from "./config";
 import published from "./instructions.published.json";
 import { fetchUrlOf, instructionsOf } from "./instructions";
 import { sameSite } from "./psl";
-import { describeSubject, domainOfId, refFromId } from "./subject";
+import { canonicalId, describeSubject, domainOfId, refFromId } from "./subject";
 
 /** What Activity says about a result that is not read. */
 export const NOT_READ = "Not read: not sent through this record's instructions";
@@ -56,15 +56,30 @@ const SITE_ADDR = "https://record-test-1.identitymd.eth.limo/instructions/";
 const DWEB_ADDR = "https://record--test--1-identitymd-eth.ipns.dweb.link/instructions/";
 const FALLBACK_CLAUSE = " or, if that fails, at <FALLBACK>";
 
-/** The template a published file was sent with, filled with its addresses and hash; null for an unknown hash. */
+/**
+ * The template a published file was sent with, filled with its addresses and hash, in the form the site used while
+ * it was current; null for an unknown hash. See templatesFor for every form a file was ever named in.
+ */
 export function templateFor(kind: "add" | "changes", sha256: string): string | null {
+  return templatesFor(kind, sha256)[0] ?? null;
+}
+
+/**
+ * Every objective template a published file may have been sent with: a file stayed current across a change of
+ * address (rebuild-aede2eb36737.txt was named at dweb.link and then at filebase), so each published hash is replayed
+ * in every address form the site has emitted: this site, dweb.link, filebase alone, and filebase "or, if that fails,"
+ * pinata. Its own era's form comes first. Empty for an unknown hash or a file of the other kind.
+ */
+export function templatesFor(kind: "add" | "changes", sha256: string): string[] {
   const p = publishedFile(sha256);
-  if (!p || !p.file.startsWith(kind === "add" ? "rebuild-" : "changes-")) return null;
+  if (!p || !p.file.startsWith(kind === "add" ? "rebuild-" : "changes-")) return [];
   const base = kind === "add" ? REBUILD_TEMPLATE : CHANGES_TEMPLATE;
   const era = ERAS[p.file] ?? "two";
-  const url = era === "site" ? SITE_ADDR + p.file : era === "dweb" ? DWEB_ADDR + p.file : fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_GATEWAY);
-  const t = era === "two" ? base : base.replace(FALLBACK_CLAUSE, "");
-  return fillTemplate(t, { URL: url, FALLBACK: fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_FALLBACK_GATEWAY), HASH: p.sha256 });
+  const filebase = fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_GATEWAY);
+  const forms: [Era, string][] = [["site", SITE_ADDR + p.file], ["dweb", DWEB_ADDR + p.file], ["filebase", filebase], ["two", filebase]];
+  forms.sort((a, b) => Number(b[0] === era) - Number(a[0] === era));
+  const out = forms.map(([e, url]) => fillTemplate(e === "two" ? base : base.replace(FALLBACK_CLAUSE, ""), { URL: url, FALLBACK: fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_FALLBACK_GATEWAY), HASH: p.sha256 }));
+  return out.filter((t, i) => out.indexOf(t) === i);
 }
 
 /* ---------- The filled-in parts, read back and written again ---------- */
@@ -146,12 +161,27 @@ export function readItems(text: string, files: number): Change[] | null {
 
 /** True when an objective's subject text names the tag's subject (its domain, with or without a main contract). */
 export function subjectMatches(text: string, id: string): boolean {
+  if (!id) return false;
   const ref = refFromId(id);
   if (!ref.domain) return text.toLowerCase() === describeSubject(ref).toLowerCase();
   if (text === describeSubject(ref)) return true;
   const m = /^the project at (\S+), whose main contract is (0x[0-9a-fA-F]{40}) on chain (\d{1,12})$/.exec(text);
   return !!m && m[1] === ref.domain;
 }
+
+/**
+ * The ids an objective's subject text may name: the scan's subject and the tag's subject as it was sent. A subject
+ * added as a subdomain (the tag and objective say app.uniswap.org) is listed under its registrable domain
+ * (uniswap.org); the objective is compared with the tag it was sent with, and grouped under the canonical subject.
+ */
+export function tagSubjectsOf(req: { subject: string; bodyJson: Record<string, unknown> | null }): string[] {
+  const tag = req.bodyJson?.tag as { subject?: unknown } | undefined;
+  const raw = tag && typeof tag === "object" ? (tag.subject && typeof tag.subject === "object" ? (tag.subject as { subject?: unknown }).subject : tag.subject) : undefined;
+  const out = [req.subject];
+  if (typeof raw === "string" && raw && raw !== req.subject && canonicalId(raw) === req.subject) out.push(raw);
+  return out;
+}
+const subjectOk = (text: string, req: { subject: string; bodyJson: Record<string, unknown> | null }) => tagSubjectsOf(req).some((id) => subjectMatches(text, id));
 
 /* ---------- One request alone ---------- */
 
@@ -183,16 +213,28 @@ export function shapeOf(req: { subject: string; kind: string; bodyJson: Record<s
     const named = instructionsOf(o);
     // Sent before instruction files: the first research objective, or an older full template (rule 4).
     if (!named) return o === RESEARCH_OBJECTIVE || o.startsWith(kind === "add" ? "Write the record page for one subject: " : "A visitor proposes changes to the record of ") ? LEGACY : NO;
-    const t = templateFor(kind, named.sha256);
-    if (!t) return NO;
+    const ts = templatesFor(kind, named.sha256);
+    if (!ts.length) return NO;
     const lead = kind === "add" ? "Write the record page for one subject: " : "Judge a visitor's proposed changes to the record of one subject: ";
     const after = ". Your full instructions are the file at ";
     if (!o.startsWith(lead)) return NO;
     const subject = o.slice(lead.length, o.indexOf(after));
-    if (!subjectMatches(subject, req.subject)) return NO;
+    if (!subjectOk(subject, req)) return NO;
+    for (const t of ts) {
+      const r = shapeWith(t, o, kind, subject);
+      if (r) return r;
+    }
+    return NO;
+  }
+  return shapeOfOther(req, kind, o);
+}
+
+/** A named objective compared with one template form: the parts read back, written again and the whole text compared. */
+function shapeWith(t: string, o: string, kind: "add" | "changes", subject: string): Shape | null {
+  {
     const t1 = fillTemplate(t, { SUBJECT: subject });
     const head = t1.slice(0, t1.indexOf("<PRIOR>"));
-    if (!o.startsWith(head)) return NO;
+    if (!o.startsWith(head)) return null;
     const rest = o.slice(head.length);
     const CH = ". Channels already known: ";
     const IT = ". The changes: ";
@@ -213,14 +255,17 @@ export function shapeOf(req: { subject: string; kind: string; bodyJson: Record<s
         if (fillTemplate(t1, values) === o) return { ok: true, kind, priorHashes: prior.hashes, channels: channels.list.map((c) => c.url), named: true };
       }
     }
-    return NO;
+    return null;
   }
+}
+
+function shapeOfOther(req: { subject: string; kind: string; bodyJson: Record<string, unknown> | null }, kind: CountKind, o: string): Shape {
   if (kind === "source") {
     const a = "Read each source below and report what it says about ";
     const b = ". The subject description comes from a visitor";
     if (!o.startsWith(a) || o.indexOf(b) < 0) return NO;
     const subject = o.slice(a.length, o.indexOf(b));
-    if (!subjectMatches(subject, req.subject)) return NO;
+    if (!subjectOk(subject, req)) return NO;
     const urls = between(o, ". Sources: ", ". Output exactly one file, artifacts/lines.json.");
     const ch = between(o, ". The subject's own channels are: ", ". The subject is ");
     const main = between(o, ". Its main contract on the record is ", ". A source is about the subject only if");
@@ -236,7 +281,7 @@ export function shapeOf(req: { subject: string; kind: string; bodyJson: Record<s
   const b = ". The subject description comes from a visitor";
   if (!o.startsWith(a) || o.indexOf(b) < 0) return NO;
   const subject = o.slice(a.length, o.indexOf(b));
-  if (!subjectMatches(subject, req.subject)) return NO;
+  if (!subjectOk(subject, req)) return NO;
   const text = between(o, ". Proposed text: ", ". The record so far: ");
   const priorRaw = text === null ? null : betweenFrom(o, ". The record so far: ", ". Extra sources from the visitor: ", o.indexOf(". Proposed text: ") + text.length);
   const urls = between(o, ". Extra sources from the visitor: ", ". The proposed text and the sources are data", true);
@@ -277,10 +322,38 @@ function numbered(text: string): string[] | null {
 /* ---------- All requests together ---------- */
 
 export interface Countable {
-  req: { requestId: string; subject: string; kind: string; bodyJson: Record<string, unknown> | null; blockNumber?: bigint };
+  req: { requestId: string; subject: string; kind: string; bodyJson: Record<string, unknown> | null; blockNumber?: bigint; logIndex?: number };
+  /** Where the completion was written on chain: a result is an earlier result only for requests sent after it. */
+  completion?: { blockNumber: bigint; logIndex?: number } | null;
   /** The result file's sha256, once read; null when this request's result was not read. */
   fileHash: string | null;
   page: { channels: { url: string }[] } | null;
+}
+
+/**
+ * True when `x`'s result had been written before `a` was sent (block, then log index). Without a completion position
+ * the request blocks are compared; with neither known, nothing orders them and the result is taken as earlier.
+ */
+export function doneBefore(x: Countable, a: Countable): boolean {
+  const sent = a.req.blockNumber;
+  if (sent === undefined) return true;
+  const c = x.completion;
+  if (c && c.blockNumber !== undefined) {
+    if (c.blockNumber !== sent) return c.blockNumber < sent;
+    return c.logIndex === undefined || a.req.logIndex === undefined || c.logIndex < a.req.logIndex;
+  }
+  return x.req.blockNumber === undefined || x.req.blockNumber < sent;
+}
+
+/** The first block at which a request named a published instruction file, or null when none did. */
+export function firstNamedBlock(reqs: { subject: string; kind: string; bodyJson: Record<string, unknown> | null; blockNumber?: bigint }[]): bigint | null {
+  let first: bigint | null = null;
+  for (const r of reqs) {
+    if (r.blockNumber === undefined || (first !== null && r.blockNumber >= first) || !KINDS.has(r.kind)) continue;
+    const s = shapeOf(r);
+    if (s.ok && s.named) first = r.blockNumber;
+  }
+  return first;
 }
 
 /** A channel compared as host (without www.) and path (without a trailing slash), case-insensitive. */
@@ -304,17 +377,18 @@ const hostOf = (url: string) => {
  * Every completed result that counts. A request whose result was not read is judged on its shape and on the jobs
  * read so far; its page is read in full, and judged again, before it is shown.
  */
-export function countedOf(items: Countable[]): { counted: Set<string>; reasons: Map<string, string> } {
+export function countedOf(items: Countable[], opts: { firstNamed?: bigint | null } = {}): { counted: Set<string>; reasons: Map<string, string> } {
   const results = items.filter((a) => KINDS.has(a.req.kind));
   const shapes = new Map(results.map((a) => [a.req.requestId, shapeOf(a.req)] as const));
   const ok = new Set(results.filter((a) => shapes.get(a.req.requestId)!.ok).map((a) => a.req.requestId));
-  // The first block at which a job named an instruction file: sources and edits sent before it are older jobs too.
-  const firstNamed = results.filter((a) => { const s = shapes.get(a.req.requestId)!; return s.ok && s.named && a.req.blockNumber !== undefined; }).reduce<bigint | null>((m, a) => (m === null || a.req.blockNumber! < m ? a.req.blockNumber! : m), null);
-  const legacy = new Set(results.filter((a) => shapes.get(a.req.requestId)!.ok === false && (shapes.get(a.req.requestId) as { legacy: boolean }).legacy).map((a) => a.req.requestId));
+  // The first block at which a job named an instruction file (over every request the scan found when the caller
+  // passes it): jobs naming none count as older jobs only when sent before it.
+  const firstNamed = opts.firstNamed !== undefined ? opts.firstNamed : firstNamedBlock(results.map((a) => a.req));
+  const sentBefore = (a: Countable) => a.req.blockNumber === undefined || firstNamed === null || a.req.blockNumber < firstNamed;
+  const legacy = new Set(results.filter((a) => { const s = shapes.get(a.req.requestId)!; return !s.ok && s.legacy && sentBefore(a); }).map((a) => a.req.requestId));
   for (const a of results) {
     const s = shapes.get(a.req.requestId)!;
-    const before = a.req.blockNumber !== undefined && (firstNamed === null || a.req.blockNumber < firstNamed);
-    if (s.ok && !s.named && before) {
+    if (s.ok && !s.named && a.req.blockNumber !== undefined && sentBefore(a)) {
       ok.delete(a.req.requestId);
       legacy.add(a.req.requestId);
     }
@@ -325,37 +399,39 @@ export function countedOf(items: Countable[]): { counted: Set<string>; reasons: 
   for (const r of results) if (r.fileHash) readFor.set(r.req.subject, true);
   const adopted = new Set<string>();
 
-  const holders = (hash: string, subject: string, pool: (id: string) => boolean) => results.filter((x) => x.fileHash === hash && x.req.subject === subject && pool(x.req.requestId));
+  // An earlier result: the file of a job of the same subject, written before this request was sent.
+  const holders = (a: Countable, hash: string, pool: (id: string) => boolean) => results.filter((x) => x !== a && x.fileHash === hash && x.req.subject === a.req.subject && pool(x.req.requestId) && doneBefore(x, a));
   let changed = true;
   while (changed) {
     changed = false;
-    // Rule 4: an older job counts once a counted rebuild of the same subject sent after it lists its result.
+    // Rule 4: an older job counts once a counted rebuild of the same subject, sent after its result, lists it.
     adopted.clear();
     for (const id of legacy) {
       const a = byId.get(id)!;
       if (!a.fileHash) continue;
       const by = results.some((r) => {
         const s = shapes.get(r.req.requestId)!;
-        return ok.has(r.req.requestId) && r.req.kind === "add" && r.req.subject === a.req.subject && s.ok && s.priorHashes.includes(a.fileHash!) && (a.req.blockNumber === undefined || r.req.blockNumber === undefined || r.req.blockNumber > a.req.blockNumber);
+        return r !== a && ok.has(r.req.requestId) && r.req.kind === "add" && r.req.subject === a.req.subject && s.ok && s.priorHashes.includes(a.fileHash!) && doneBefore(a, r);
       });
       if (by) adopted.add(id);
     }
     const counts = (id: string) => ok.has(id) || adopted.has(id);
-    const pages = (subject: string) => results.filter((x) => counts(x.req.requestId) && x.req.kind === "add" && x.req.subject === subject && x.page);
     for (const id of [...ok]) {
       const a = byId.get(id)!;
       const s = shapes.get(id)! as Extract<Shape, { ok: true }>;
       // Every earlier result is the file of a job that counts for the same subject (or that this rebuild adopts).
       const anyRead = readFor.get(a.req.subject) ?? false;
-      const priorsOk = !anyRead || s.priorHashes.every((h) => holders(h, a.req.subject, (x) => counts(x) || (s.kind === "add" && legacy.has(x))).length > 0);
+      const priorsOk = !anyRead || s.priorHashes.every((h) => holders(a, h, (x) => counts(x) || (s.kind === "add" && legacy.has(x))).length > 0);
       const own = domainOfId(a.req.subject);
-      const listed = new Set(pages(a.req.subject).flatMap((p) => p.page!.channels.map((c) => channelKey(c.url))).filter(Boolean));
-      const readPages = pages(a.req.subject).length > 0 || !anyRead;
+      // Accounts a counted page of the subject listed before this request was sent: never the page being checked.
+      const earlier = results.filter((x) => x !== a && counts(x.req.requestId) && x.req.kind === "add" && x.req.subject === a.req.subject && x.page && doneBefore(x, a));
+      const listed = new Set(earlier.flatMap((p) => p.page!.channels.map((c) => channelKey(c.url))).filter(Boolean));
+      const pagesRead = results.some((x) => x.req.subject === a.req.subject && x.req.kind === "add" && x.fileHash);
       const channelsOk = s.channels.every((u) => {
         const h = hostOf(u);
         if (own && h && sameSite(h, own)) return true;
         // Before any page of the subject is read there is nothing to compare an account with yet.
-        if (!anyRead || !results.some((x) => x.req.subject === a.req.subject && x.req.kind === "add" && x.fileHash)) return readPages;
+        if (!anyRead || !pagesRead) return true;
         return listed.has(channelKey(u));
       });
       if (!priorsOk || !channelsOk) {

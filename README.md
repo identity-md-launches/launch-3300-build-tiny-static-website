@@ -720,10 +720,12 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreibsgoc2uanom5lemynhuhoevwi3vmosr3lkmr65bilxwckdrbbk2e?filename=rebuild-bb2a3c8834d1.txt`,
-  sha256 `323385aa01ae67564661a7a1dc4ad91bab1d28ed6a647dd0a177b09438842ad1`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreighufzfe6pvxsbyg32shaqetrm7mb4ouwlb5plgb5mljjmeqjvdqe?filename=changes-cbb133e479ca.txt`,
-  sha256 `c7a1725279f5bc83836f52382049c59f6078ea5961ebd660f58b4a584826a381`
+<!-- instructions:start -->
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreif3fi6iqngr24ornlfmzaocbhz5bt7vj2uqiqzr574aafuwyabwgu?filename=rebuild-bb2a3c8834d1.txt`,
+  sha256 `bb2a3c8834d1d71d16acacc81c209f3d0cff54ea9044331eff8001696c003635`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreiglwez6i6okxkupjk2ayc6drnxbrfso4c5pa53pmv77hg4fqxu6gy?filename=changes-cbb133e479ca.txt`,
+  sha256 `cbb133e479cabaa8f4ab40c0bc38b6e18964ee0baf0776f657ff39b8585e9e36`
+<!-- instructions:end -->
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,
 `bafkreietncj4…ej2cwy`, and the revision 13 pair, `bafkreielvbrs…e5lii` and `bafkreidu62wg…agai`, is

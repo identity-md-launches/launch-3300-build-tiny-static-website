@@ -37,6 +37,7 @@ export const shortJobId = (id: string | null) => (id ? id.slice(0, 8) : "");
 
 interface LineLike {
   id: string;
+  text?: string;
   from?: string[];
   origin?: string;
   also?: string[];
@@ -61,6 +62,25 @@ const same = (x: LineAddress, y: LineAddress) => addressText(x).toLowerCase() ==
  */
 export function originsOf(items: Activity[], latest: Activity | undefined): Map<string, Origin> {
   const out = new Map<string, Origin>();
+  const { inFile, strip } = resolver(items);
+  if (latest) for (const l of latest.page?.lines ?? []) {
+    if (!l.id) continue;
+    const o = inFile(latest, l.id, new Set());
+    if (o) out.set(l.id, strip(o));
+  }
+  // The lines of results not folded in join the record under "<request id>:<id>".
+  for (const a of items) {
+    if (a === latest || !a.fileHash || (!a.changes && !a.sources && !a.edit)) continue;
+    for (const id of localLines(a).keys()) {
+      const o = inFile(a, id, new Set());
+      if (o) out.set(`${a.req.requestId}:${id}`, strip(o));
+    }
+  }
+  return out;
+}
+
+/** Follows lines from file to file: a line's address in the result that produced it, and a ref inside a file. */
+function resolver(items: Activity[]) {
   const byHash = new Map<string, Activity>();
   for (const a of items) if (a.fileHash) byHash.set(a.fileHash, a);
   const byJob = new Map<string, Activity>();
@@ -118,20 +138,79 @@ export function originsOf(items: Activity[], latest: Activity | undefined): Map<
   };
 
   const strip = (o: Timed): Origin => ({ jobId: o.jobId, lineId: o.lineId, tx: o.tx, also: o.also });
-  if (latest) for (const l of latest.page?.lines ?? []) {
-    if (!l.id) continue;
-    const o = inFile(latest, l.id, new Set());
-    if (o) out.set(l.id, strip(o));
+  return { inFile, resolveRef, strip, timeOf };
+}
+
+/** A line of an earlier counted page that the page shown no longer carries, found by its permanent address. */
+export interface HistoricLine {
+  origin: Origin;
+  text: string;
+  /** Why a later rebuild dropped it ("replaced by L11"), or "" when no later page lists it as dropped. */
+  why: string;
+  /** True when the later rebuild says another line replaced it: the line is superseded. */
+  replaced: boolean;
+  /** The line of the record shown now that replaced it, when it can be followed there. */
+  by: string | null;
+  /** The replacing line's own address, kept when the record shown no longer has it either. */
+  byAddress: string | null;
+}
+
+/**
+ * Every line of an earlier counted page (`pages`: counted page jobs, oldest first) whose address no line of the
+ * record shown (`origins`) carries or lists in also. A rebuild that dropped it as "replaced by <id>" makes it
+ * superseded by that line, followed to the record shown when the replacing line was carried on.
+ */
+export function historicLines(items: Activity[], pages: Activity[], latest: Activity | undefined, origins: Map<string, Origin>): Map<string, HistoricLine> {
+  const out = new Map<string, HistoricLine>();
+  const { inFile, resolveRef, strip } = resolver(items);
+  const known = new Set<string>();
+  for (const o of origins.values()) {
+    known.add(addressText(o).toLowerCase());
+    for (const x of o.also) known.add(addressText(x).toLowerCase());
   }
-  // The lines of results not folded in join the record under "<request id>:<id>".
-  for (const a of items) {
-    if (a === latest || !a.fileHash || (!a.changes && !a.sources && !a.edit)) continue;
-    for (const id of localLines(a).keys()) {
-      const o = inFile(a, id, new Set());
-      if (o) out.set(`${a.req.requestId}:${id}`, strip(o));
+  pages.forEach((p, i) => {
+    if (p === latest || !p.page) return;
+    for (const l of p.page.lines) {
+      if (!l.id) continue;
+      const t = inFile(p, l.id, new Set());
+      if (!t) continue;
+      const key = addressText(t).toLowerCase();
+      if (known.has(key) || out.has(key)) continue;
+      let why = "";
+      let by: string | null = null;
+      let byAddress: string | null = null;
+      // The first later page that lists this line in dropped says why.
+      for (const later of pages.slice(i + 1)) {
+        const d = later.page?.dropped.find((x) => {
+          const r = resolveRef(later, x.id, new Set());
+          return !!r && addressText(r).toLowerCase() === key;
+        });
+        if (!d) continue;
+        why = d.why;
+        const m = /replaced by\s+((?:F\d+:)?[A-Za-z]*\d+[\w-]*)/i.exec(d.why);
+        if (m) {
+          const r = resolveRef(later, m[1]!, new Set());
+          if (r) {
+            byAddress = addressText(r);
+            by = lineForAddress(origins, byAddress);
+          }
+        }
+        break;
+      }
+      out.set(key, { origin: strip(t), text: l.text ?? "", why, replaced: /replaced/i.test(why), by, byAddress });
     }
-  }
+  });
   return out;
+}
+
+/** The earlier line an address names, by its own address or one listed in its also. */
+export function historicFor(history: Map<string, HistoricLine>, address: string): HistoricLine | null {
+  const want = address.trim().toLowerCase();
+  if (!want) return null;
+  const hit = history.get(want);
+  if (hit) return hit;
+  for (const h of history.values()) if (h.origin.also.some((x) => addressText(x).toLowerCase() === want)) return h;
+  return null;
 }
 
 /** The record line an address opens: the line whose own origin it is, else a line that lists it in also. */

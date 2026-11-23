@@ -93,7 +93,7 @@ describe("2ee61ab9: a raised proof with a fact stays in the on-chain facts table
   it("the facts table shows the raised-by label on the row", () => {
     const src = readFileSync("src/Record.tsx", "utf8");
     expect(src).toContain("const factRows = all.filter(isFactRow);");
-    expect(src).toMatch(/<span className="block">\{f\.name\}<\/span>\s*<\/span>\s*<\/button>\s*\{row\.origin\?\.raised && <span className="by small block">raised by \{row\.origin\.payer\}<\/span>\}/);
+    expect(src).toMatch(/<span className="block">\{f\.name\}<\/span>\s*<\/span>\s*<\/button>\s*\{row\.origin\?\.raised && <span className="by small block">raised by <PayerLink name=\{row\.origin\.payer\} address=\{row\.origin\.payerAddr\} \/><\/span>\}/);
   });
 });
 

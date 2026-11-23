@@ -301,6 +301,24 @@ export async function fetchResearchPage(r: TaggedRequest, c: Completion, jobIdHi
   throw firstError instanceof Error ? firstError : new Error("The page could not be read");
 }
 
+/**
+ * The SHA-256 a completed job's result lists for one named file, from GET /jobs/:id/result alone: no artifact byte is
+ * read. The gate (counts.ts) checks a job's earlier results and channels with these hashes before its file is read.
+ */
+export async function fetchResultHash(r: TaggedRequest, jobId: string | null, fileName = "page"): Promise<string> {
+  const key = `rh:${fileName}:${r.requestId}`;
+  const cached = cacheGet<string>(key);
+  if (cached) return cached;
+  const done = await kvGet<PageFetch>("files", `${fileName}:${r.requestId}`);
+  if (done?.hash) return done.hash;
+  if (!jobId) throw new Error("The job of this request is not known yet");
+  const result = await getJson<JobResult>(`${API}/jobs/${jobId}/result`);
+  const file = result.files?.find((f) => f.name === fileName);
+  if (!file?.hash || !/^[0-9a-f]{64}$/.test(file.hash)) throw new Error(`The job result has no file named "${fileName}"`);
+  cacheSet(key, file.hash);
+  return file.hash;
+}
+
 export interface OracleRead {
   id: string;
   status: string;

@@ -306,7 +306,7 @@ export interface SentItem {
 
 const JSTR = String.raw`"(?:[^"\\]|\\.)*"`;
 const ITEM = new RegExp(
-  String.raw`\((\d+)\) type: (wrong|context|backing|reword|new_line|links); target: (none|summary sentence (${JSTR})|(?:(F\d+:\S+) )?(key fact |line )?(${JSTR})); note: (none|${JSTR}); links: (none|https:\/\/\S+(?: https:\/\/\S+)*)(?:; suggested final_text: (${JSTR}))?`,
+  String.raw`\((\d+)\) type: (wrong|context|backing|reword|new_line|links); target: (none|summary sentence (${JSTR})|(?:(F\d+:\S+) )?(key fact |line )?(${JSTR})); note: (none|${JSTR}); links: (none|https:\/\/\S+?(?: https:\/\/\S+?)*)(?:; suggested final_text: (${JSTR}))?(?= \(\d+\) type: |$)`,
   "g",
 );
 const unq = (s: string) => {

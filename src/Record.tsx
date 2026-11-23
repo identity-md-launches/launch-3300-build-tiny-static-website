@@ -3,10 +3,10 @@ import { disputedCount, rowPatchListsOf, sentenceDispute, type Dispute, type Dis
 import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
-import { addressText, shortJobId } from "./addresses";
+import { addressText, historicFor, shortJobId } from "./addresses";
 import { explorerAddressUrl } from "./subject";
 import { keyFacts, splitAddresses, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
-import { addHref, lineAddressHref, subjectHref, to } from "./route";
+import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
 import { findSubject, parseLookup, rowMatches, type Findable } from "./lookup";
 import { countLines, countsWords, FILTER_WORDS, filtersFor, GROUP_TONE, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
@@ -80,6 +80,11 @@ const panelAnchor = (a: Activity) => `panel-${a.req.requestId.slice(2, 14)}`;
 /* ---------- Overview ---------- */
 
 /** The small copy icon beside an address: its accessible name says what it copies. */
+/** A requesting wallet, linked to its profile (#/w/<address>) as Activity links it. Plain text without an address. */
+export function PayerLink({ name, address }: { name: string; address?: string | null }) {
+  return address ? <a className="mono" href={walletHref(address)}>{name}</a> : <span className="mono">{name}</span>;
+}
+
 export function CopyIcon({ value, label = "Copy address" }: { value: string; label?: string }) {
   const [done, setDone] = useState(false);
   return (
@@ -670,7 +675,7 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
       {/* An accepted edit keeps its credit, as its own sentence under the key. */}
       {m.edit && (
         <p className="small edit-credit">
-          Edited by <span className="mono">{payerName(m.edit.activity)}</span> and checked by a research job.
+          Edited by <PayerLink name={payerName(m.edit.activity)} address={m.edit.activity.req.payer} /> and checked by a research job.
         </p>
       )}
     </div>
@@ -882,7 +887,7 @@ interface Ctx {
   numbers: Map<string, ListedSource>;
   /** Every line's settle state and the proofs a settled row already shows. */
   settled: { by: Map<string, Settle>; absorbed: Set<string> };
-  research: { payer: string; href: string; time: number | null } | null;
+  research: { payer: string; payerAddr?: string; href: string; time: number | null } | null;
   m: RecordModel;
   ui: Ui;
 }
@@ -919,7 +924,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
   const first = origin?.time ?? (fromTimes.length ? Math.min(...fromTimes) : null) ?? ctx.research?.time ?? null;
   // This row's own earlier origins: those of the lines folded into it are listed with each of them.
   const ownFrom = line.from.filter((f) => !(row.same ?? []).some((o) => o.line.from.includes(f)));
-  const job = origin ? { what: origin.raised ? "A changes job a visitor raised" : "A sources or edit job", payer: origin.payer, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, href: ctx.research.href } : null;
+  const job = origin ? { what: origin.raised ? "A changes job a visitor raised" : "A sources or edit job", payer: origin.payer, payerAddr: origin.payerAddr, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, payerAddr: ctx.research.payerAddr, href: ctx.research.href } : null;
   // Where the line was first written: the job and its line id, a permanent address (addresses.ts).
   const written = ctx.m.origins.get(line.id);
   return (
@@ -1082,7 +1087,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
           <dd>
             {job ? (
               <>
-                {job.what}, paid by <span className="mono">{job.payer}</span>
+                {job.what}, paid by <PayerLink name={job.payer} address={job.payerAddr} />
               </>
             ) : (
               "Unknown"
@@ -1382,7 +1387,7 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
                 {showBy && <span className="by">{line.by}</span>}
               </>
             )}
-            {row.origin?.raised && <span className="by small">raised by {row.origin.payer}</span>}
+            {row.origin?.raised && <span className="by small">raised by <PayerLink name={row.origin.payer} address={row.origin.payerAddr} /></span>}
           </span>
         </button>
         <SourceNumbers keys={line.srcKeys} numbers={ctx.numbers} />
@@ -1434,7 +1439,7 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                       <span className="block">{f.name}</span>
                     </span>
                   </button>
-                  {row.origin?.raised && <span className="by small block">raised by {row.origin.payer}</span>}
+                  {row.origin?.raised && <span className="by small block">raised by <PayerLink name={row.origin.payer} address={row.origin.payerAddr} /></span>}
                   <PendingTag targetKey={target.key} />
                 </th>
                 <td data-label="Value" className="num" title={formatNumbers(f.value) !== f.value ? `Exact: ${f.value}` : undefined}>
@@ -1603,6 +1608,33 @@ function CitedLine({ ctx }: { ctx: Ctx }) {
   const id = ui.highlight;
   const row = id ? m.sections.flatMap((s) => s.rows).find((r) => r.line.id === id) : undefined;
   if (!row) {
+    // A line an earlier counted page wrote and a later rebuild dropped: shown as it was, with what replaced it.
+    const h = ui.address ? historicFor(m.historic, ui.address) : null;
+    if (h) {
+      const byLine = h.by ? m.resolve(h.by) : null;
+      return (
+        <div className="card cited is-addressed" role="status">
+          <p>
+            <strong>Cited line</strong> <span className="mono small break">{ui.address}</span>
+          </p>
+          <p className="cited-text">{h.text}</p>
+          <p className="small">
+            Written in job{" "}
+            <a href={jobLink(h.origin.jobId, h.origin.tx)} target="_blank" rel="noopener noreferrer" className="mono">{shortJobId(h.origin.jobId)}</a>
+          </p>
+          <p>
+            Status today: <strong className={h.replaced ? "cited-outdated" : "cited-none"}>{h.replaced ? "Superseded" : "Not on the page shown now"}</strong>
+            {h.replaced && (h.by || h.byAddress) && (
+              <>
+                {" by "}
+                {h.by ? <a href={to(lineAnchor(h.by))}>{byLine?.text ?? h.by}</a> : <span className="mono">{h.byAddress}</span>}
+              </>
+            )}
+          </p>
+          {h.why && !h.replaced && <p className="small">A later rebuild dropped it: {h.why}</p>}
+        </div>
+      );
+    }
     return (
       <div className="card cited" role="status">
         <p>
@@ -1644,7 +1676,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const ctx: Ctx = {
     settled,
     numbers: new Map(m.sourceList.map((s) => [s.key, s])),
-    research: latest ? { payer: payerName(latest), href: jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash), time: latest.doneTime ?? null } : null,
+    research: latest ? { payer: payerName(latest), payerAddr: latest.req.payer, href: jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash), time: latest.doneTime ?? null } : null,
     m,
     ui,
   };

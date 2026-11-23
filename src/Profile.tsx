@@ -63,6 +63,8 @@ export function Profile({ address, activity }: { address: string; activity: Acti
   const mine = useMemo(() => (activity.items ?? []).filter((a) => a.req.payer.toLowerCase() === addr), [activity.items, addr]);
   // The subjects this wallet touched are read in full, so changes outcomes and refusals show.
   const subjects = useMemo(() => [...new Set(mine.map((a) => a.req.subject))].sort().join("|"), [mine]);
+  // Read again whenever one of this wallet's requests changes state (a pending job completes on the next poll).
+  const states = useMemo(() => mine.map((a) => `${a.req.requestId}:${a.state}`).sort().join("|"), [mine]);
   const [full, setFull] = useState<Map<string, Activity>>(new Map());
   const { readSubject } = activity;
   useEffect(() => {
@@ -74,12 +76,16 @@ export function Profile({ address, activity }: { address: string; activity: Acti
     return () => {
       alive = false;
     };
-  }, [subjects, readSubject]);
-  const rows = mine.map((a) => full.get(a.req.requestId) ?? a).sort((x, y) => (x.req.blockNumber === y.req.blockNumber ? 0 : x.req.blockNumber > y.req.blockNumber ? -1 : 1));
+  }, [subjects, states, readSubject]);
+  // The scan's row gives the state; the full read gives the details (changes outcome) once it is of the same state.
+  const rows = mine.map((a) => { const f = full.get(a.req.requestId); return f && f.state === a.state ? f : a; }).sort((x, y) => (x.req.blockNumber === y.req.blockNumber ? 0 : x.req.blockNumber > y.req.blockNumber ? -1 : 1));
   const counted = new Set(readable(rows).map((a) => a.req.requestId));
-  const kept = rows.reduce((n, a) => n + (a.changes?.items ?? []).filter((i) => i.kept).length, 0);
-  const spent = rows.filter((a) => a.state !== "refused").reduce((n, a) => n + a.req.amount, 0n);
-  const started = rows.filter((a) => profileKind(a) === "new page").length;
+  // A result that is not read (not sent through this record's instructions) adds no page and no kept change.
+  const kept = rows.reduce((n, a) => n + (counted.has(a.req.requestId) ? (a.changes?.items ?? []).filter((i) => i.kept).length : 0), 0);
+  // What the wallet paid: the Intake takes the fee when the request is sent and returns nothing on a refusal (a
+  // refused completion's receipt has no IMD transfer), so every request's amount counts, refused ones included.
+  const spent = rows.reduce((n, a) => n + a.req.amount, 0n);
+  const started = rows.filter((a) => profileKind(a) === "new page" && counted.has(a.req.requestId) && !a.notRead).length;
 
   useEffect(() => {
     document.title = `${ens ?? short(addr)} · On the record (test)`;

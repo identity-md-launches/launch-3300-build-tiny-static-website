@@ -22,7 +22,7 @@ import {
   type Prior,
   type Template,
 } from "./bodies";
-import { OverviewTab, RecordTab, SourcesTab, type Filter, type Ui } from "./Record";
+import { OverviewTab, PayerLink, RecordTab, SourcesTab, type Filter, type Ui } from "./Record";
 import { ActivityList } from "./ActivityList";
 import { Connect, loadWallet, useWalletAccount } from "./walletLazy";
 import { publicClient } from "./reads";
@@ -206,7 +206,7 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
       {rec.snapshot.ok && ask.warning && <p className="warn">{ask.warning}</p>}
       {running ? (
         <p className="running" role="status">
-          A rebuild is running, started {startedAt(running)} by <span className="mono">{payerName(running)}</span>.{" "}
+          A rebuild is running, started {startedAt(running)} by <PayerLink name={payerName(running)} address={running.req.payer} />.{" "}
           <a href={jobLink(running.jobId, running.req.transactionHash)} target="_blank" rel="noopener noreferrer">Follow it</a>
         </p>
       ) : (
@@ -656,7 +656,7 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
             )}
             {blocked ? (
               <p className="running" role="status">
-                A rebuild is running, started {startedAt(running!)} by <span className="mono">{payerName(running!)}</span>.{" "}
+                A rebuild is running, started {startedAt(running!)} by <PayerLink name={payerName(running!)} address={running!.req.payer} />.{" "}
                 <a href={jobLink(running!.jobId, running!.req.transactionHash)} target="_blank" rel="noopener noreferrer">Follow on the explorer</a>
               </p>
             ) : !isConnected ? (
@@ -820,12 +820,31 @@ function SubjectView({ subject, items, allItems, activity, route, onAsk, researc
   useEffect(() => {
     const t = target;
     const el = t ? document.getElementById(t) : null;
-    if (t && !el) return; // not rendered yet: runs again when the record loads
+    const land = (e: HTMLElement) => {
+      e.scrollIntoView?.({ block: "start" });
+      const f = e.querySelector<HTMLElement>(".row-toggle") ?? (e.tabIndex >= 0 || e.hasAttribute("tabindex") ? e : e.querySelector<HTMLElement>("textarea, button, summary, a, input"));
+      if (route.n > 0 || route.address) f?.focus({ preventScroll: true });
+      if (e instanceof HTMLDetailsElement) e.open = true;
+    };
+    if (t && !el) {
+      // Not rendered yet: a line inside a closed section mounts only once the Record opens that section, in a later
+      // render this effect does not see. Land on the row as soon as it is mounted (or give up after 15 seconds).
+      const mo = new MutationObserver(() => {
+        const found = document.getElementById(t);
+        if (!found) return;
+        mo.disconnect();
+        window.clearTimeout(stop);
+        land(found);
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+      const stop = window.setTimeout(() => mo.disconnect(), 15_000);
+      return () => {
+        mo.disconnect();
+        window.clearTimeout(stop);
+      };
+    }
     if (el) {
-      el.scrollIntoView?.({ block: "start" });
-      const f = el.querySelector<HTMLElement>(".row-toggle") ?? (el.tabIndex >= 0 || el.hasAttribute("tabindex") ? el : el.querySelector<HTMLElement>("textarea, button, summary, a, input"));
-      if (route.n > 0) f?.focus({ preventScroll: true });
-      if (el instanceof HTMLDetailsElement) el.open = true;
+      land(el);
     } else if (route.n > 0) {
       window.scrollTo(0, 0);
       document.querySelector<HTMLElement>(".tab h1")?.focus({ preventScroll: true });
