@@ -227,3 +227,14 @@ No tracked capitals, no eyebrows above headings.
 - Controls are at least 44px tall, except the pencil (32px with a pointer, 40px on touch), filter buttons (40px), the Edit button (36px), the Copy button and
   badges (24px) and the summary dots (24px targets).
 - Reduced motion turns off the button press scale and the chevron rotation transition.
+
+## Revision 17 additions (from src/styles.css, end of file)
+
+- **Header link** `.top-link`: "How it works", `--text-nav` (14px), secondary text colour, 44px tall, never wraps; `aria-current="page"` on #/docs turns it to the body text colour.
+- **Wallet menu** `.acct-menu`: Profile (a link to `#/w/<address>`) then Disconnect; both rows are 40px tall, body size, hover `--color-bg-hover`.
+- **Copy icon** `.copy-icon`: 28px square (36px on coarse pointers), no border, secondary colour, an inline 14px SVG; the accessible name says what it copies ("Copy address 0x…"). Used beside token addresses and on the profile address. The text `.copy` button stays for "Copy citation".
+- **Token line** `.tok-line`: flex row with wrap only between parts: `.tok-symbol` bold and nowrap, `.tok-purpose` secondary colour and the only part that wraps inside itself, `.tok-addr` keeps the linked short address and its copy icon together (nowrap), `.tok-chain` a small grey pill (`--text-small`, `--color-bg-hover` background, 999px radius). When every token names the same chain the pill is shown once after the list (`.tok-chain-row`).
+- **Cited line** `.cited`: a card with a 3px accent left border above the Record when it is opened by `#/s/<subject>/l/<job id>:<line id>`; status word coloured green (confirmed), red (contradicted) or amber (superseded). The addressed row (`.row.is-addressed`, `tr.is-addressed`) gets `--color-accent-subtle` and a 3px inset accent bar.
+- **How it works** `.docs`: one 760px column, twelve `h2` sections at `--text-title`; the three kind badges reuse `.kind`; the build diagram `.doc-flow` is a wrapping row of bordered boxes joined by "→", so it stacks on phones.
+- **Profile** `.profile`: address line (short address, copy icon, Etherscan link), then `.totals`, an auto-fit grid of four bordered cells (min 140px, so 2×2 at 390 and one row at desktop) with the value at `--text-title` weight 600, then the request list reusing the Activity `.card.act` rows.
+- The type scale is unchanged: six sizes (`--text-display`, `--text-title`, `--text-heading`, `--text-body`, `--text-nav`, `--text-small`).

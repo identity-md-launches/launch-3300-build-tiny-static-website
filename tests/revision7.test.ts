@@ -1,3 +1,4 @@
+import "./legacy-gate";
 /** Revision 7: the reviewer's findings on the key facts, the record, panel questions, privacy and the README. */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";

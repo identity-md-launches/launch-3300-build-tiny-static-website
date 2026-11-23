@@ -1,3 +1,4 @@
+import "./legacy-gate";
 /**
  * Revision 15: stacked Overview, values entries shown whole (Tokens and Supply), the summary's dot key, the year and
  * identifier rule for numbers, the reader's note and Superseded, imd.site as a suffix, and the new instruction rules.
@@ -163,7 +164,9 @@ describe("A / C6 / E8. the Overview a reader sees", () => {
     expect(html).not.toContain("facts-col");
   });
   it("shows each Tokens entry in full with its address, copy button and explorer link, and Supply as UNI: 1 billion", () => {
-    expect(html).toContain("<strong>UNI</strong>: governance token");
+    expect(html).toContain('<strong class="tok-symbol">UNI</strong><span class="tok-purpose">governance token</span>');
+    expect(html).toContain('class="copy-icon" aria-label="Copy address 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"');
+    expect(html).not.toContain(">Copy address<");
     expect(html).toContain("0x1f98…F984");
     expect(html).toContain(`aria-label="Copy address ${UNI}"`);
     expect(html).toContain(`href="https://etherscan.io/address/${UNI}"`);

@@ -1,3 +1,4 @@
+import "./legacy-gate";
 /**
  * Third revision: the reviewer's findings on the record-has-no-size-limit revision. Each block names the finding
  * id it covers.

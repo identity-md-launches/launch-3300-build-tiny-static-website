@@ -1,3 +1,4 @@
+import "./legacy-gate";
 /**
  * The home queue and cache, stale reasons, the claim badge's host fallback and multi-token values (job 10f2c646),
  * with the reviewer's cases: a failed supporting result, a failed logo, a second scan, panel answers left out of
@@ -229,8 +230,9 @@ describe("Tokens values (436ed92e, 11a41834)", () => {
     );
     expect(keyFacts(q, () => undefined, q.lines).rows[0]!.tokens.map((t) => t.symbol)).toEqual(["GOV", "PAY"]);
     const src = readFileSync("src/Record.tsx", "utf8");
-    expect(src).toContain("<strong>{t.symbol}</strong>");
-    expect(src).toContain("<AddressParts address={t.address} explorer={t.url} />");
+    // One line per token: symbol in bold, purpose, the address linked with a small copy icon (revision 17, E16).
+    expect(src).toContain('<strong className="tok-symbol">{t.symbol}</strong>');
+    expect(src).toContain("<CopyIcon value={t.address} />");
   });
 });
 

@@ -42,76 +42,93 @@ interface LineLike {
   also?: string[];
 }
 
-/** The lines of a completed result by the id the record shows: page lines keep theirs, a job's lines are prefixed. */
-function linesOf(a: Activity): Map<string, LineLike> {
+/** A result's lines by their id in that file (never prefixed: references inside a file name local ids). */
+function localLines(a: Activity): Map<string, LineLike> {
   const out = new Map<string, LineLike>();
-  if (a.page) for (const l of a.page.lines) if (l.id) out.set(l.id, l as LineLike);
-  const jobLines: LineLike[] = a.changes?.data.lines ?? a.sources?.lines ?? a.edit?.data.lines ?? [];
-  for (const l of jobLines) if (l.id) out.set(`${a.req.requestId}:${l.id}`, l);
+  const lines: LineLike[] = a.page?.lines ?? a.changes?.data.lines ?? a.sources?.lines ?? a.edit?.data.lines ?? [];
+  for (const l of lines) if (l.id) out.set(l.id, l);
   return out;
 }
 
+const ARTIFACT_REF = /^(?:https:\/\/api\.imd\.fun\/artifacts\/)?([0-9a-f]{64}):(\S+)$/i;
+type Timed = Origin & { t: number };
+const plain = ({ jobId, lineId, tx }: LineAddress): LineAddress => ({ jobId, lineId, tx });
+const same = (x: LineAddress, y: LineAddress) => addressText(x).toLowerCase() === addressText(y).toLowerCase() && (x.jobId !== null || x.tx === y.tx);
+
 /**
  * Every record line shown now, with its permanent address: page lines by their id, the lines of a sources, edit or
- * changes job as "<request id>:<id>".
+ * changes job as "<request id>:<id>" (the prefix is the record's own key, added only here).
  */
 export function originsOf(items: Activity[], latest: Activity | undefined): Map<string, Origin> {
   const out = new Map<string, Origin>();
   const byHash = new Map<string, Activity>();
   for (const a of items) if (a.fileHash) byHash.set(a.fileHash, a);
-  const cache = new Map<string, Origin | null>();
+  const byJob = new Map<string, Activity>();
+  for (const a of items) if (a.jobId) byJob.set(a.jobId.toLowerCase(), a);
+  const cache = new Map<string, Timed | null>();
+  const timeOf = (a: Activity) => a.doneTime ?? a.time ?? Number(a.req.blockNumber);
 
-  const own = (a: Activity, id: string): Origin => ({ jobId: a.jobId, lineId: id, tx: a.req.transactionHash, also: [] });
-
-  /** The address of line `id` in the result file `a` produced, following its own origin or from refs back. */
-  const inFile = (a: Activity, id: string, seen: Set<string>): Origin | null => {
+  /** The address of line `id` in the result file `a` produced, following its origin or from refs back. */
+  const inFile = (a: Activity, id: string, seen: Set<string>): Timed | null => {
     const key = `${a.req.requestId}|${id}`;
     if (cache.has(key)) return cache.get(key)!;
     if (seen.has(key)) return null;
     seen.add(key);
-    const line = linesOf(a).get(id);
-    let found: Origin | null = null;
+    const line = localLines(a).get(id);
+    let found: Timed | null = null;
     if (line) {
-      const refs = line.origin ? [line.origin] : line.from ?? [];
-      for (const r of refs) {
-        found = resolveRef(a, r, seen);
-        if (found) break;
+      const refs = [...(line.origin ? [line.origin] : line.from ?? []), ...(line.also ?? [])];
+      const all = refs.map((r) => resolveRef(a, r, new Set(seen))).filter((x): x is Timed => !!x);
+      // A merged line keeps the oldest origin and lists the others (and theirs) in also.
+      const sorted = [...all].sort((x, y) => x.t - y.t);
+      const first = sorted[0] ?? { jobId: a.jobId, lineId: line.id, tx: a.req.transactionHash, also: [], t: timeOf(a) };
+      const also: LineAddress[] = [];
+      for (const o of [...sorted.slice(1), ...sorted.flatMap((x) => x.also.map((y) => ({ ...y, also: [], t: 0 })))]) {
+        if (!same(o, first) && !also.some((x) => same(x, o))) also.push(plain(o));
       }
-      if (!found) found = own(a, line.id);
-      const also = (line.also ?? []).map((r) => resolveRef(a, r, new Set(seen))).filter((x): x is Origin => !!x).map(({ also: _a, ...x }) => x);
-      if (also.length) found = { ...found, also: [...found.also, ...also] };
+      for (const o of first.also) if (!same(o, first) && !also.some((x) => same(x, o))) also.push(plain(o));
+      found = { ...plain(first), also, t: first.t };
     }
     cache.set(key, found);
     return found;
   };
 
-  /** A ref inside the file `a` produced: F<n>:<id> of its own <PRIOR>, a job address, or a bare id. */
-  const resolveRef = (a: Activity, ref: string, seen: Set<string>): Origin | null => {
-    const j = JOB_REF.exec(ref.trim());
-    if (j) return { jobId: j[1]!, lineId: j[2]!, tx: "", also: [] };
-    const m = FILE_REF.exec(ref);
+  /** A ref inside the file `a` produced: F<n>:<id> of its own <PRIOR>, a file or job address, or a bare id. */
+  const resolveRef = (a: Activity, ref: string, seen: Set<string>): Timed | null => {
+    const r = ref.trim();
+    const j = JOB_REF.exec(r);
+    if (j) {
+      const job = byJob.get(j[1]!.toLowerCase());
+      if (job && localLines(job).has(j[2]!)) return inFile(job, j[2]!, seen);
+      return { jobId: j[1]!, lineId: j[2]!, tx: "", also: [], t: job ? timeOf(job) : 0 };
+    }
+    const f = ARTIFACT_REF.exec(r);
+    if (f) {
+      const target = byHash.get(f[1]!.toLowerCase());
+      return target ? inFile(target, f[2]!, seen) : null;
+    }
+    const m = FILE_REF.exec(r);
     if (m) {
-      const f = parsePrior(a.req.bodyJson?.objective).files.find((x) => x.n === Number(m[1]));
-      const target = f?.hash ? byHash.get(f.hash) : undefined;
+      const file = parsePrior(a.req.bodyJson?.objective).files.find((x) => x.n === Number(m[1]));
+      const target = file?.hash ? byHash.get(file.hash) : undefined;
       return target ? inFile(target, m[2]!, seen) : null;
     }
-    // A bare id is in this file.
-    return linesOf(a).has(ref) ? inFile(a, ref, seen) : null;
+    // A bare id names a line of this same file.
+    return r !== "" && localLines(a).has(r) && !seen.has(`${a.req.requestId}|${r}`) ? inFile(a, r, seen) : null;
   };
 
-  if (!latest) return out;
-  for (const l of latest.page?.lines ?? []) {
+  const strip = (o: Timed): Origin => ({ jobId: o.jobId, lineId: o.lineId, tx: o.tx, also: o.also });
+  if (latest) for (const l of latest.page?.lines ?? []) {
     if (!l.id) continue;
     const o = inFile(latest, l.id, new Set());
-    if (o) out.set(l.id, o);
+    if (o) out.set(l.id, strip(o));
   }
   // The lines of results not folded in join the record under "<request id>:<id>".
   for (const a of items) {
     if (a === latest || !a.fileHash || (!a.changes && !a.sources && !a.edit)) continue;
-    for (const [id, l] of linesOf(a)) {
+    for (const id of localLines(a).keys()) {
       const o = inFile(a, id, new Set());
-      if (o) out.set(id, o);
-      void l;
+      if (o) out.set(`${a.req.requestId}:${id}`, strip(o));
     }
   }
   return out;

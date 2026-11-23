@@ -3,10 +3,10 @@ import { disputedCount, rowPatchListsOf, sentenceDispute, type Dispute, type Dis
 import { Fragment, useEffect, useState } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
-import { shortJobId } from "./addresses";
+import { addressText, shortJobId } from "./addresses";
 import { explorerAddressUrl } from "./subject";
 import { keyFacts, splitAddresses, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
-import { addHref, subjectHref, to } from "./route";
+import { addHref, lineAddressHref, subjectHref, to } from "./route";
 import { SubjectLogo } from "./Logo";
 import { findSubject, parseLookup, rowMatches, type Findable } from "./lookup";
 import { countLines, countsWords, FILTER_WORDS, filtersFor, GROUP_TONE, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
@@ -51,6 +51,8 @@ export interface Ui {
   routeN?: number;
   /** The record line a permanent address (#/s/<subject>/l/<job id>:<line id>) opened: shown highlighted. */
   highlight?: string;
+  /** The permanent address the route names, when the Record was opened by one. */
+  address?: string;
 }
 
 export function KindMark({ kind }: { kind: string }) {
@@ -77,7 +79,35 @@ const panelAnchor = (a: Activity) => `panel-${a.req.requestId.slice(2, 14)}`;
 
 /* ---------- Overview ---------- */
 
-function Copy({ value, label }: { value: string; label?: string }) {
+/** The small copy icon beside an address: its accessible name says what it copies. */
+export function CopyIcon({ value, label = "Copy address" }: { value: string; label?: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="copy-icon"
+      aria-label={done ? "Copied" : `${label} ${value}`}
+      title={done ? "Copied" : label}
+      onClick={() => {
+        void navigator.clipboard?.writeText(value).then(() => {
+          setDone(true);
+          window.setTimeout(() => setDone(false), 1500);
+        });
+      }}
+    >
+      <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false">
+        {done ? <path d="M4 10.5l4 4 8-9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /> : (
+          <>
+            <rect x="7" y="7" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M4 13V4.5A1.5 1.5 0 0 1 5.5 3H12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
+}
+
+export function Copy({ value, label }: { value: string; label?: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
@@ -154,7 +184,7 @@ function KeyValue({ row }: { row: KeyRow }) {
                   >
                     <span className="mono">{shortHex(t.address)}</span>
                   </a>
-                  <Copy value={t.address} label="Copy address" />
+                  <CopyIcon value={t.address} />
                 </span>
               )}
               {!t.address && t.url && <span className="tok-addr"><ExtLink url={t.url} className="break item-link">{linkText(t.url)}</ExtLink></span>}
@@ -980,13 +1010,20 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
         )}
         {written && (
           <>
-            <dt>Written in job</dt>
+            <dt>First written</dt>
             <dd>
               <a href={jobLink(written.jobId, written.tx)} target="_blank" rel="noopener noreferrer" title={written.jobId ?? written.tx}>
-                {written.jobId ? `${shortJobId(written.jobId)}…` : "open the transaction"}
-              </a>{" "}
-              <span className="small">line {written.lineId}</span>{" "}
+                {written.jobId ? `Written in job ${shortJobId(written.jobId)}` : "Written in a job not yet on the explorer"}
+              </a>
+              <span className="small">, line {written.lineId}</span>
+              {written.jobId && (
+                <>
+                  {" · "}
+                  <a href={lineAddressHref(ctx.m.subject.id, addressText(written))}>Permanent link</a>
+                </>
+              )}
               <Copy value={`${jobLink(written.jobId, written.tx)} line ${written.lineId}`} label="Copy citation" />
+              {written.also.length > 0 && <span className="block small">Also cited as {written.also.map(addressText).join(", ")}</span>}
             </dd>
           </>
         )}
@@ -1387,7 +1424,7 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
           const also = alsoSaidBy(row, ctx);
           return (
             <Fragment key={row.line.id || f.name}>
-              <tr id={anchor} className={`fact-row has-pencil${stale ? " row-outdated" : ""}${disputed ? " row-contradicted" : ""}${open ? " is-open" : ""}`} onClick={onRowClick(toggle)}>
+              <tr id={anchor} className={`fact-row has-pencil${stale ? " row-outdated" : ""}${disputed ? " row-contradicted" : ""}${open ? " is-open" : ""}${ctx.ui.highlight === row.line.id ? " is-addressed" : ""}`} onClick={onRowClick(toggle)}>
                 <th scope="row">
                   <button type="button" className="row-toggle" aria-expanded={open} aria-controls={`${anchor}-d`} onClick={toggle}>
                     <span className="chev" aria-hidden="true" />
@@ -1558,6 +1595,48 @@ function PageUpkeep({ m }: { m: RecordModel }) {
   );
 }
 
+const CITED_WORDS: Record<string, string> = { proven: "Confirmed", contradicted: "Contradicted", outdated: "Superseded", partly: "Partly confirmed", none: "Standing" };
+
+/** The line a permanent address opened: its status today and, when another line settles it, which one. */
+function CitedLine({ ctx }: { ctx: Ctx }) {
+  const { m, ui } = ctx;
+  const id = ui.highlight;
+  const row = id ? m.sections.flatMap((s) => s.rows).find((r) => r.line.id === id) : undefined;
+  if (!row) {
+    return (
+      <div className="card cited" role="status">
+        <p>
+          <strong>Cited line {ui.address}</strong>
+        </p>
+        <p className="small">{m.latest || m.jobs.length ? "This address is not on the record shown now. It may belong to a job this record does not read." : "Reading the record…"}</p>
+      </div>
+    );
+  }
+  const st = ctx.settled.by.get(row.line.id);
+  const state = st?.state ?? "none";
+  const by = state === "proven" ? st!.confirms : state === "contradicted" ? st!.contradicts : state === "outdated" ? st!.outdates : state === "partly" ? st!.partly : [];
+  const settler = by.map((t) => ({ t, line: m.resolve(t) }))[0];
+  const o = m.origins.get(row.line.id);
+  const merged = o && ui.address && addressText(o).toLowerCase() !== ui.address.toLowerCase();
+  return (
+    <div className="card cited" role="status">
+      <p>
+        <strong>Cited line</strong> <span className="mono small break">{ui.address}</span>
+      </p>
+      <p>
+        Status today: <strong className={`cited-${state}`}>{CITED_WORDS[state] ?? "Standing"}</strong>
+        {settler && (
+          <>
+            {" by "}
+            {settler.line ? <a href={to(lineAnchor(settler.line.id))}>{settler.line.text}</a> : <span className="mono">{settler.t}</span>}
+          </>
+        )}
+      </p>
+      {merged && <p className="small">This address was merged into the line below, first written as {addressText(o!)}.</p>}
+    </div>
+  );
+}
+
 export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const { latest, via, sections, counts, page } = m;
   const all = sections.flatMap((s) => s.rows);
@@ -1623,6 +1702,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   return (
     <section className="tab" aria-labelledby="record-tab-title">
       <h1 id="record-tab-title" tabIndex={-1} className="tab-title">Record</h1>
+      {ui.address && <CitedLine ctx={ctx} />}
       {!page && !m.jobs.length ? (
         <div className="card empty">
           <p>No lines yet. Lines appear here once a page job, a sources job or an edit has completed.</p>

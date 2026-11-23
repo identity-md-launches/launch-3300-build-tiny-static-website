@@ -1,3 +1,4 @@
+import "./legacy-gate";
 /**
  * Revision 12, answering an outside review: a set of changes passes the instruction preflight before its pay dialog;
  * wagmi persists nothing (no address in storage) and a silent reconnect is not undone when the provider mounts; the

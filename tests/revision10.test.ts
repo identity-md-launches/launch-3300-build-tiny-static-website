@@ -1,3 +1,4 @@
+import "./legacy-gate";
 /**
  * The tenth revision, answering an outside review: a later source flags a reworded sentence on the assembled
  * Overview; a www tenant of a shared host keeps its own domain; a standalone check stays in Proven when it confirms

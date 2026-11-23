@@ -340,7 +340,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
       <div className="hero">
         <h1 id="home-title" tabIndex={-1}>Look up any crypto project.</h1>
         <p className="lead">
-          See what a project says, what can be proven, and where the two differ. Every line points to its source, and a swarm of independent agents checks each one before it goes in.
+          See what a project says, what can be proven, and where they differ.
         </p>
         <form
           className="lookup"
@@ -429,6 +429,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
 
       <section className="how" aria-labelledby="how-title">
         <h2 id="how-title" className="list-title">How it works</h2>
+        <p className="small"><a href="#/docs">Read how it works in full</a>: the three kinds of line, the cost, how to cite a line and which jobs count.</p>
         <ol className="steps">
           {STEPS.map((s, i) => (
             <li key={s.word} className="step">

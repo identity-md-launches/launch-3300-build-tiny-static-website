@@ -160,12 +160,11 @@ export function ConnectSheet({ autoOpen = false }: { autoOpen?: boolean }) {
 
 /**
  * Connected: a chip with the ENS name or the short address, the Connect button's height. It opens a small menu
- * with Copy address and Disconnect. Escape or a click outside closes it; focus returns to the chip.
+ * with Profile (the wallet's page on this site) and Disconnect. Escape or a click outside closes it; focus returns to the chip.
  */
 export function AccountChip({ address, onDisconnect }: { address: `0x${string}`; onDisconnect: () => void }) {
   const { data: ens } = useEnsName({ address, chainId: CHAIN_ID });
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const chip = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -180,18 +179,12 @@ export function AccountChip({ address, onDisconnect }: { address: `0x${string}`;
     };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
-    box.current?.querySelector<HTMLElement>(".acct-menu button")?.focus();
+    box.current?.querySelector<HTMLElement>(".acct-menu a, .acct-menu button")?.focus();
     return () => {
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
-  const copy = () => {
-    void navigator.clipboard?.writeText(address).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    });
-  };
   return (
     <div className="acct" ref={box} onBlur={(e) => open && !box.current?.contains(e.relatedTarget as Node) && setOpen(false)}>
       <button ref={chip} type="button" className="acct-chip" aria-expanded={open} aria-controls="acct-menu" title={address} onClick={() => setOpen((v) => !v)}>
@@ -201,9 +194,12 @@ export function AccountChip({ address, onDisconnect }: { address: `0x${string}`;
       </button>
       {open && (
         <div className="acct-menu" id="acct-menu">
-          <button type="button" onClick={copy}>
-            {copied ? "Copied" : "Copy address"}
-          </button>
+          <a
+            href={`#/w/${address.toLowerCase()}`}
+            onClick={() => setOpen(false)}
+          >
+            Profile
+          </a>
           <button
             type="button"
             onClick={() => {

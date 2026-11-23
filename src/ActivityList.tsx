@@ -2,6 +2,7 @@
 import { artifactUrl } from "./bodies";
 import { ACTIONS } from "./config";
 import { jobLink, lineAnchor, payerName } from "./format";
+import { walletHref } from "./route";
 import { outcomeOf, outcomeText, tooLargeText, VERDICT_WORDS } from "./page";
 import { isInstructionsUnavailable, STANDING_WORDS, type RecordModel } from "./model";
 import { TEMPLATE_TITLES, type Template } from "./bodies";
@@ -127,7 +128,7 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
       {items && items.length > 0 && (
         <ul className="activity">
           {items.map((a) => {
-            const st = standing(a, shown);
+            const st = a.notRead ? "" : standing(a, shown);
             const onTop = shown.after.some((x) => x.req.requestId === a.req.requestId);
             return (
               <li key={a.req.requestId} className="card act">
@@ -140,6 +141,7 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                   {a.req.action === ACTIONS.oracle && a.state === "completed" && a.oracle ? ` · answer: ${a.oracle.answer ?? "none"} (panel, ${a.oracle.agreed ?? "?"} of ${a.oracle.panelSize ?? "?"} agreed)` : ""}
                 </p>
                 {st && <p className="small">{st}</p>}
+                {a.notRead && <p className="why rejected">{a.notRead}</p>}
                 {a.rejected && (
                   <p className="why rejected">
                     {isInstructionsUnavailable(a.rejected)
@@ -153,7 +155,7 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                   </p>
                 )}
                 {a.req.action === ACTIONS.oracle && <p className="small">{a.req.title || String(a.req.bodyJson?.question ?? "")}</p>}
-                {isEditJob(a.req) && a.edit && (
+                {!a.notRead && isEditJob(a.req) && a.edit && (
                   <ul className="verdicts" aria-label="Each sentence and its verdict">
                     {a.edit.sentences.map((s, i) => {
                       const refs = onTop ? shown.editRefs(a, s.lines, s.verdict) : [];
@@ -208,11 +210,11 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                 {a.sources?.tooLarge ? <p className="warn" role="note">{tooLargeText(a.sources.tooLarge)}</p> : null}
                 {a.sourcesError && <p className="error">Unable to read the result: {a.sourcesError}</p>}
                 <p className="small">
-                  Paid by <span className="mono">{payerName(a)}</span> ·{" "}
+                  Paid by <a className="mono" href={walletHref(a.req.payer)}>{payerName(a)}</a> ·{" "}
                   <a href={jobLink(a.jobId, a.req.transactionHash)} target="_blank" rel="noopener noreferrer">
                     {a.jobId ? "Open on explorer.imd.fun" : "Open the transaction"}
                   </a>
-                  {a.fileHash && (
+                  {a.fileHash && !a.notRead && (
                     <>
                       {" · "}
                       <a href={artifactUrl(a.fileHash)} target="_blank" rel="noopener noreferrer">

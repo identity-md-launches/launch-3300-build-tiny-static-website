@@ -801,3 +801,52 @@ body.has-tray main { padding-bottom: 9rem; }
 .pending-bar { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); background: var(--color-accent-subtle); font-size: var(--text-small); }
 .pending-bar p { margin: 0; overflow-wrap: anywhere; }
 .pending-dot { display: inline-block; width: 8px; height: 8px; margin-inline-end: var(--space-2); border-radius: 50%; background: var(--color-accent-solid); vertical-align: 1px; }
+
+/* Header link to How it works, beside the wallet control. */
+.top-link { font-size: var(--text-nav); color: var(--color-text-secondary); min-height: 44px; display: inline-flex; align-items: center; white-space: nowrap; }
+.top-link[aria-current="page"] { color: var(--color-text); }
+.acct-menu a { min-height: 40px; padding: 0 var(--space-3); border-radius: 6px; color: var(--color-text); text-decoration: none; display: flex; align-items: center; font: 400 var(--text-body) / 1.2 var(--font-sans); }
+@media (hover: hover) { .acct-menu a:hover { background: var(--color-bg-hover); } }
+.acct-menu a:focus-visible { outline-offset: -2px; }
+
+/* The small copy icon beside an address. 32px box, 44px hit area through its padding on touch screens. */
+.copy-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--color-text-secondary); cursor: pointer; flex: none; align-self: center; }
+@media (hover: hover) { .copy-icon:hover { background: var(--color-bg-hover); color: var(--color-text); } }
+@media (pointer: coarse) { .copy-icon { width: 36px; height: 36px; } }
+
+/* Tokens: symbol bold, purpose grey, address link with its copy icon kept together, chain as a small grey tag. */
+.kf-tokens li.tok-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); }
+.tok-symbol { white-space: nowrap; }
+.tok-purpose { color: var(--color-text-secondary); min-width: 0; overflow-wrap: anywhere; }
+.tok-addr { display: inline-flex; align-items: center; gap: 0; white-space: nowrap; }
+.tok-chain { display: inline-block; font-size: var(--text-small); line-height: 1.5; color: var(--color-text-secondary); background: var(--color-bg-hover); border-radius: 999px; padding: 0 var(--space-2); white-space: nowrap; }
+.tok-chain-row { margin: var(--space-1) 0 0; }
+
+/* A line opened by its permanent address. */
+.row.is-addressed, tr.is-addressed > * { background: var(--color-accent-subtle); }
+.row.is-addressed { box-shadow: inset 3px 0 0 var(--color-accent-solid); }
+.cited { margin-bottom: var(--space-4); border-inline-start: 3px solid var(--color-accent-solid); }
+.cited p { margin: 0 0 var(--space-1); }
+.cited-proven { color: var(--green-800); }
+.cited-contradicted { color: var(--red-800); }
+.cited-outdated { color: var(--amber-800); }
+
+/* How it works. */
+.docs { max-width: 760px; }
+.doc-sec { margin-top: var(--space-6); }
+.doc-sec h2 { font-size: var(--text-title); margin: 0 0 var(--space-2); }
+.doc-sec p { margin: 0 0 var(--space-2); }
+.doc-kinds { list-style: none; padding: 0; margin: 0 0 var(--space-2); display: grid; gap: var(--space-2); }
+.doc-kinds .kind { margin-inline-end: var(--space-2); }
+.doc-flow { list-style: none; padding: 0; margin: 0 0 var(--space-3); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.doc-flow li { border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); background: var(--color-bg); }
+.doc-flow li + li::before { content: "→"; color: var(--color-text-secondary); margin-inline-end: var(--space-2); }
+.doc-files { columns: 2 220px; }
+.doc-facts dd { min-width: 0; }
+
+/* Profile. */
+.profile-addr { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: 0 0 var(--space-4); }
+.totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-3); margin: 0 0 var(--space-6); }
+.totals > div { border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: var(--space-3); }
+.totals dt { font-size: var(--text-small); color: var(--color-text-secondary); }
+.totals dd { margin: 0; font-size: var(--text-title); font-weight: 600; }

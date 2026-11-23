@@ -689,7 +689,7 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-323385aa01ae.txt` and `changes-c7a1725279f5.txt`; still served: `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-bb2a3c8834d1.txt` and `changes-cbb133e479ca.txt`; still served: `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
@@ -720,9 +720,9 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreibsgoc2uanom5lemynhuhoevwi3vmosr3lkmr65bilxwckdrbbk2e?filename=rebuild-323385aa01ae.txt`,
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreibsgoc2uanom5lemynhuhoevwi3vmosr3lkmr65bilxwckdrbbk2e?filename=rebuild-bb2a3c8834d1.txt`,
   sha256 `323385aa01ae67564661a7a1dc4ad91bab1d28ed6a647dd0a177b09438842ad1`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreighufzfe6pvxsbyg32shaqetrm7mb4ouwlb5plgb5mljjmeqjvdqe?filename=changes-c7a1725279f5.txt`,
+- changes: `https://ipfs.filebase.io/ipfs/bafkreighufzfe6pvxsbyg32shaqetrm7mb4ouwlb5plgb5mljjmeqjvdqe?filename=changes-cbb133e479ca.txt`,
   sha256 `c7a1725279f5bc83836f52382049c59f6078ea5961ebd660f58b4a584826a381`
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,
@@ -991,3 +991,19 @@ test and the e2e suite brought up to date with items A to E). Earlier details an
 - Where IndexedDB is blocked (some private windows), the site keeps its cache in memory for that visit only.
 - The Rabby "Open in" row opens rabby.io, because Rabby documents no in-app browser link.
 - Payments go to IMD and are not refunded. A refused body is a spent payment.
+
+## Revision 17: which jobs count, permanent line addresses, How it works, profiles, tokens
+
+- **Which jobs count** (`src/counts.ts`): `shapeOf` rebuilds a tagged objective from its parts with the site's own serializers (`priorText` with reconsider marks, `channelList`, `itemsText`) and compares the whole text. Each published hash is bound to its kind (a `rebuild-` file only in a page job, a `changes-` file only in a changes job) and to the address shape the site used while it was current (this site, dweb.link, one filebase address, or filebase plus pinata). `countedOf` then checks that every earlier result is the file of a counted job of the same subject and that channels are the subject's own domain or accounts (host and path) a counted page lists. Older jobs (no instruction file, or a source or edit sent before the first job that names one) count only when a later counted rebuild of the same subject lists their result. `src/useActivity.ts` checks the shape before reading any result bytes; requests that fail carry `notRead` and are left out of the page, sources, counts, digests and the home list; Activity shows "Not read: not sent through this record's instructions" with the explorer link.
+- **Permanent addresses** (`src/addresses.ts`): resolved within each file by its local line ids; a merged line keeps the oldest origin and lists the others in `also`. Line details show "Written in job <short id>", a permanent link and "Copy citation". `#/s/<subject>/l/<job id>:<line id>` opens the Record at that line (section opened, row highlighted, scrolled to) with its status today and the settling line.
+- **How it works** at `#/docs` (`src/Docs.tsx`), linked in the header and the home explainer; price from the live Intake quote, addresses from `src/config.ts`, files from `src/instructions.json` and `src/instructions.published.json`.
+- **Profile** at `#/w/<address>` (`src/Profile.tsx`): wallet menu has Profile and Disconnect; Activity payers link to it. Forward-verified ENS through the existing public RPC, four totals, newest-first requests with kind, subject, state, changes outcome, job and transaction links. Nothing stored.
+- **Tokens row**: bold symbol, grey purpose, linked short address with a copy icon, grey chain tag, one shared tag when every token is on the same chain (a single-chain Chains row now fills the tokens' chain instead of erasing it).
+- **agents.md** has "Which jobs count" and "Citing a line"; regenerate with `npx vite-node scripts/agents-md.ts`.
+
+### Validation for this revision (run on this machine)
+
+- `npm run build` (tsc --noEmit, then vite build): passes; `dist/` rebuilt after the last source change, with all 19 instruction files (`cmp` confirmed `rebuild-bb2a3c8834d1.txt` and `changes-cbb133e479ca.txt` are byte for byte the published files).
+- `npm test` (vitest): 27 files, 390 tests, all passing. `tests/counts.test.ts` covers the gate (changed hash, appended text, inserted text inside an item, a prior from another subject, a rebuild file in a changes job, account-level channels, reconsider marks, legacy adoption, one-address historical files) and line addresses (carried source line, `also`, routes, docs section order). Older suites that build activities with placeholder objectives import `tests/legacy-gate.ts`, which counts every result they pass, so they keep testing the model behaviour they were written for.
+- Design probe (`taste.mjs`): **not run**. Playwright installed under `$TMPDIR`, but Chromium could not launch in this sandbox ("Target page, context or browser has been closed"). No screenshots, rendered measurements or contrast ratios were taken; the 390-wide first screen was not checked visually. The home lead was shortened to one sentence so the lookup moves up.
+- Better Interface review, without a browser: accessibility (copy icon has an accessible name; profile and docs use one `h1` and ordered `h2`s; the wallet menu focuses its first item and closes on Escape), layout (docs column 760px; totals grid auto-fit; token parts nowrap except the purpose), writing (docs in plain short sections, no jargon), typography (no new sizes; six-size scale kept), colours (existing tokens only), UI (the menu link and rows reuse existing control heights). Rendered checks in every domain remain unperformed.

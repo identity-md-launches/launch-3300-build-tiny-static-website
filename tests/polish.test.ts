@@ -199,7 +199,7 @@ describe("layout rules", () => {
   it("shows Disconnect only in the account menu", () => {
     const w = readFileSync("src/wallet.tsx", "utf8");
     expect(w).not.toContain("· Disconnect");
-    expect(w).toMatch(/className="acct-menu"[\s\S]*Copy address[\s\S]*Disconnect/);
+    expect(w).toMatch(/className="acct-menu"[\s\S]*Profile[\s\S]*Disconnect/);
     expect(css).toMatch(/\.acct-chip \{[^}]*min-height: 44px/);
   });
 });

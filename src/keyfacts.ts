@@ -603,8 +603,9 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // Every token with an address links to its block explorer, on its own chain or the single chain named.
       const oneChain = singleChain ? chainsRow!.values?.[0] ?? chainsRow!.value : "";
       for (const t of tokens) if (t.address && !t.url) t.url = explorerAddressUrl(t.address, t.chain || oneChain);
-      // "on <chain>" says nothing when the Chains row names a single chain.
-      if (singleChain) for (const t of tokens) t.chain = "";
+      // A token with no chain of its own is on the single chain the Chains row names; the Tokens row then shows that
+      // chain once, after the list, when every token shares it.
+      if (singleChain) for (const t of tokens) t.chain ||= oneChain;
       const value = isTokens && singleChain && !tokens.length ? withoutChain(r.value, chainsRow!.values?.[0] ?? chainsRow!.value) : r.value;
       return { label: r.label, value, url: r.url, note: "", lines, channel, badge, status, accounts, perAccount, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...(!tokens.length && !accounts.length && r.items?.length ? { items: r.items.map(shownItemOf) } : {}), ...speakersField(badge, lines, sourceUrl) };
     });

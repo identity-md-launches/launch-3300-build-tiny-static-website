@@ -1,3 +1,4 @@
+import "./legacy-gate";
 /** Revision 13: overview order, corrected sentences, pay dialog, wallet storage, speakers, patch history, accounts, line details, instructions. */
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";

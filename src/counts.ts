@@ -1,294 +1,297 @@
 /**
- * Which jobs count (this revision's rule A).
+ * Which jobs count.
  *
  * The site reads a tagged job's result only if its objective is exactly what this site would have written: the
- * template for its kind, naming an instruction file whose sha256 is one this site published (every file under
- * /instructions/, current and past), with nothing before, after or between the filled-in parts. The parts are read
- * back out of the objective and the whole text is rebuilt from them and compared, so a changed hash, text appended
- * after the template, or a prior that is not this subject's fails.
+ * template for its kind, naming an instruction file of that kind whose sha256 is one this site published (every file
+ * under /instructions/, current and past), at the address the site used when that file was current, with nothing
+ * before, after or between the filled-in parts. The parts (subject, earlier results, channels and, for changes, the
+ * numbered items) are read back out of the objective, each is written again with the site's own serializer, and the
+ * whole text is compared.
  *
- * A job sent before instruction files existed has no file to name. It counts only when a later counted rebuild lists
- * its result among its earlier results (rule 4): that is the `legacy` pool below.
+ * The filled-in parts are then checked against the other jobs: the subject is the tag's subject; every earlier result
+ * listed is the result file of a job that itself counts for the same subject; every channel is the subject's own
+ * domain or an account a counted page of the same subject lists (compared as host and path, so two accounts on one
+ * service are two channels).
  *
- * Everything here is pure: the caller hands in the completed results it has read (src/model.ts coreOf).
+ * Jobs sent before instruction files existed (a page or changes job naming none, or a sources or edit job sent before
+ * the first job that names one) count only when a later counted rebuild of the same subject lists their result among
+ * its earlier results.
+ *
+ * Everything here is pure. `shapeOf` needs only the request, so the site checks it before reading any result bytes
+ * (src/useActivity.ts); `countedOf` needs the result hashes and pages of the jobs that passed.
  */
-import { artifactUrl, EDIT_TEMPLATE, fillTemplate, parsePrior, priorText, REBUILD_TEMPLATE, SOURCE_TEMPLATE, sourceObjective, type ChannelTie } from "./bodies";
-import { CHANGES_TEMPLATE } from "./changes";
+import { EDIT_TEMPLATE, fillTemplate, priorText, REBUILD_TEMPLATE, RESEARCH_OBJECTIVE, sourceObjective, RECONSIDER_MARK, type ChannelTie, type Prior } from "./bodies";
+import { CHANGES_TEMPLATE, itemsText, parseItemsText, type Change } from "./changes";
 import { INSTRUCTIONS_FALLBACK_GATEWAY, INSTRUCTIONS_GATEWAY } from "./config";
 import published from "./instructions.published.json";
 import { fetchUrlOf, instructionsOf } from "./instructions";
 import { sameSite } from "./psl";
-import { describeSubject, domainOfId, type SubjectRef } from "./subject";
+import { describeSubject, domainOfId, refFromId } from "./subject";
 
 /** What Activity says about a result that is not read. */
 export const NOT_READ = "Not read: not sent through this record's instructions";
 
-/** Every instruction file this site has published, current and past, with the sha256 its name's first 12 hex give. */
+/** Every instruction file this site has published, current and past. */
 export const PUBLISHED_INSTRUCTIONS: { file: string; sha256: string }[] = published;
 const BY_HASH = new Map(PUBLISHED_INSTRUCTIONS.map((p) => [p.sha256, p] as const));
-
-/** The published file a job names by hash, or null when the hash is not one this site published. */
 export const publishedFile = (sha256: string) => BY_HASH.get(sha256) ?? null;
 
-/** The one shape a rebuild or changes objective names its instruction file in. */
-export interface Named {
-  url: string;
-  fallback: string;
-  sha256: string;
-}
+/**
+ * How the objective named each file while it was current. The first files were named by one address on this site
+ * (2026-11-20 22:26), then by one address on the dweb.link IPNS gateway (23:01), then by one content address on
+ * filebase (2026-11-21 01:36); from 2026-11-21 23:01 every file is named at filebase "or, if that fails," at pinata.
+ */
+type Era = "site" | "dweb" | "filebase" | "two";
+const ERAS: Record<string, Era> = {
+  "rebuild-b280294bd61b.txt": "site",
+  "changes-8400e6bf9d85.txt": "site",
+  "rebuild-aede2eb36737.txt": "dweb",
+  "changes-b1e42e455312.txt": "dweb",
+  "rebuild-8d7dfbc27d07.txt": "filebase",
+  "changes-0571b29e932d.txt": "filebase",
+  "rebuild-ede1a5e23b01.txt": "filebase",
+  "changes-053f706852a0.txt": "filebase",
+};
+const SITE_ADDR = "https://record-test-1.identitymd.eth.limo/instructions/";
+const DWEB_ADDR = "https://record--test--1-identitymd-eth.ipns.dweb.link/instructions/";
+const FALLBACK_CLAUSE = " or, if that fails, at <FALLBACK>";
 
-/** The two addresses the published file is served at, and the file's own name. */
-export function expectedAddresses(sha256: string): { file: string; url: string; fallback: string } | null {
+/** The template a published file was sent with, filled with its addresses and hash; null for an unknown hash. */
+export function templateFor(kind: "add" | "changes", sha256: string): string | null {
   const p = publishedFile(sha256);
-  return p ? { file: p.file, url: fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_GATEWAY), fallback: fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_FALLBACK_GATEWAY) } : null;
+  if (!p || !p.file.startsWith(kind === "add" ? "rebuild-" : "changes-")) return null;
+  const base = kind === "add" ? REBUILD_TEMPLATE : CHANGES_TEMPLATE;
+  const era = ERAS[p.file] ?? "two";
+  const url = era === "site" ? SITE_ADDR + p.file : era === "dweb" ? DWEB_ADDR + p.file : fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_GATEWAY);
+  const t = era === "two" ? base : base.replace(FALLBACK_CLAUSE, "");
+  return fillTemplate(t, { URL: url, FALLBACK: fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_FALLBACK_GATEWAY), HASH: p.sha256 });
 }
 
-/** A channels list as channelList writes it: "https://a (tie: weak), https://b (tie: strong)". */
-const CHANNEL_LINE = /^(https:\/\/[^\s,]+) \(tie: (strong|linked|weak|none)\)$/;
-export function parseChannels(text: string): { list: ChannelTie[]; more: number } | null {
-  const t = text.trim();
-  if (t === "none known") return { list: [], more: 0 };
-  const more = /(?:^|, )and (\d+) more listed in the page shown \(F1\)$/.exec(t);
-  const body = more ? t.slice(0, more.index) : t;
-  if (!body) return { list: [], more: Number(more?.[1] ?? 0) };
-  const list: ChannelTie[] = [];
-  for (const part of body.split(", ")) {
-    const m = CHANNEL_LINE.exec(part);
+/* ---------- The filled-in parts, read back and written again ---------- */
+
+const ARTIFACT = /^https:\/\/api\.imd\.fun\/artifacts\/([0-9a-f]{64})$/;
+const ANSWER = /^([\s\S]+) = ([\s\S]+), (\d+|\?) of (\d+|\?), (\S+)$/;
+
+/** A <PRIOR> text read back: plain files, files to reconsider, panel answers; null when it is not priorText's shape. */
+export function readPrior(text: string): (Prior & { hashes: string[] }) | null {
+  if (text === "none") return { files: [], reconsider: [], answers: [], hashes: [] };
+  const parts = text.split(/; (?=\[[FA]\d+\] )/);
+  const files: string[] = [];
+  const reconsider: string[] = [];
+  const answers: Prior["answers"] = [];
+  let f = 0;
+  let a = 0;
+  for (const part of parts) {
+    const m = /^\[(F|A)(\d+)\] ([\s\S]*)$/.exec(part);
     if (!m) return null;
-    list.push({ url: m[1]!, tie: m[2] as ChannelTie["tie"] });
+    if (m[1] === "F") {
+      if (a > 0 || Number(m[2]) !== ++f) return null;
+      const mark = ` (${RECONSIDER_MARK})`;
+      const re = m[3]!.endsWith(mark);
+      const url = re ? m[3]!.slice(0, -mark.length) : m[3]!;
+      if (!ARTIFACT.test(url)) return null;
+      (re ? reconsider : files).push(url);
+    } else {
+      if (Number(m[2]) !== ++a) return null;
+      const x = ANSWER.exec(m[3]!);
+      if (!x) return null;
+      answers.push({ title: x[1]!, answer: x[2]!, agreed: x[3] === "?" ? null : Number(x[3]), size: x[4] === "?" ? null : Number(x[4]), url: x[5]! });
+    }
   }
+  const all = [...files, ...reconsider];
+  return { files, reconsider, answers, hashes: all.map((u) => ARTIFACT.exec(u)![1]!) };
+}
+
+/** A channels list as channelList writes it. */
+const CHANNEL = /^(https:\/\/[^\s,]+) \(tie: (strong|linked|weak|none)\)$/;
+export function parseChannels(text: string): { list: ChannelTie[]; more: number } | null {
+  if (text === "none known") return { list: [], more: 0 };
+  const more = /(?:^|, and )(\d+) more listed in the page shown \(F1\)$/.exec(text);
+  const body = more ? text.slice(0, more.index) : text;
+  const list: ChannelTie[] = [];
+  if (body)
+    for (const part of body.split(", ")) {
+      const m = CHANNEL.exec(part);
+      if (!m) return null;
+      list.push({ url: m[1]!, tie: m[2] as ChannelTie["tie"] });
+    }
   return { list, more: Number(more?.[1] ?? 0) };
 }
-
 const channelText = (c: { list: ChannelTie[]; more: number }) => {
   const listed = c.list.map((x) => `${x.url} (tie: ${x.tie})`).join(", ");
   if (!c.more) return listed || "none known";
   return `${listed ? `${listed}, and ` : ""}${c.more} more listed in the page shown (F1)`;
 };
 
-/** A numbered links list as numberLinks writes it: "[1] https://a; [2] https://b", or "none". */
-const URLS_RE = /^\[(\d+)\] (https:\/\/\S+?)(?:; |$)/;
-export function parseNumberedUrls(text: string): string[] | null {
-  const t = text.trim();
-  if (t === "none") return [];
-  if (!t) return null;
-  const out: string[] = [];
-  const re = /^\[(\d+)\] (https:\/\/\S+)$/;
-  for (const part of t.split("; ")) {
-    const m = re.exec(part);
-    if (!m || Number(m[1]) !== out.length + 1) return null;
-    out.push(m[2]!);
+/** An <ITEMS> text read back into changes and written again with the site's own serializer (itemsText). */
+export function readItems(text: string, files: number): Change[] | null {
+  const items = parseItemsText(text);
+  if (!items.length) return null;
+  const changes: Change[] = [];
+  for (const [i, it] of items.entries()) {
+    if (it.n !== i + 1) return null;
+    const refs = it.ref ? it.ref.split(",") : [];
+    // A reference names a line of a file the objective lists.
+    if (refs.some((r) => { const m = /^F(\d+):\S+$/.exec(r); return !m || Number(m[1]) < 1 || Number(m[1]) > files; })) return null;
+    const target: Change["target"] =
+      it.targetKind === "none" ? { kind: "none", key: "", lineId: "", text: "" }
+      : it.targetKind === "sentence" ? { kind: "sentence", key: "", lineId: "", text: it.text }
+      : it.targetKind === "keyfact" ? { kind: "keyfact", key: "", lineId: refs[0] ?? "", lineIds: refs, text: it.text }
+      : { kind: "line", key: "", lineId: refs[0] ?? "", text: it.text };
+    if (it.targetKind === "line" && refs.length > 1) return null;
+    changes.push({ id: String(i), type: it.type, target, note: it.note, links: it.links, ...(it.suggest ? { suggest: it.suggest } : {}) });
   }
-  return out.length ? out : null;
+  return itemsText(changes, (id) => id) === text ? changes : null;
 }
 
-/** The text between an anchor and the next, from the end of the objective where visitor text can quote the anchors. */
+/** True when an objective's subject text names the tag's subject (its domain, with or without a main contract). */
+export function subjectMatches(text: string, id: string): boolean {
+  const ref = refFromId(id);
+  if (!ref.domain) return text.toLowerCase() === describeSubject(ref).toLowerCase();
+  if (text === describeSubject(ref)) return true;
+  const m = /^the project at (\S+), whose main contract is (0x[0-9a-fA-F]{40}) on chain (\d{1,12})$/.exec(text);
+  return !!m && m[1] === ref.domain;
+}
+
+/* ---------- One request alone ---------- */
+
+export type Shape =
+  | { ok: true; kind: CountKind; priorHashes: string[]; channels: string[]; named: boolean }
+  | { ok: false; legacy: boolean };
+
+export type CountKind = "add" | "changes" | "source" | "edit";
+const KINDS = new Set(["add", "changes", "source", "edit"]);
+const NO: Shape = { ok: false, legacy: false };
+const LEGACY: Shape = { ok: false, legacy: true };
+
+/** Every index of `needle` in `hay`. */
+const indexes = (hay: string, needle: string) => {
+  const out: number[] = [];
+  for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + 1)) out.push(i);
+  return out;
+};
+
+/**
+ * What a tagged request's objective is, from the request alone: a shape this site writes (with the parts to check
+ * against other jobs), an older objective that counts only when a later counted rebuild adopts its result, or neither.
+ */
+export function shapeOf(req: { subject: string; kind: string; bodyJson: Record<string, unknown> | null }): Shape {
+  const o = req.bodyJson?.objective;
+  if (typeof o !== "string" || !o || !KINDS.has(req.kind)) return NO;
+  const kind = req.kind as CountKind;
+  if (kind === "add" || kind === "changes") {
+    const named = instructionsOf(o);
+    // Sent before instruction files: the first research objective, or an older full template (rule 4).
+    if (!named) return o === RESEARCH_OBJECTIVE || o.startsWith(kind === "add" ? "Write the record page for one subject: " : "A visitor proposes changes to the record of ") ? LEGACY : NO;
+    const t = templateFor(kind, named.sha256);
+    if (!t) return NO;
+    const lead = kind === "add" ? "Write the record page for one subject: " : "Judge a visitor's proposed changes to the record of one subject: ";
+    const after = ". Your full instructions are the file at ";
+    if (!o.startsWith(lead)) return NO;
+    const subject = o.slice(lead.length, o.indexOf(after));
+    if (!subjectMatches(subject, req.subject)) return NO;
+    const t1 = fillTemplate(t, { SUBJECT: subject });
+    const head = t1.slice(0, t1.indexOf("<PRIOR>"));
+    if (!o.startsWith(head)) return NO;
+    const rest = o.slice(head.length);
+    const CH = ". Channels already known: ";
+    const IT = ". The changes: ";
+    for (const p of indexes(rest, CH)) {
+      const prior = readPrior(rest.slice(0, p));
+      if (!prior) continue;
+      if (kind === "changes" && prior.reconsider?.length) continue;
+      const tail = rest.slice(p + CH.length);
+      const splits: [string, string][] = kind === "add" ? (tail.endsWith(".") ? [[tail.slice(0, -1), ""]] : []) : indexes(tail, IT).map((q) => [tail.slice(0, q), tail.slice(q + IT.length)]);
+      for (const [chText, itText] of splits) {
+        const channels = parseChannels(chText);
+        if (!channels) continue;
+        const values: Record<string, string> = { PRIOR: priorText(prior), CHANNELS: channelText(channels) };
+        if (kind === "changes") {
+          if (!itText.endsWith(".") || !readItems(itText.slice(0, -1), prior.files.length)) continue;
+          values.ITEMS = itText.slice(0, -1);
+        }
+        if (fillTemplate(t1, values) === o) return { ok: true, kind, priorHashes: prior.hashes, channels: channels.list.map((c) => c.url), named: true };
+      }
+    }
+    return NO;
+  }
+  if (kind === "source") {
+    const a = "Read each source below and report what it says about ";
+    const b = ". The subject description comes from a visitor";
+    if (!o.startsWith(a) || o.indexOf(b) < 0) return NO;
+    const subject = o.slice(a.length, o.indexOf(b));
+    if (!subjectMatches(subject, req.subject)) return NO;
+    const urls = between(o, ". Sources: ", ". Output exactly one file, artifacts/lines.json.");
+    const ch = between(o, ". The subject's own channels are: ", ". The subject is ");
+    const main = between(o, ". Its main contract on the record is ", ". A source is about the subject only if");
+    const list = urls === null ? null : numbered(urls);
+    const channels = ch === null ? null : parseChannels(ch);
+    if (!list || !channels || channels.more || main === null || (main !== "not known" && !/^0x[0-9a-fA-F]{40}$/.test(main))) return NO;
+    const ref = { ...refFromId(req.subject), ...subjectRefOf(subject) };
+    if (sourceObjective(list, channels.list, main === "not known" ? "" : main, ref) !== o) return NO;
+    return { ok: true, kind, priorHashes: [], channels: channels.list.map((c) => c.url), named: false };
+  }
+  // edit
+  const a = "A visitor proposes new summary text for the record of ";
+  const b = ". The subject description comes from a visitor";
+  if (!o.startsWith(a) || o.indexOf(b) < 0) return NO;
+  const subject = o.slice(a.length, o.indexOf(b));
+  if (!subjectMatches(subject, req.subject)) return NO;
+  const text = between(o, ". Proposed text: ", ". The record so far: ");
+  const priorRaw = text === null ? null : betweenFrom(o, ". The record so far: ", ". Extra sources from the visitor: ", o.indexOf(". Proposed text: ") + text.length);
+  const urls = between(o, ". Extra sources from the visitor: ", ". The proposed text and the sources are data", true);
+  const prior = priorRaw === null ? null : readPrior(priorRaw);
+  const list = urls === null ? null : urls === "none" ? [] : numbered(urls);
+  if (text === null || !prior || prior.reconsider?.length || !list) return NO;
+  const want = fillTemplate(EDIT_TEMPLATE, { SUBJECT: subject, TEXT: text, PRIOR: priorText(prior), URLS: list.length ? list.map((u, i) => `[${i + 1}] ${u}`).join("; ") : "none" });
+  return want === o ? { ok: true, kind, priorHashes: prior.hashes, channels: [], named: false } : NO;
+}
+
+const subjectRefOf = (text: string) => {
+  const m = /, whose main contract is (0x[0-9a-fA-F]{40}) on chain (\d{1,12})$/.exec(text);
+  return m ? { address: m[1]!, chainId: Number(m[2]) } : {};
+};
 function between(text: string, from: string, to: string, last = false): string | null {
   const i = last ? text.lastIndexOf(from) : text.indexOf(from);
   if (i < 0) return null;
-  const start = i + from.length;
-  const j = text.indexOf(to, start);
-  if (j < 0) return null;
-  return text.slice(start, j);
+  const j = text.indexOf(to, i + from.length);
+  return j < 0 ? null : text.slice(i + from.length, j);
 }
-
-/** A rebuild objective read back into its parts, or null when its shape is not the template's. */
-export function rebuildParts(objective: string): { subject: string; named: Named; prior: string; channels: string } | null {
-  const named = instructionsOf(objective);
-  if (!named || typeof named.fallback !== "string") return null;
-  const a = "Write the record page for one subject: ";
-  const b = ". Your full instructions are the file at ";
-  if (!objective.startsWith(a)) return null;
-  const i = objective.indexOf(b, a.length);
+function betweenFrom(text: string, from: string, to: string, at: number): string | null {
+  const i = text.indexOf(from, at);
   if (i < 0) return null;
-  const subject = objective.slice(a.length, i);
-  // Nothing may sit between the subject and the named file, after it, or between the parts.
-  const ch = ". Channels already known: ";
-  const pr = ". Earlier results: ";
-  const k = objective.lastIndexOf(ch);
-  const j = objective.lastIndexOf(pr);
-  if (k < 0 || j < 0 || j + pr.length > k) return null;
-  const prior = objective.slice(j + pr.length, k);
-  let channels = objective.slice(k + ch.length);
-  if (!channels.endsWith(".")) return null;
-  channels = channels.slice(0, -1);
-  return { subject, named: { url: named.url, fallback: named.fallback, sha256: named.sha256 }, prior, channels };
+  const j = text.lastIndexOf(to);
+  return j < i + from.length ? null : text.slice(i + from.length, j);
+}
+function numbered(text: string): string[] | null {
+  if (!text) return null;
+  const out: string[] = [];
+  for (const part of text.split("; ")) {
+    const m = /^\[(\d+)\] (https:\/\/\S+)$/.exec(part);
+    if (!m || Number(m[1]) !== out.length + 1) return null;
+    out.push(m[2]!);
+  }
+  return out;
 }
 
-/** A changes objective read back into its parts. */
-export function changesParts(objective: string): { subject: string; named: Named; prior: string; channels: string; items: string } | null {
-  const named = instructionsOf(objective);
-  if (!named || typeof named.fallback !== "string") return null;
-  const a = "Judge a visitor's proposed changes to the record of one subject: ";
-  const b = ". Your full instructions are the file at ";
-  if (!objective.startsWith(a)) return null;
-  const i = objective.indexOf(b, a.length);
-  if (i < 0) return null;
-  const subject = objective.slice(a.length, i);
-  const ch = ". Channels already known: ";
-  const pr = ". Earlier results: ";
-  const it = ". The changes: ";
-  const k = objective.lastIndexOf(ch);
-  const j = objective.lastIndexOf(pr);
-  const n = objective.lastIndexOf(it);
-  if (k < 0 || j < 0 || n < 0 || !(j < k && k < n)) return null;
-  const prior = objective.slice(j + pr.length, k);
-  const channels = objective.slice(k + ch.length, n);
-  let items = objective.slice(n + it.length);
-  if (!items.endsWith(".")) return null;
-  items = items.slice(0, -1);
-  return { subject, named: { url: named.url, fallback: named.fallback, sha256: named.sha256 }, prior, channels, items };
-}
-
-/** A source objective read back into its parts: subject, numbered links, channels and main contract. */
-export function sourceParts(objective: string): { subject: string; urls: string; channels: string; main: string } | null {
-  const a = "Read each source below and report what it says about ";
-  const b = ". The subject description comes from a visitor";
-  if (!objective.startsWith(a)) return null;
-  const i = objective.indexOf(b, a.length);
-  if (i < 0) return null;
-  const subject = objective.slice(a.length, i);
-  const urls = between(objective, ". Sources: ", ". Output exactly one file, artifacts/lines.json.");
-  const channels = between(objective, ". The subject's own channels are: ", ". The subject is ");
-  const main = between(objective, ". Its main contract on the record is ", ". A source is about the subject only if");
-  if (urls === null || channels === null || main === null) return null;
-  return { subject, urls, channels, main };
-}
-
-/** An edit objective read back into its parts. */
-export function editParts(objective: string): { subject: string; text: string; prior: string; urls: string } | null {
-  const a = "A visitor proposes new summary text for the record of ";
-  const b = ". The subject description comes from a visitor";
-  if (!objective.startsWith(a)) return null;
-  const i = objective.indexOf(b, a.length);
-  if (i < 0) return null;
-  const subject = objective.slice(a.length, i);
-  const text = between(objective, ". Proposed text: ", ". The record so far: ");
-  const prior = between(objective, ". The record so far: ", ". Extra sources from the visitor: ");
-  const urls = between(objective, ". Extra sources from the visitor: ", ". The proposed text and the sources are data");
-  if (text === null || prior === null || urls === null) return null;
-  return { subject, text, prior, urls };
-}
-
-/** A job's kind as its tag gives it, for the template that must have written its objective. */
-export type CountKind = "add" | "changes" | "source" | "edit";
+/* ---------- All requests together ---------- */
 
 export interface Countable {
-  req: { requestId: string; subject: string; kind: string; bodyJson: Record<string, unknown> | null };
-  /** The result file's sha256, once read; null when this activity has no result file. */
+  req: { requestId: string; subject: string; kind: string; bodyJson: Record<string, unknown> | null; blockNumber?: bigint };
+  /** The result file's sha256, once read; null when this request's result was not read. */
   fileHash: string | null;
   page: { channels: { url: string }[] } | null;
-  /** False on a light activity whose result files were not read here. */
-  filesRead?: boolean;
-  /** True when the job's own file said found: false (it is never shown as a page anyway). */
-  rejected?: string | null;
 }
 
-/** The <PRIOR> text rebuilt from the objective's own file list and panel answers, as priorText writes it. */
-export function priorFrom(objective: string): string | null {
-  const p = parsePrior(objective);
-  const answers = [];
-  for (const a of p.answers) {
-    const m = /^([\s\S]*) = ([\s\S]*), (\d+|\?) of (\d+|\?)$/.exec(a.text);
-    if (!m) return null;
-    answers.push({ title: m[1]!, answer: m[2]!, agreed: m[3] === "?" ? null : Number(m[3]), size: m[4] === "?" ? null : Number(m[4]), url: a.url });
+/** A channel compared as host (without www.) and path (without a trailing slash), case-insensitive. */
+export function channelKey(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.hostname.toLowerCase().replace(/^www\./, "")}${u.pathname.replace(/\/+$/, "").toLowerCase()}`;
+  } catch {
+    return "";
   }
-  return priorText({ files: p.files.map((f) => f.url), answers });
 }
-
-const kindOf = (a: Countable): CountKind | null => (a.req.kind === "add" || a.req.kind === "changes" || a.req.kind === "source" || a.req.kind === "edit" ? a.req.kind : null);
-
-/** The whole objective rebuilt from its own parts, for comparison with the objective the job carries. */
-function rebuilt(a: Countable, ref: SubjectRef): string | null {
-  const o = a.req.bodyJson?.objective;
-  if (typeof o !== "string" || !o) return null;
-  const kind = kindOf(a);
-  if (kind === "add") {
-    const p = rebuildParts(o);
-    if (!p) return null;
-    if (!namedIsPublished(p.named)) return null;
-    const channels = parseChannels(p.channels);
-    if (!channels) return null;
-    const prior = priorFrom(o);
-    if (prior === null) return null;
-    return fillTemplate(REBUILD_TEMPLATE, { SUBJECT: p.subject, URL: p.named.url, FALLBACK: p.named.fallback, HASH: p.named.sha256, PRIOR: prior, CHANNELS: channelText(channels) });
-  }
-  if (kind === "changes") {
-    const p = changesParts(o);
-    if (!p) return null;
-    if (!namedIsPublished(p.named)) return null;
-    const channels = parseChannels(p.channels);
-    if (!channels) return null;
-    const prior = priorFrom(o);
-    if (prior === null) return null;
-    return fillTemplate(CHANGES_TEMPLATE, { SUBJECT: p.subject, URL: p.named.url, FALLBACK: p.named.fallback, HASH: p.named.sha256, PRIOR: prior, CHANNELS: channelText(channels), ITEMS: p.items });
-  }
-  if (kind === "source") {
-    const p = sourceParts(o);
-    if (!p) return null;
-    const urls = parseNumberedUrls(p.urls);
-    const channels = parseChannels(p.channels);
-    if (!urls || !channels) return null;
-    if (p.main !== "not known" && !/^0x[0-9a-fA-F]{40}$/.test(p.main)) return null;
-    return sourceObjective(urls, channels.list, p.main === "not known" ? "" : p.main, ref);
-  }
-  if (kind === "edit") {
-    const p = editParts(o);
-    if (!p) return null;
-    const urls = parseNumberedUrls(p.urls);
-    if (!urls) return null;
-    const prior = priorFrom(o);
-    if (prior === null) return null;
-    return fillTemplate(EDIT_TEMPLATE, { SUBJECT: p.subject, TEXT: p.text, PRIOR: prior, URLS: urls.length ? urls.map((u, i) => `[${i + 1}] ${u}`).join("; ") : "none" });
-  }
-  return null;
-}
-
-/** True when the objective names one of this site's published instruction files, at its own addresses. */
-function namedIsPublished(n: Named): boolean {
-  const want = expectedAddresses(n.sha256);
-  if (!want) return false;
-  return n.url === want.url && n.fallback === want.fallback;
-}
-
-/** The subject description an objective must carry for a tag subject. */
-const subjectText = (ref: SubjectRef) => describeSubject(ref);
-
-/** The parts a rebuild or changes objective fills in, as read back; used for the subject and prior checks. */
-export interface Parts {
-  subject: string;
-  hasInstruction: boolean;
-  priorHashes: string[];
-  channelUrls: string[];
-}
-
-export function partsOf(o: string, kind: CountKind): Parts | null {
-  if (kind === "add") {
-    const p = rebuildParts(o);
-    if (!p) return null;
-    const ch = parseChannels(p.channels);
-    return { subject: p.subject, hasInstruction: true, priorHashes: parsePrior(o).files.map((f) => f.hash).filter(Boolean), channelUrls: (ch?.list ?? []).map((c) => c.url) };
-  }
-  if (kind === "changes") {
-    const p = changesParts(o);
-    if (!p) return null;
-    const ch = parseChannels(p.channels);
-    return { subject: p.subject, hasInstruction: true, priorHashes: parsePrior(o).files.map((f) => f.hash).filter(Boolean), channelUrls: (ch?.list ?? []).map((c) => c.url) };
-  }
-  if (kind === "edit") {
-    const p = editParts(o);
-    if (!p) return null;
-    return { subject: p.subject, hasInstruction: false, priorHashes: parsePrior(o).files.map((f) => f.hash).filter(Boolean), channelUrls: [] };
-  }
-  const p = sourceParts(o);
-  if (!p) return null;
-  const ch = parseChannels(p.channels);
-  return { subject: p.subject, hasInstruction: false, priorHashes: [], channelUrls: (ch?.list ?? []).map((c) => c.url) };
-}
-
-/** True when a job's objective names an instruction file at all (the scheme introduced on 2026-11-21). */
-export const namesInstructionFile = (o: unknown) => instructionsOf(o) !== null;
-
 const hostOf = (url: string) => {
   try {
     return new URL(url).hostname.toLowerCase();
@@ -298,106 +301,71 @@ const hostOf = (url: string) => {
 };
 
 /**
- * Every completed result that counts, with why the others do not. A result the site has not read yet (its file hash
- * unknown) is counted only on its objective's shape: the page it builds is read in full before it is shown.
+ * Every completed result that counts. A request whose result was not read is judged on its shape and on the jobs
+ * read so far; its page is read in full, and judged again, before it is shown.
  */
-export function countedOf(items: Countable[], refFor: (id: string) => SubjectRef): { counted: Set<string>; reasons: Map<string, string> } {
-  const results = items.filter((a) => kindOf(a) !== null);
-  const reasons = new Map<string, string>();
-  const ok = new Set<string>();
-  const legacy = new Set<string>();
-  const parts = new Map<string, Parts>();
-
+export function countedOf(items: Countable[]): { counted: Set<string>; reasons: Map<string, string> } {
+  const results = items.filter((a) => KINDS.has(a.req.kind));
+  const shapes = new Map(results.map((a) => [a.req.requestId, shapeOf(a.req)] as const));
+  const ok = new Set(results.filter((a) => shapes.get(a.req.requestId)!.ok).map((a) => a.req.requestId));
+  // The first block at which a job named an instruction file: sources and edits sent before it are older jobs too.
+  const firstNamed = results.filter((a) => { const s = shapes.get(a.req.requestId)!; return s.ok && s.named && a.req.blockNumber !== undefined; }).reduce<bigint | null>((m, a) => (m === null || a.req.blockNumber! < m ? a.req.blockNumber! : m), null);
+  const legacy = new Set(results.filter((a) => shapes.get(a.req.requestId)!.ok === false && (shapes.get(a.req.requestId) as { legacy: boolean }).legacy).map((a) => a.req.requestId));
   for (const a of results) {
-    const id = a.req.requestId;
-    const kind = kindOf(a)!;
-    const o = a.req.bodyJson?.objective;
-    const ref = refFor(a.req.subject);
-    if (typeof o !== "string" || !o) {
-      reasons.set(id, NOT_READ);
-      continue;
+    const s = shapes.get(a.req.requestId)!;
+    const before = a.req.blockNumber !== undefined && (firstNamed === null || a.req.blockNumber < firstNamed);
+    if (s.ok && !s.named && before) {
+      ok.delete(a.req.requestId);
+      legacy.add(a.req.requestId);
     }
-    const p = partsOf(o, kind);
-    if (!p) {
-      reasons.set(id, NOT_READ);
-      continue;
-    }
-    // A page or changes job sent before instruction files: counted only through a later counted rebuild (rule 4).
-    if (p.hasInstruction === false && (kind === "add" || kind === "changes")) {
-      legacy.add(id);
-      continue;
-    }
-    const want = rebuilt(a, ref);
-    if (want === null || want !== o) {
-      reasons.set(id, NOT_READ);
-      continue;
-    }
-    if (p.subject !== subjectText(ref)) {
-      reasons.set(id, NOT_READ);
-      continue;
-    }
-    parts.set(id, p);
-    ok.add(id);
   }
+  const byId = new Map(results.map((a) => [a.req.requestId, a] as const));
+  // Whether any result of a subject was read: a light read (home list) cannot check references either way.
+  const readFor = new Map<string, boolean>();
+  for (const r of results) if (r.fileHash) readFor.set(r.req.subject, true);
+  const adopted = new Set<string>();
 
-  const byHash = new Map<string, Countable[]>();
-  for (const a of results) if (a.fileHash) byHash.set(a.fileHash, [...(byHash.get(a.fileHash) ?? []), a]);
-  const fileOf = (a: Countable) => a.fileHash;
-
-  // A prior must be a result file of a job that counts for the same subject. A job whose own file is not read yet
-  // (light activity) is not evidence either way: its result is read before its page is shown.
-  const priorOk = (a: Countable, p: Parts) => {
-    // A light scan has read no result files at all: a prior cannot be checked either way until they are read.
-    if (results.every((r) => !r.fileHash)) return true;
-    for (const h of p.priorHashes) {
-      const hit = (byHash.get(h) ?? []).filter((x) => ok.has(x.req.requestId) && x.req.subject === a.req.subject);
-      if (!hit.length) return false;
-    }
-    return true;
-  };
-  const channelOk = (a: Countable, p: Parts, pages: Countable[]) => {
-    if (!p.channelUrls.length) return true;
-    const own = domainOfId(a.req.subject);
-    const listed = new Set(pages.flatMap((x) => (x.page?.channels ?? []).map((c) => hostOf(c.url))).filter(Boolean));
-    return p.channelUrls.every((u) => {
-      const h = hostOf(u);
-      return !!h && ((own && sameSite(h, own)) || listed.has(h));
-    });
-  };
-
+  const holders = (hash: string, subject: string, pool: (id: string) => boolean) => results.filter((x) => x.fileHash === hash && x.req.subject === subject && pool(x.req.requestId));
   let changed = true;
   while (changed) {
     changed = false;
-    const pages = results.filter((x) => ok.has(x.req.requestId) && x.req.kind === "add");
-    for (const a of [...ok]) {
-      const p = parts.get(a)!;
-      const item = results.find((x) => x.req.requestId === a)!;
-      if (!priorOk(item, p) || !channelOk(item, p, pages)) {
-        ok.delete(a);
-        reasons.set(a, NOT_READ);
-        changed = true;
-      }
+    // Rule 4: an older job counts once a counted rebuild of the same subject sent after it lists its result.
+    adopted.clear();
+    for (const id of legacy) {
+      const a = byId.get(id)!;
+      if (!a.fileHash) continue;
+      const by = results.some((r) => {
+        const s = shapes.get(r.req.requestId)!;
+        return ok.has(r.req.requestId) && r.req.kind === "add" && r.req.subject === a.req.subject && s.ok && s.priorHashes.includes(a.fileHash!) && (a.req.blockNumber === undefined || r.req.blockNumber === undefined || r.req.blockNumber > a.req.blockNumber);
+      });
+      if (by) adopted.add(id);
     }
-    // Rule 4: a job without an instruction file counts once a counted rebuild lists its result.
-    for (const a of results) {
-      if (!legacy.has(a.req.requestId) || !fileOf(a)) continue;
-      const hash = a.fileHash!;
-      const listed = results.some(
-        (r) => ok.has(r.req.requestId) && r.req.kind === "add" && r.req.subject === a.req.subject && parsePrior(r.req.bodyJson?.objective).files.some((f) => f.hash === hash),
-      );
-      if (listed) {
-        legacy.delete(a.req.requestId);
-        ok.add(a.req.requestId);
-        const p = partsOf(String(a.req.bodyJson?.objective ?? ""), kindOf(a)!);
-        if (p) parts.set(a.req.requestId, p);
-        reasons.delete(a.req.requestId);
+    const counts = (id: string) => ok.has(id) || adopted.has(id);
+    const pages = (subject: string) => results.filter((x) => counts(x.req.requestId) && x.req.kind === "add" && x.req.subject === subject && x.page);
+    for (const id of [...ok]) {
+      const a = byId.get(id)!;
+      const s = shapes.get(id)! as Extract<Shape, { ok: true }>;
+      // Every earlier result is the file of a job that counts for the same subject (or that this rebuild adopts).
+      const anyRead = readFor.get(a.req.subject) ?? false;
+      const priorsOk = !anyRead || s.priorHashes.every((h) => holders(h, a.req.subject, (x) => counts(x) || (s.kind === "add" && legacy.has(x))).length > 0);
+      const own = domainOfId(a.req.subject);
+      const listed = new Set(pages(a.req.subject).flatMap((p) => p.page!.channels.map((c) => channelKey(c.url))).filter(Boolean));
+      const readPages = pages(a.req.subject).length > 0 || !anyRead;
+      const channelsOk = s.channels.every((u) => {
+        const h = hostOf(u);
+        if (own && h && sameSite(h, own)) return true;
+        // Before any page of the subject is read there is nothing to compare an account with yet.
+        if (!anyRead || !results.some((x) => x.req.subject === a.req.subject && x.req.kind === "add" && x.fileHash)) return readPages;
+        return listed.has(channelKey(u));
+      });
+      if (!priorsOk || !channelsOk) {
+        ok.delete(id);
         changed = true;
       }
     }
   }
-  for (const a of results) if (!ok.has(a.req.requestId) && !reasons.has(a.req.requestId)) reasons.set(a.req.requestId, NOT_READ);
-  return { counted: ok, reasons };
+  const counted = new Set([...ok, ...adopted]);
+  const reasons = new Map<string, string>();
+  for (const a of results) if (!counted.has(a.req.requestId)) reasons.set(a.req.requestId, NOT_READ);
+  return { counted, reasons };
 }
-
-/** The artifact URL of a result file, or "" — the form a prior lists. */
-export const resultUrl = (hash: string | null) => (hash ? artifactUrl(hash) : "");

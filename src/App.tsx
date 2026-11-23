@@ -26,7 +26,7 @@ import { OverviewTab, RecordTab, SourcesTab, type Filter, type Ui } from "./Reco
 import { ActivityList } from "./ActivityList";
 import { Connect, loadWallet, useWalletAccount } from "./walletLazy";
 import { publicClient } from "./reads";
-import { isChangesJob, rememberSent, sentTxs, useActivity } from "./useActivity";
+import { isChangesJob, readable, rememberSent, sentTxs, useActivity } from "./useActivity";
 import { holdFocus } from "./modal";
 import { followAdmission, rpcReceipt, waitForReceipt, type ReceiptRead } from "./receipt";
 import { Payment, type PayStep } from "./payFlow";
@@ -35,8 +35,11 @@ import { InstructionsBlock } from "./Instructions";
 import { INSTRUCTIONS_UNREACHABLE, instructionsOf, instructionsReachable, type InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
 import { jobLink, lineAnchor, payerName } from "./format";
+import { lineForAddress } from "./addresses";
 import { readDate } from "./dates";
-import { TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, to } from "./route";
+import { DOCS_HREF, TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, to } from "./route";
+import { Docs } from "./Docs";
+import { Profile } from "./Profile";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
 import { Home, OutdatedNote, StillReading } from "./Home";
 import { useDigests } from "./digest";
@@ -761,7 +764,7 @@ function useRoute() {
   return route;
 }
 
-function SubjectView({ subject, items, activity, route, onAsk, researchPrice, researchQuote, subjects, readingFiles, sent, jobs }: {
+function SubjectView({ subject, items, allItems, activity, route, onAsk, researchPrice, researchQuote, subjects, readingFiles, sent, jobs }: {
   readingFiles: boolean;
   jobs: SentJobs;
   /** Requests sent from this page this visit, for the pending state. */
@@ -770,6 +773,8 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, re
   /** Every subject on the site, so Related can link to the ones that have a page here. */
   subjects: Findable[];
   items: Activity[] | null;
+  /** Every request of the subject, also those not read: Activity lists them with the reason. */
+  allItems: Activity[] | null;
   activity: ReturnType<typeof useActivity>;
   route: ReturnType<typeof useRoute>;
   onAsk: (a: Ask) => void;
@@ -800,12 +805,20 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, re
     if (location.hash === h) dispatchEvent(new HashChangeEvent("hashchange"));
     else location.hash = h;
   }, [alias]);
-  const ui: Ui = { filter, setFilter, openSet, toggle, openLines, target: route.target, routeN: route.n };
+  // A permanent address (#/s/<subject>/l/<job id>:<line id>) opens the line whose origin it is, or the merged line
+  // that lists it in also, through the Record's own line target: its section opens and the row is highlighted.
+  const addressed = useMemo(() => {
+    if (!route.address) return null;
+    const id = lineForAddress(rec.origins, route.address);
+    return id ? alias.get(id) ?? id : null;
+  }, [route.address, rec.origins, alias]);
+  const target = route.address ? (addressed ? lineAnchor(addressed) : null) : route.target;
+  const ui: Ui = { filter, setFilter, openSet, toggle, openLines, target, routeN: route.n, highlight: addressed ?? undefined, address: route.address };
 
   // After a link: scroll to its target once it exists, else to the top of the tab; move focus there.
   const lines = rec.sections.length;
   useEffect(() => {
-    const t = route.target;
+    const t = target;
     const el = t ? document.getElementById(t) : null;
     if (t && !el) return; // not rendered yet: runs again when the record loads
     if (el) {
@@ -817,7 +830,7 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, re
       window.scrollTo(0, 0);
       document.querySelector<HTMLElement>(".tab h1")?.focus({ preventScroll: true });
     }
-  }, [route, lines, rec.page]);
+  }, [route, target, lines, rec.page]);
 
   const name = rec.page?.name || subject;
   useEffect(() => {
@@ -838,7 +851,7 @@ function SubjectView({ subject, items, activity, route, onAsk, researchPrice, re
       {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} subjects={subjects} chainError={activity.error} retrying={activity.retrying} readingFiles={readingFiles} />}
       {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
       {route.tab === "sources" && <SourcesTab m={rec} />}
-      {route.tab === "activity" && <ActivityList {...activity} items={items} shown={rec} subject={subject} />}
+      {route.tab === "activity" && <ActivityList {...activity} items={allItems} shown={rec} subject={subject} />}
       {route.tab === "contribute" && <ContributeTab onAsk={onAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} />}
       <TrayBar rec={rec} quote={researchQuote} onAsk={onAsk} />
     </SuggestProvider>
@@ -898,19 +911,22 @@ export default function App() {
   }, []);
   const researchQuote = usePrice(ACTIONS.research);
   const researchPrice = researchQuote.text;
-  const { digests, logos, reading, failed, busy, retry } = useDigests(activity.items, subject ?? null, activity.readSubject);
+  // Requests not sent through this record's instructions are left out of every view but Activity (counts.ts).
+  const counted = useMemo(() => (activity.items ? readable(activity.items) : null), [activity.items]);
+  const { digests, logos, reading, failed, busy, retry } = useDigests(counted, subject ?? null, activity.readSubject);
   if (subject) setLinkSubject(subject);
   // A subject's page waits until its result files are read: until then its requests are the home list's light ones.
-  const items = useMemo(() => {
+  const allItems = useMemo(() => {
     if (activity.items === null || !subject) return activity.items;
     const mine = activity.items.filter((a) => a.req.subject === subject);
-    return mine.every((a) => a.filesRead !== false) ? mine : null;
+    return mine.every((a) => a.filesRead !== false || a.notRead) ? mine : null;
   }, [activity.items, subject]);
+  const items = useMemo(() => (allItems ? readable(allItems) : allItems), [allItems]);
   const readingFiles = !!subject && activity.items !== null && items === null;
-  const subjects = useMemo<Findable[]>(() => subjectSummaries(activity.items ?? [], digests, logos).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts })), [activity.items, digests, logos]);
+  const subjects = useMemo<Findable[]>(() => subjectSummaries(counted ?? [], digests, logos).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts })), [activity.items, digests, logos]);
   useEffect(() => {
-    if (!subject) document.title = "On the record (test)";
-  }, [subject]);
+    if (!subject && !route.docs && !route.wallet) document.title = "On the record (test)";
+  }, [subject, route.docs, route.wallet]);
 
   /** The home form: the Rebuild dialog for that subject, starting from its record when it already has one. */
   const addProject = (input: { domain: string; address: string; chain: string }): string | null => {
@@ -919,7 +935,7 @@ export default function App() {
     // A failed read leaves no earlier files to start from; never offer a paid rebuild on an unknown record.
     if (activity.error) return CHAIN_READ_BLOCK;
     const typed = refFromInput(input);
-    const mine = activity.items.filter((a) => a.req.subject === typed.id);
+    const mine = readable(activity.items).filter((a) => a.req.subject === typed.id);
     const known = subjectRefFor(typed.id, mine, null);
     const ref: SubjectRef = typed.address ? typed : known;
     const busyWith = pendingRebuildOf(mine);
@@ -939,14 +955,19 @@ export default function App() {
       <header className="top">
         <div className="top-row">
           <a className="brand" href="#/">On the record <span className="brand-test">(test)</span></a>
+          <a className="top-link" href={DOCS_HREF} aria-current={route.docs ? "page" : undefined}>How it works</a>
           <Connect />
         </div>
       </header>
       <main id="root-main" tabIndex={-1}>
-        {subject ? (
-          <SubjectView key={subject} sent={sent} jobs={jobs} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} activity={activity} route={route} onAsk={openAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
+        {route.docs ? (
+          <Docs quote={researchQuote} />
+        ) : route.wallet ? (
+          <Profile key={route.wallet} address={route.wallet} activity={activity} />
+        ) : subject ? (
+          <SubjectView key={subject} sent={sent} jobs={jobs} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} allItems={allItems} activity={activity} route={route} onAsk={openAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
         ) : (
-          <Home key={route.add ?? ""} items={activity.items} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
+          <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
         )}
         <footer className="about">
           <p>About: a test. Payments go to IMD and are not refunded. Every line comes from a paid job or panel answer on Ethereum.</p>

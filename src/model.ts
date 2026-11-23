@@ -179,7 +179,7 @@ export interface Core {
 export type HistoryReads = Map<string, PriorLines[]>;
 
 /** Every completed result with whether it counts, for a subject's own page: the full files are read there. */
-const counting = (items: Activity[]) => countedOf(items as never, (id) => subjectRefFor(id, items, null));
+const counting = (items: Activity[]) => countedOf(items);
 
 export function coreOf(items: Activity[], history?: HistoryReads, counted?: Set<string>): Core {
   const count = counted ?? counting(items).counted;
@@ -670,6 +670,8 @@ export function subjectSummaries(items: Activity[], digests: Map<string, Digest>
 
 export interface RecordModel {
   subject: SubjectRef;
+  /** Each record line's permanent address, by the id the record shows it under (addresses.ts). */
+  origins: Map<string, Origin>;
   latest: Activity | undefined;
   /** The newest completed job whose file said found: false, with its notes; shown on Overview when there is no page. */
   rejected: Activity | undefined;
@@ -944,6 +946,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   const channels = channelTies(page);
   return {
     subject,
+    origins: core.origins,
     latest,
     rejected: rejectedOf(items ?? []).at(-1),
     page,

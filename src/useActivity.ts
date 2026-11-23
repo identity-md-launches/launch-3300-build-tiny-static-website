@@ -14,6 +14,7 @@ import { ACTIONS } from "./config";
 import { parseChanges, parseEdit, parseLines, parsePage, rejectionOf, type ChangesResult, type EditResult, type Page, type SourceLines } from "./page";
 import { publicClient } from "./reads";
 import { domainOfId } from "./subject";
+import { countedOf, NOT_READ, shapeOf } from "./counts";
 
 export interface Activity {
   req: TaggedRequest;
@@ -58,6 +59,11 @@ export interface Activity {
    * without its files; only the open subject's requests are read in full. Undefined counts as read.
    */
   filesRead?: boolean;
+  /**
+   * Set when the request was not sent through this record's published instructions (src/counts.ts): it is shown in
+   * Activity only, with this reason, and never becomes the page, adds lines, sources or counts.
+   */
+  notRead?: string | null;
 }
 
 export const isSourceJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "source";
@@ -144,7 +150,12 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, wi
   let logo: string | null = null;
   let logoError: string | null = null;
   let logoHash: string | null = null;
-  const hasFiles = (isSourceJob(req) || isEditJob(req) || isPageJob(req) || isChangesJob(req)) && state === "completed" && !!completion;
+  const research = isSourceJob(req) || isEditJob(req) || isPageJob(req) || isChangesJob(req);
+  // The objective is checked before any result byte is read: a job not sent through this record's instructions is
+  // never fetched (an older job that a later rebuild may adopt still is: its file hash is what that rebuild lists).
+  const shape = research ? shapeOf(req) : null;
+  const notRead = shape && !shape.ok && !shape.legacy ? NOT_READ : null;
+  const hasFiles = research && !notRead && state === "completed" && !!completion;
   if (hasFiles && withFiles && completion) {
     const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : isChangesJob(req) ? "changes" : "lines";
     try {
@@ -179,7 +190,7 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, wi
   const [time, ens, doneTime] = await Promise.all([timeOf(req), ensOf(req.payer), completion ? timeOf(completion) : Promise.resolve(null)]);
   // A completed panel request's answer is read like a result file: the out-of-date count needs it.
   const hasAnswer = req.action.startsWith("oracle.") && state === "completed" && !!oracleId;
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: !(hasFiles || hasAnswer) || withFiles };
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: !(hasFiles || hasAnswer) || withFiles, notRead };
 }
 
 const SCAN_KEY = "intake";
@@ -216,6 +227,27 @@ export function memoRead<T extends { sourcesError: string | null }>(memo: Map<st
   return p;
 }
 
+/**
+ * Marks every completed result that does not count (counts.ts: its objective, its earlier results or its channels
+ * fail) as not read. The site's pages, sources, counts and home list leave those out; Activity shows why.
+ */
+export function markNotRead(items: Activity[]): Activity[] {
+  const { counted } = countedOf(items);
+  return items.map((a) => {
+    if (a.notRead || a.state !== "completed" || !(isSourceJob(a.req) || isEditJob(a.req) || isPageJob(a.req) || isChangesJob(a.req))) return a;
+    if (counted.has(a.req.requestId)) return a;
+    // A light read (home list) judges a job whose file is not read yet on its shape only; its page is judged in full.
+    if (!a.fileHash && a.filesRead === false) {
+      const s = shapeOf(a.req);
+      if (s.ok || s.legacy) return a;
+    }
+    return { ...a, notRead: NOT_READ };
+  });
+}
+
+/** The requests that count or are not results, for every view but Activity. */
+export const readable = (items: Activity[]) => items.filter((a) => !a.notRead);
+
 /** `subject`: the subject whose page is open; its requests are read with their result files. */
 export function useActivity(subject: string | null = null): ActivityState {
   const [items, setItems] = useState<Activity[] | null>(null);
@@ -241,7 +273,7 @@ export function useActivity(subject: string | null = null): ActivityState {
     const s = scan.current;
     if (!s) return;
     const sub = open.current;
-    const out = await Promise.all(s.requests.map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), r.subject === sub)));
+    const out = markNotRead(await Promise.all(s.requests.map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), r.subject === sub))));
     if (scan.current === s && open.current === sub) setItems(out);
   }, [followed]);
 
@@ -297,7 +329,7 @@ export function useActivity(subject: string | null = null): ActivityState {
       const s = scan.current;
       if (!s) return [];
       const research = (r: TaggedRequest) => isPageJob(r) || isSourceJob(r) || isEditJob(r) || isChangesJob(r) || r.action.startsWith("oracle.");
-      return Promise.all(s.requests.filter((r) => r.subject === id).map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), research(r))));
+      return readable(markNotRead(await Promise.all(s.requests.filter((r) => r.subject === id).map((r) => followed(r, s.completions.get(r.requestId.toLowerCase()), research(r))))));
     },
     [followed],
   );

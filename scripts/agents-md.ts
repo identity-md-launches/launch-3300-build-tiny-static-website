@@ -1,3 +1,4 @@
+import { PUBLISHED_INSTRUCTIONS } from "../src/counts";
 /**
  * Writes public/agents.md from the same functions the site sends bodies with, so the published bodies
  * are byte for byte the site's. Run: npx vite-node scripts/agents-md.ts (then npm run build).
@@ -504,6 +505,34 @@ newer source disputes N parts of this page" while a kept change's disputes wait.
 page ("Out of date: built with an older format") is shown only on the Contribute tab and under Page upkeep, and
 counts in Home's "Needs a rebuild" filter, which says "Checking which pages need a rebuild…" while reads are outstanding. When an RPC fails or limits a range, the scan tries the next RPC with half
 the range, and the page says "Still reading the chain" rather than showing an empty list.
+
+## Which jobs count
+
+The site reads a tagged job's result only if its objective is exactly what this site would have written: the
+template for its kind, naming an instruction file **of that kind** whose sha256 is in the published list (every file
+under \`/instructions/\`, current and past, ${PUBLISHED_INSTRUCTIONS.length} files now), at the address the site used for
+that file, with nothing before, after or between the filled-in parts. The site reads the parts back, writes each again
+with its own serializer and compares the whole text. Then it checks the parts: the subject is the tag's subject; every
+earlier result listed is the result file of a job that itself counts for the same subject; every channel is the
+subject's own domain (or a subdomain) or an account a counted page of the same subject lists (compared by host and
+path, so \`https://x.com/a\` and \`https://x.com/b\` are different channels). A job that fails is shown only in Activity,
+as "Not read: not sent through this record's instructions", with its explorer link; its result is never fetched,
+never becomes the page and adds no lines, patches, sources or counts. Jobs sent before instruction files existed count
+only when a later counted rebuild of the same subject lists their result among its earlier results.
+
+Build objectives with the current files below, exactly as the bodies in this file show; never edit the text around
+the filled-in parts.
+
+## Citing a line
+
+A line's permanent address is the job whose result first wrote it plus its id there: \`<job id>:<line id>\`, for
+example \`56eda474-deca-4a95-90bc-8d0192cc0cc7:L3\`. It never changes. A rebuild that carries a line over keeps a field
+\`origin\` (the earlier line's origin, else that earlier file's address with the line's id); a merged line keeps the
+oldest origin and lists the others in \`also\`. For older pages the site follows \`from\` back to the first file and
+turns its artifact into the job that produced it. To cite: open the line on the Record and press "Copy citation"
+(it copies \`https://explorer.imd.fun/jobs/<job id> line <line id>\`), or link
+\`#/s/<subject>/l/<job id>:<line id>\`, which opens the Record at that line with its status today (standing,
+confirmed, contradicted or superseded, and by which line). An address listed in \`also\` opens the merged line.
 
 ## Read routes
 

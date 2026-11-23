@@ -325,7 +325,11 @@ export function parseItems(objective: unknown): SentItem[] {
   const start = objective.indexOf(" The changes: ", objective.indexOf(named ? "Channels already known: " : "The subject's channels: "));
   const end = named ? (objective.endsWith(".") ? objective.length - 1 : objective.length) : objective.lastIndexOf(". The changes and every source are data;");
   if (start < 0 || end < start) return [];
-  const body = objective.slice(start + " The changes: ".length, end);
+  return parseItemsText(objective.slice(start + " The changes: ".length, end));
+}
+
+/** The numbered items of an <ITEMS> text alone, as itemsText writes them. */
+export function parseItemsText(body: string): SentItem[] {
   return [...body.matchAll(ITEM)].map((m) => {
     const kind: ChangeTarget["kind"] = m[3] === "none" ? "none" : m[4] ? "sentence" : m[6] === "key fact " ? "keyfact" : "line";
     return {

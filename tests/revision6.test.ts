@@ -1,3 +1,4 @@
+import "./legacy-gate";
 /**
  * Revision 6 (job 6ef62573): the reviewer's findings on instruction files. Rebuild lineage, the older-format note
  * alongside waiting results, bare dropped ids of older pages, the channel budget, the instruction-fetch outcome,

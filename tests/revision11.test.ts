@@ -1,3 +1,4 @@
+import "./legacy-gate";
 /**
  * Revision 11 (brief item B5): a changes result is read whole, as a page result is. A 250-line result whose last
  * line contradicts a page line still marks that line, and a result past MAX_RESULT_ENTRIES says so in its Activity
