@@ -2,6 +2,7 @@
 import { chainOnlyPiece, chainTag, otherAddresses, takeAddress, type OtherAddr } from "./addrDisplay";
 import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem } from "./page";
 import { chainIdOf, chainLabel, chainName, explorerAddressUrl } from "./subject";
+import { decimalsOf, wholeFact } from "./amounts";
 import { proofIdsOf, settleOf } from "./settle";
 
 export type Badge = { text: string; tone: "proof" | "statement" | "claim" | "proven" | "contradicted" | "outdated" | ChannelStatus };
@@ -51,6 +52,8 @@ export interface KeyRow {
   earlier?: string;
   /** Every value this row showed before each patch, newest first: the value, who changed it and when (unix seconds). */
   history?: RowChange[];
+  /** The Main contract row's name for its address ("IMD token"), shown when the value itself names none. */
+  mainName?: string;
   /** True on an Official accounts row whose accounts carry different labels: each account shows its own badge. */
   perAccount?: boolean;
 }
@@ -663,7 +666,8 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // chain once, after the list, when every token shares it.
       if (singleChain) for (const t of tokens) t.chain ||= oneChain;
       const value = isTokens && singleChain && !tokens.length ? withoutChain(r.value, chainsRow!.values?.[0] ?? chainsRow!.value) : r.value;
-      return { label: r.label, value, url: r.url, note: "", lines, channel, badge, status, accounts, perAccount, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...(!tokens.length && !accounts.length && r.items?.length ? { items: r.items.map(shownItemOf) } : {}), ...speakersField(badge, lines, sourceUrl) };
+      const main = MAIN_ROW.test(r.label.trim()) ? ADDR.exec([r.value, ...(r.items ?? []).map((x) => x.address)].join(" "))?.[0] ?? "" : "";
+      return { label: r.label, value, url: r.url, note: "", ...(main ? { mainName: mainContractName(page, all, main) } : {}), lines, channel, badge, status, accounts, perAccount, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...(!tokens.length && !accounts.length && r.items?.length ? { items: r.items.map(shownItemOf) } : {}), ...speakersField(badge, lines, sourceUrl) };
     });
     return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }
@@ -679,15 +683,74 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
     const addr = main.address.toLowerCase();
     const lines = all.filter((l) => [l.text, l.rerun, l.quote, l.fact?.value ?? ""].some((s) => s.toLowerCase().includes(addr)));
     const id = chainIdOf(main.chain);
-    rows.push({ label: "Main contract", value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines, all, sourceUrl), status: null, accounts: [], tokens: [], values: [] });
+    rows.push({ label: "Main contract", mainName: mainContractName(page, all, main.address), value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines, all, sourceUrl), status: null, accounts: [], tokens: [], values: [] });
   }
   const token = tokenAddresses(page);
   for (const which of ["symbol", "supply"] as const) {
     const l = all.find((x) => x.kind === "proof" && !!x.fact && isTokenFact(x, which) && provesToken(x, token));
     if (!l) continue;
-    rows.push({ label: l.fact!.name, value: `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l], [l], sourceUrl), status: null, accounts: [], tokens: [], values: [] });
+    rows.push({ label: l.fact!.name, value: wholeFact(l.fact!, l.text, decimalsOf(all)) ?? `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l], [l], sourceUrl), status: null, accounts: [], tokens: [], values: [] });
   }
   return { rows, fromInfobox: false, otherChannels: page.channels.filter((c) => c !== site) };
+}
+
+/**
+ * A name for the main contract: the token the Tokens row lists at that address ("IMD token"), else the token symbol a
+ * proof reads from it, else its role on the record, else the project's own name. Never empty.
+ */
+export function mainContractName(page: Pick<Page, "name" | "infobox" | "contracts">, all: Line[], address: string): string {
+  const addr = address.toLowerCase();
+  const row = page.infobox.find((r) => TOKEN_ROWS.test(r.label.trim()));
+  const item = row?.items?.find((x) => x.name && (x.address.toLowerCase() === addr || x.also?.some((y) => y.address.toLowerCase() === addr) || x.text.toLowerCase().includes(addr)));
+  if (item) return tokenName(item.name);
+  // "IMD: Base 0x…; Ethereum 0x…": an entry without a name of its own belongs to the token named before it.
+  let symbol = "";
+  for (const part of row ? [row.value, ...row.values].join("; ").split(/;\s*/) : []) {
+    symbol = /^\s*\$?([A-Za-z][\w.]{0,15})\s*[:(]/.exec(part)?.[1] ?? symbol;
+    if (symbol && part.toLowerCase().includes(addr)) return tokenName(symbol);
+  }
+  const proof = all.find((l) => isTokenFact(l, "symbol") && provesToken(l, [addr]));
+  if (proof?.fact) return tokenName(proof.fact.value);
+  const role = page.contracts.find((c) => c.address.toLowerCase() === addr)?.role.split(/[.,;(]/)[0]!.trim() ?? "";
+  if (role) return role.length > 48 ? `${role.slice(0, 47).trim()}…` : role;
+  return page.name ? `${page.name} contract` : "Contract";
+}
+const MAIN_ROW = /^main contract$/i;
+const tokenName = (name: string) => (/\btoken$/i.test(name.trim()) ? name.trim() : `${name.trim()} token`);
+
+const SUPPLY_ROW = /^(?:(?:total|circulating|max(?:imum)?|token) )?supply$/i;
+const NAMED = /^(\$?[A-Za-z][\w.]{0,11}):\s+(?=\S)/;
+/** "100 million on Ethereum, about 2,420 on Polygon PoS" as two amounts: only when every part names its own chain. */
+const byChain = (text: string): string[] => {
+  const parts = text.split(/,\s+(?:and\s+)?/);
+  return parts.length > 1 && parts.every((p) => /\d/.test(p) && /\bon\s+[A-Z]/.test(p)) ? parts : [text];
+};
+/**
+ * A long text value as one entry per line. A Supply value is split at its semicolons and at amounts that each name
+ * their chain, and a leading "IMD: " names every entry; another row is split at semicolons when it has three or more
+ * entries. A value with one entry is returned whole.
+ */
+export function valueEntries(label: string, value: string): string[] {
+  const parts = value.split(/;\s+/).map((p) => p.trim()).filter(Boolean);
+  if (!SUPPLY_ROW.test(label.trim())) return parts.length >= 3 ? parts : [value];
+  const named = NAMED.exec(parts[0] ?? "");
+  const shared = named && !parts.slice(1).some((p) => NAMED.test(p)) ? named[1]! : "";
+  if (shared) parts[0] = parts[0]!.slice(named![0].length);
+  const out = parts.flatMap(byChain);
+  return out.length > 1 ? out.map((p) => (shared ? `${shared}: ${p}` : p)) : [value];
+}
+/** The same for a list entry with a name of its own: the name goes before each amount. */
+export function itemEntries(label: string, v: ShownItem): ShownItem[] {
+  if (!SUPPLY_ROW.test(label.trim()) || v.address || !v.text) return [v];
+  const parts = v.text.split(/;\s+/).map((p) => p.trim()).filter(Boolean).flatMap(byChain);
+  return parts.length > 1 ? parts.map((text, i) => ({ ...v, text, url: i === parts.length - 1 ? v.url : "" })) : [v];
+}
+/** The chain every entry of a Contracts row shares, shown once for the list; "" when they differ or one has none. */
+export function sharedChain(row: Pick<KeyRow, "label" | "items">, fallback = ""): string {
+  const items = row.items ?? [];
+  if (!/^contracts?$/i.test(row.label.trim()) || items.length < 2) return "";
+  const chains = new Set(items.map((v) => (v.address ? chainTag(v.chain || fallback) : "")));
+  return chains.size === 1 ? [...chains][0]! : "";
 }
 
 const ADDRESS = /0x[0-9a-fA-F]{40}/g;

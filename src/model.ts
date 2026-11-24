@@ -7,6 +7,7 @@
  * Record shows the lines of the page shown plus those of every completed sources and edit result not folded
  * in. <PRIOR> lists the page shown as F1, then every completed result of the subject not folded in, oldest first.
  */
+import { exampleOf, type Example } from "./example";
 import { useEffect, useMemo, useState } from "react";
 import { ACTIONS } from "./config";
 import { artifactUrl, fitChannels, fitsObjective, matchesTemplate, parsePrior, rebuildObjective, type ChannelTie, type Prior, type PriorAnswer } from "./bodies";
@@ -582,8 +583,8 @@ export function statusText(s: FirstPageStatus): string {
  */
 export interface Digest {
   type: "digest";
-  /** 4 since counts are grouped as proven, stated and claimed; older digests are read again. */
-  v: 6;
+  /** 7 since it keeps Home's example; older digests are read again. */
+  v: 7;
   id: string;
   /** The completed results it was taken from; a different list means newer results exist. */
   sig: string;
@@ -606,6 +607,8 @@ export interface Digest {
   logo: "none" | "ok" | "failed";
   /** The request that produced the page shown: Home compares its objective with the current template. */
   pageReq: string | null;
+  /** Three lines of this record that state one fact, for Home's example; null when it has none. */
+  example: Example | null;
 }
 
 /** The completed page, sources, edit and changes results and panel answers of a subject, as one string: what a digest was taken from. */
@@ -628,7 +631,8 @@ export function digestOf(id: string, list: Activity[]): Digest | null {
   const s = summaryOf(id, list, core);
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
-  return { type: "digest", v: 6, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
+  const example = core.page ? exampleOf(core.sections.flatMap((x) => x.rows.map((r) => r.line))) : null;
+  return { type: "digest", v: 7, example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
 }
 
 /** Results and panel answers still to fold into the page shown: the number the out-of-date note gives. */

@@ -9,7 +9,7 @@ import { MAX_OBJECTIVE } from "../src/bodies";
 import { describeSubject, refFromId, refFromInput } from "../src/subject";
 import { ACTIONS, API, IMD, INTAKE, INSTRUCTIONS_GATEWAY, TOPIC_COMPLETED, TOPIC_REQUESTED, APP_TAG, LAUNCH_BLOCK } from "../src/config";
 import { CHANGES_TEMPLATE, CHANGE_MAX_LINKS, NOTE_MAX, READ_MAX_LINKS, changesBody, itemsText, lineTarget, noTarget, sentenceTarget, type Change } from "../src/changes";
-import { LEGACY_PRESETS, filedUnder, questionContract, questionPage, questionPost, templateBody, SOURCE_TEMPLATE, EDIT_TEMPLATE, REBUILD_TEMPLATE, EDIT_MAX_LINKS, EDIT_MAX_TEXT, editBody, encodeBody, oracleBody, priorText, questionP4, contractDefinitions, rebuildBody, sourceBody, SOURCE_MAX_LINKS, SOURCE_MAX_URL, SOURCE_MAX_OBJECTIVE } from "../src/bodies";
+import { LEGACY_PRESETS, filedUnder, questionContract, questionPage, questionPost, templateBody, SOURCE_TEMPLATE, EDIT_TEMPLATE, REBUILD_TEMPLATE, EDIT_MAX_LINKS, EDIT_MAX_TEXT, editBody, encodeBody, LEADS_MAX, oracleBody, priorText, questionP4, contractDefinitions, rebuildBody, sourceBody, SOURCE_MAX_LINKS, SOURCE_MAX_URL, SOURCE_MAX_OBJECTIVE } from "../src/bodies";
 
 const fence = (s: string, lang = "") => "```" + lang + "\n" + s + "\n```";
 const SUBJ = { id: "<SUBJECT ID>", domain: "<DOMAIN>", address: "<ADDRESS>", chainId: null };
@@ -30,6 +30,9 @@ const example = {
   files: ["https://api.imd.fun/artifacts/<PAGE HASH>", "https://api.imd.fun/artifacts/<SOURCES HASH>"],
   answers: [{ title: "imd.fun/docs says that a job costs 0.5 IMD", answer: "true", agreed: 5, size: 5, url: "https://explorer.imd.fun/jobs/<JOB ID>" }],
 };
+const exampleBody = rebuildBody(none, EXAMPLE_REF, [], 0, { first: true }).objective;
+/** "Write the Swarmpedia page for example.com. Its main contract is 0x… on chain 8453. " as the site writes it. */
+const currentOpening = exampleBody.slice(0, exampleBody.indexOf("Your full instructions"));
 const md = `# Swarmpedia: for agents
 
 Swarmpedia (https://swarmpedia.imd.site) keeps a public page for any project or protocol. Anyone can pay the IMD swarm from their own wallet, on
@@ -56,12 +59,13 @@ A subject is one project, never a person and never a name:
   such as \`1:0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7\`. Any chain id: when an address has no page yet, the
   home bar's chain picker names six chains and takes any other as a number under "Other chain ID" (such as \`137:0x…\`).
 
-**The home bar** is one input, "A domain or a 0x address", with one button, "Look it up". Typing filters the list
+**The home bar** is one input, "A project's website or a contract address", with one button, "Look it up". Typing filters the list
 of projects. On submit it opens the subject whose id is that domain, or whose id or listed contracts include that
 address (on the chain given as \`<chain id>:0x…\`, or on any chain when none is given; an address recorded on
 another chain never matches). A pasted link is reduced to its host, even an explorer link with an address in its
-path. With no match it shows "No page yet for <input>. Adding one costs <price> and starts one research job.", a
-chain picker when the input is an address, and "Add this project", which opens the first-rebuild dialog. There is
+path. An unmatched lookup waits until the current scan of Ethereum has settled. With no match it then shows "No page yet
+for <input>" with the price, a chain picker when the input is an address, "Research to start from" (leads, below) and
+"Add this project", which reads Ethereum and the price again and then opens the first-page dialog. There is
 no separate search box or add form. A subject's **Related** entries link to its page when one exists (matched the
 same way), else "Add this project" opens the home bar filled in with the related id.
 
@@ -81,12 +85,21 @@ Every job body carries \`"tag":{"app":"${APP_TAG}","kind":"add" | "source" | "ed
 A job whose tag has no \`subject\` belongs to \`imd.fun\`. The site also reads a tag whose \`subject\` is an
 object holding \`"subject":"<subject id>"\`.
 
-\`<SUBJECT>\` in the templates below is filled as \`the project at <domain>\`, plus
-\`, whose main contract is <address> on chain <id>\` when the visitor gave a contract (or, for a later rebuild,
-an earlier request of the subject named one, or the page marks a main contract on a known chain). A subject with
-no domain is filled as \`the project whose main contract is <address> on chain <id>\`. For example:
+**Filling the current rebuild and changes templates.** \`<SUBJECT>\` is the exact subject id of the tag, and nothing
+else: \`example.com\`, or \`8453:0x1111111111111111111111111111111111111111\` for a subject with no domain.
+\`<ACTION>\` is \`Write\` for a first page (a subject with no finished page job) and \`Rebuild\` for every later
+page. \`<MAIN>\` is its own sentence, with one space after it, only for a subject with a domain whose main contract
+and chain are known (the visitor gave them, an earlier request of the subject named them, or the page marks a main
+contract on a known chain); otherwise it is empty. For the subject \`example.com\` with a contract, the template
+opens:
 
-${fence(describeSubject(EXAMPLE_REF))}
+${fence(currentOpening)}
+
+**Older templates** (a job naming an older instruction file, and the sources and edit bodies below) fill
+\`<SUBJECT>\` with a description instead: \`the project at <domain>\`, plus
+\`, whose main contract is <address> on chain <id>\` when one is known, or
+\`the project whose main contract is <address> on chain <id>\` without a domain, such as
+\`${describeSubject(EXAMPLE_REF)}\`. A job with the current instruction file and that description is not read.
 
 ## The call
 
@@ -156,8 +169,10 @@ a static text file on this site:
 
 ${fence(REBUILD_TEMPLATE)}
 
-\`<URL>\` and \`<HASH>\` are the current rebuild instruction file and its sha256 (above). \`<SUBJECT>\` is filled as
-above, \`<CHANNELS>\` is the record's channels as \`url (tie: strong|weak|none)\`, comma-separated (\`none known\`
+\`<URL>\` and \`<HASH>\` are the current rebuild instruction file and its sha256 (above). \`<ACTION>\`, \`<SUBJECT>\`
+and \`<MAIN>\` are filled as under Subjects. \`<LEADS>\` is empty, or
+\` Leads to read first: <link>, <link>.\` (with the space before it): up to ${LEADS_MAX} https links separated by a
+comma and a space, each exactly as given, with no space in it. Nothing else may stand in that slot. \`<CHANNELS>\` is the record's channels as \`url (tie: strong|weak|none)\`, comma-separated (\`none known\`
 without any), and \`<PRIOR>\` is a numbered list:
 \`[F1]\` the artifact URL of the page result shown now, then \`[F2]\`... the artifact URL of each completed page,
 sources, edit and changes result of the same subject that is **not folded in** (see below), in time order, including
@@ -236,7 +251,7 @@ A visitor collects changes in a tray (kept in the browser per subject) and sends
 ${fence(encodeBody({ ...changesBody([], none, [], IMD_REF, () => ""), tag: { app: APP_TAG, kind: "changes", subject: "<subject id>" }, objective: "<CHANGES_OBJECTIVE>" }), "json")}
 
 \`<CHANGES_OBJECTIVE>\` is this text. \`<URL>\` and \`<HASH>\` are the current changes instruction file and its
-sha256 (above), \`<SUBJECT>\` is filled as above, \`<PRIOR>\` is the same list as for a rebuild
+sha256 (above), \`<SUBJECT>\` and \`<MAIN>\` are filled as under Subjects, \`<PRIOR>\` is the same list as for a rebuild
 without files to reconsider (F1 is the page shown, then every result not folded in), \`<CHANNELS>\` is the
 subject's channels as \`url (tie: strong|weak|none)\`, comma-separated (\`none known\` without any), and \`<ITEMS>\`
 is the numbered list of changes.
@@ -270,7 +285,8 @@ site shows its new lines in the record, "raised by <payer>", labelled by the sam
 only with re-run steps). Each new line's link names its target; the target row shows "Contradicted by", "Confirmed by",
 "Partly confirmed by" or "Context:" with the new line under it, and a new proof settles the target as Proven or
 Contradicted by the settled-line rules. A kept \`reword\` replaces that summary sentence with \`final_text\`, marked
-"reworded by <payer>". Activity lists every change with "Kept" or "Not kept: <why>". A rebuild folds changes results
+"reworded by <payer>". Activity says "Updated the page: 3 added, 1 not added" and lists every change with
+"Added" or "Not added" and the job's reason (\`why\`) for each; in the file the verdicts stay \`kept\` and \`not_kept\`. A rebuild folds changes results
 in like sources results, keeping their links (link types \`confirms\`, \`partly\`, \`contradicts\`, \`context\`,
 \`outdates\`, \`agrees\`).
 
@@ -281,15 +297,16 @@ existing proof line or panel answer says what that proof or answer does to the n
 make the new line Proven or Contradicted). Everything a new line contradicts or outdates is listed in \`affects\`,
 and the site marks it all at once: a line with its Contradicted or Superseded status; a Key facts row (by label)
 with "Contradicted" or "Superseded" in place of its badge; a summary sentence (by its exact text) with a small red
-or amber dot that opens the new line. Only the sentence the visitor targeted is rewritten; the rest wait for the
-rebuild. When a changes job with a kept change lists anything in \`affects\`, Overview says "A newer source disputes
-N parts of this page. Rebuild to update them." until a rebuild folds that job in.
+or amber dot that opens the new line. A part the
+job patched shows its new value instead. Overview says "A newer source disputes N parts of this page. Rebuild to
+update them." only for what no applied fix covers: a row or sentence no patch of that or a later job repairs, and a
+line whose newer line no patch of that job rests on.
 
 ## Suggest an edit body (older: no longer offered; its results still show and fold in)
 
 ${fence(encodeBody({ ...editBody("x", none, [], IMD_REF), objective: "<EDIT_OBJECTIVE>" }), "json")}
 
-\`<EDIT_OBJECTIVE>\` is this text. \`<SUBJECT>\` is filled as above, \`<TEXT>\` is the visitor's summary text (at most ${EDIT_MAX_TEXT.toLocaleString("en-US")} characters,
+\`<EDIT_OBJECTIVE>\` is this text. \`<SUBJECT>\` is the older description (see Subjects), \`<TEXT>\` is the visitor's summary text (at most ${EDIT_MAX_TEXT.toLocaleString("en-US")} characters,
 spaces collapsed, paragraphs separated by one blank line), \`<PRIOR>\` is the same list as for a rebuild without files to reconsider, and
 \`<URLS>\` is up to ${EDIT_MAX_LINKS} numbered links under the Add sources rules (\`none\` without links).
 
@@ -384,8 +401,9 @@ An edit writes \`artifacts/edit.json\`: \`sentences[{text,verdict,lines[],correc
 \`sources[...]\` and \`lines[...]\` as in a sources result, and \`notes\`.
 
 What the site shows for a subject: the newest completed page result (the page shown), plus the lines of every
-completed sources and edit result that is not folded in (see "Folded in" above). Activity labels each result
-"Shown now", "Folded into the page shown" or "Not yet folded in: included in the next rebuild". The newest
+completed sources and edit result that is not folded in (see "Folded in" above). Activity labels a
+page "Shown now" and a result folded into it "Folded into the page shown"; a changes, sources or edit result after
+it already shows on the page and has no such label. The newest
 edit not folded in with a non-empty \`accepted_summary\` becomes the summary shown, marked
 "edited by <payer>, checked by a research job"; its new lines join the record like added-source lines. After a
 rebuild, the site fetches the files named in that rebuild's own \`<PRIOR>\` and warns on the Record tab when an
@@ -526,12 +544,9 @@ and the EIP-6963 injected connector; browser-extension wallets only) is loaded o
 Connect. The site stores one wallet key, \`imd-record:wallet-connected\` = \`1\`, and no address. While a rebuild of a subject is pending, its Rebuild button is replaced by "A rebuild is running, started
 <time> by <payer>" with a link to it.
 
-**Needs a rebuild.** A page needs a rebuild when completed results or panel answers are not folded in (not listed in
-the \`<PRIOR>\` of the request that produced it), or when that request's objective differs from what
-\`templates/rebuild.txt\` sends now apart from \`<PRIOR>\`. Readers are told only about
-results not folded in: Overview and the home row say "N additions not yet merged. Rebuild", and Overview says "A
-newer source disputes N parts of this page" while a kept change's disputes wait. Which instruction format built a
-page ("Out of date: built with an older format") is shown only on the Contribute tab and under Page upkeep, and
+**Needs a rebuild.** A page is flagged for a rebuild only when its objective names an older instruction file than the
+current one. An edit's added lines and fixes already show on the page, so a result after the page is never counted as
+unfinished. "Built with older instructions. A rebuild applies the current rules." is shown only under Page upkeep, and
 counts in Home's "Needs a rebuild" filter, which says "Checking which pages need a rebuild…" while reads are outstanding. When an RPC fails or limits a range, the scan tries the next RPC with half
 the range, and the page says "Still reading the chain" rather than showing an empty list.
 

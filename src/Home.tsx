@@ -10,9 +10,9 @@ import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
 import { SubjectLogo } from "./Logo";
-import { fetchArtifact } from "./api";
 import { LEADS_MAX, planLeads } from "./bodies";
 import type { Activity } from "./useActivity";
+import type { Example as Lines3 } from "./example";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
@@ -204,7 +204,7 @@ export const EXAMPLE_FALLBACK = {
   statement: "zora.co states a total supply of 10,000,000,000 ZORA.",
   proof: "The token contract reports a total supply of ten billion. Anyone can re-run it.",
 } as const;
-type Example = { claim: string; statement: string; proof: string; from: string | null };
+type Example = Lines3 & { from: string | null };
 const EXAMPLE_ORDER = [
   { kind: "claim", word: "Claim" },
   { kind: "statement", word: "Statement" },
@@ -212,41 +212,13 @@ const EXAMPLE_ORDER = [
 ] as const;
 
 /**
- * The live example: from the newest read page of zora.co, one claim, one statement and one proof about its supply.
- * Null when any of the three is missing; the fixed text is shown then.
+ * The live example: three lines of one record that state the same fact (example.ts), kept with that record's digest
+ * when its page was read. zora.co's when it has one, else the first record that does; the fixed text when none has.
  */
-export function exampleFromPage(page: unknown, from: string): Example | null {
-  const lines = (page as { lines?: unknown })?.lines;
-  if (!Array.isArray(lines)) return null;
-  const pick = (kind: string) => {
-    const l = lines.find((x) => x && typeof x === "object" && (x as { kind?: unknown }).kind === kind && /supply/i.test(String((x as { text?: unknown }).text ?? "")));
-    const t = l ? String((l as { text: unknown }).text).trim() : "";
-    return t && t.length <= 220 ? t : "";
-  };
-  const claim = pick("claim");
-  const statement = pick("statement");
-  const proof = pick("proof");
-  return claim && statement && proof ? { claim, statement, proof, from } : null;
-}
-
-function useExample(items: Activity[] | null): Example {
-  const [ex, setEx] = useState<Example>({ ...EXAMPLE_FALLBACK, from: null });
-  const hash = useMemo(() => {
-    const pages = (items ?? []).filter((a) => a.req.subject === "zora.co" && a.req.kind === "add" && a.fileHash && a.page);
-    return pages.length ? pages[pages.length - 1]!.fileHash : null;
-  }, [items]);
-  useEffect(() => {
-    if (!hash) return;
-    let live = true;
-    fetchArtifact(hash)
-      .then((t) => {
-        const e = exampleFromPage(JSON.parse(t), "zora.co");
-        if (e && live) setEx(e);
-      })
-      .catch(() => undefined);
-    return () => void (live = false);
-  }, [hash]);
-  return ex;
+export function pickExample(digests: Map<string, Pick<Digest, "id" | "example" | "hasPage">> | undefined): Example {
+  const having = [...(digests ?? new Map<string, Pick<Digest, "id" | "example" | "hasPage">>()).values()].filter((d) => d.hasPage && d.example);
+  const d = having.find((x) => x.id === "zora.co") ?? having.sort((x, y) => x.id.localeCompare(y.id))[0];
+  return d ? { ...d.example!, from: d.id } : { ...EXAMPLE_FALLBACK, from: null };
 }
 
 /** "5 projects, 812 lines, 64 of them proofs anyone can re-run." from the rows' counts. */
@@ -299,7 +271,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   busy?: boolean;
   /** Reads a subject's failed files again. */
   retry?: (id: string) => void;
-  reload: () => Promise<void>;
+  reload: () => Promise<unknown>;
   onAdd: (i: AddInput) => string | null;
   price: string;
   bad?: string;
@@ -317,12 +289,19 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
     const marked = listed.map((s) => (!s.hasPage && unreadable.get(s.id) ? { ...s, unread: false, status: null, unreadable: unreadable.get(s.id) } : s));
     return [...marked, ...[...unreadable].filter(([id]) => !have.has(id)).map(([id, n]) => unreadableSummary(id, n))];
   }, [items, digests, logos, unreadable]);
-  const example = useExample(items);
+  const example = useMemo(() => pickExample(digests), [digests]);
   const [onlyStale, setOnlyStale] = useState(false);
   const needs = all.filter((s) => s.outdated).length;
   const shown = all.filter((s) => matchesQuery(s, q) && (!onlyStale || !!s.outdated));
   // Reads still under way can add a contract to the list or mark a page out of date.
   const pendingReads = !!busy || all.some((s) => s.unread && !failed?.has(s.id));
+  // A list read from this browser's cache, or not read at all yet, cannot show that a project has no page: an unmatched
+  // lookup waits for the current scan of Ethereum, and says so when that scan fails.
+  const pendingScan = items === null || !!cached;
+  const scanFailed = pendingScan && !!error && !loading;
+  const SCAN_FAILED = "Ethereum could not be read, so the site cannot tell whether this project already has a page. Try again in a moment.";
+  /** The totals are shown once every project's counts are read, never a part of them. */
+  const countsReady = !pendingReads && all.every((s) => !!s.counts || !s.hasPage);
   /** An address or domain looked up while reads were pending: answered once they finish. */
   const [checking, setChecking] = useState<string | null>(null);
 
@@ -345,13 +324,14 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
       location.hash = subjectHref(found);
       return;
     }
-    if (items === null) {
-      setErr("Still reading the projects from Ethereum. Try again in a moment.");
+    if (scanFailed) {
+      setErr(SCAN_FAILED);
+      void reload();
       return;
     }
     // A page that lists this contract (or domain) may still be on its way: never offer a paid duplicate before
     // every pending read has answered.
-    if (pendingReads) {
+    if (pendingScan || pendingReads) {
       setChecking(raw);
       return;
     }
@@ -368,11 +348,14 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
     if (found) {
       setChecking(null);
       location.hash = subjectHref(found);
-    } else if (!pendingReads) {
+    } else if (scanFailed) {
+      setChecking(null);
+      setErr(SCAN_FAILED);
+    } else if (!pendingScan && !pendingReads) {
       setChecking(null);
       setSubmitted({ raw: checking.trim(), q: parsed });
     }
-  }, [checking, all, pendingReads]);
+  }, [checking, all, pendingReads, pendingScan, scanFailed]);
 
   // An offer already shown gives way when a read finds the project it was about.
   useEffect(() => {
@@ -393,6 +376,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
         return null;
       }
     }
+    if (pendingScan) return "Still reading newer blocks from Ethereum. Try again in a moment.";
     if (pendingReads) return "Still checking project contracts. Try again in a moment.";
     return onAdd(input);
   };
@@ -453,12 +437,12 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             aria-describedby={err ? "lookup-err" : "lookup-note"}
           />
           <button type="submit" className="btn btn-primary btn-lookup">Look it up</button>
+          <a className="example-link small" href={subjectHref("imdusd.com")}>or see an example</a>
         </form>
-        <a className="example-link small" href={subjectHref("imdusd.com")}>or see an example</a>
         {err && <p id="lookup-err" className="error lookup-msg" role="alert">{err}</p>}
         {checking !== null && (
           <p className="small lookup-msg" role="status">
-            Checking project contracts…
+            {pendingScan ? "Reading newer blocks from Ethereum…" : "Checking project contracts…"}
           </p>
         )}
         {offer && <AddOffer key={`${offer.kind}:${offerName}`} q={offer} shown={submitted!.raw} price={price} onAdd={add} />}
@@ -482,7 +466,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
 
       <div className="home-list">
         <h2 className="list-title">Projects</h2>
-        {items !== null && all.length > 0 && <p className="totals num" aria-live="polite">{totalsText(all)}</p>}
+        {items !== null && all.length > 0 && <p className="totals-line num" aria-live="polite">{countsReady ? totalsText(all) : "Reading project totals…"}</p>}
         {error && items !== null && (
           <p className="error">
             Unable to read the chain: {error}.{" "}

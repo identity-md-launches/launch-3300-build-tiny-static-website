@@ -41,7 +41,7 @@ export const CHANGE_HINTS: Partial<Record<ChangeType, string>> = {
 export const PANEL_WORDS = "Ask a panel to check it";
 export const PANEL_HINT = "Let independent agents decide.";
 export const NO_SOURCE =
-  "No source yet. Without a link, this only reaches the page if the swarm finds a source for it. With one, it is far more likely to be kept.";
+  "No source yet. Without a link, this only reaches the page if the swarm finds a source for it. With one, it is far more likely to be added.";
 /** The open form, word for word. */
 export const NOTE_HEADING = "What's wrong or missing?";
 export const NOTE_PLACEHOLDER = "Say it in your own words. For example: the team changed in September, or the fee is 0.3% not 1%.";
@@ -55,7 +55,7 @@ export const NOTE_STEPS = [
 /** The quick choices the pencil's form offers, none of them required. */
 export const QUICK_LINE: ChangeType[] = ["wrong", "context", "backing"];
 export const QUICK_SENTENCE: ChangeType[] = ["wrong", "context", "backing", "reword"];
-export const KEPT_RULE = "Your wording is kept if those lines, or a link you add, support it.";
+export const KEPT_RULE = "Your wording is added if those lines, or a link you add, support it.";
 
 export const NOTE_MAX = 1000;
 /**

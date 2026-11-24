@@ -8,7 +8,7 @@ import { INSTRUCTIONS_FALLBACK_GATEWAY } from "../src/config";
 import { hasV1Opening, V1_OPENING_HASHES } from "../src/openings";
 import { refFromId } from "../src/subject";
 import { CHANGES, FIRST_PAGE, REBUILD, REQUEST_KINDS, resultNamesOf } from "../src/requests";
-import { totalsText, exampleFromPage, EXAMPLE_FALLBACK } from "../src/Home";
+import { totalsText, EXAMPLE_FALLBACK } from "../src/Home";
 import { changesOutcome } from "../src/Profile";
 import { Payment } from "../src/payFlow";
 
@@ -123,8 +123,6 @@ describe("B5, F14, H25-26", () => {
   });
   it("totals and the example", () => {
     expect(totalsText([{ counts: { all: 10, checks: 2 } }, { counts: null }])).toBe("2 projects, 10 lines, 2 of them proofs anyone can re-run.");
-    expect(exampleFromPage({ lines: [{ kind: "claim", text: "x" }] }, "zora.co")).toBeNull();
-    expect(exampleFromPage({ lines: [{ kind: "claim", text: "A supply claim" }, { kind: "statement", text: "Supply stated" }, { kind: "proof", text: "totalSupply() returns" }] }, "zora.co")?.proof).toBe("totalSupply() returns");
     expect(EXAMPLE_FALLBACK.claim).toBe("A news site reports that ZORA has a supply of ten billion.");
   });
 });

@@ -1,6 +1,6 @@
 /**
  * The pay dialog's sequence, without React, so it can be tested: read the price again, approve when the allowance is
- * short, send the one reviewed request, and wait for its receipt. A Payment holds a synchronous in-flight flag, set
+ * short, read the price once more after that approval, send the one reviewed request, and wait for its receipt. A Payment holds a synchronous in-flight flag, set
  * before the first read: a second pay() while one runs returns null at once and sends nothing, and the dialog's
  * close paths check `busy` so Escape or a backdrop click cannot remove the dialog of a request still in flight.
  */
@@ -27,7 +27,8 @@ export interface PayDeps {
 
 export type PayOutcome =
   | { kind: "sent"; hash: Hex; amount: bigint }
-  | { kind: "price"; price: bigint }
+  /** The price changed: nothing was sent. `approved` is what an approval just included on the way allows. */
+  | { kind: "price"; price: bigint; approved?: bigint }
   | { kind: "blocked" }
   | { kind: "error"; message: string }
   | { kind: "gone" };
@@ -69,6 +70,10 @@ export class Payment {
         const ok = await deps.receipt(h);
         if (ok === null) return { kind: "gone" };
         if (ok === "reverted") return { kind: "error", message: APPROVAL_REVERTED };
+        // The approval took a while to be included: the price is read again before the wallet is asked to send. A new
+        // price goes back to review and needs a new Pay click; nothing is sent at the old one.
+        const now = await deps.readPrice();
+        if (now !== p) return { kind: "price", price: now, approved: p };
         onStep("approved");
       } else onStep("sending");
       if (deps.running()) return { kind: "blocked" };

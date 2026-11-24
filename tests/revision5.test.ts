@@ -113,10 +113,10 @@ describe("a failed supporting result does not blank a readable page (440cb977)",
     const d = digestOf("example.com", [page, lines])!;
     expect(d).toMatchObject({ name: "Readable", oneLine: "Readable does things", hasPage: true, failedReads: 1, logo: "none" });
     expect(d.counts.claimed).toBe(1);
-    // The unread result is not folded in: the row also says the page is out of date.
+    // The unread result does not flag the page: only its older instructions do (revision 24).
     expect(d.unfolded).toBe(1);
     const [row] = subjectSummaries([{ ...page, filesRead: false }, { ...lines, filesRead: false }], new Map([["example.com", d]]));
-    expect(row).toMatchObject({ name: "Readable", incomplete: 1, outdated: { kind: "results", n: 1 } }); // revision 24: applied results do not flag a page
+    expect(row).toMatchObject({ name: "Readable", incomplete: 1, outdated: { kind: "format" } });
     const broken = act("add", { block: 30, sourcesError: "artifact answered 503" });
     expect(digestOf("example.com", [page, broken])).toBeNull();
   });
@@ -283,7 +283,7 @@ describe("the documents describe this site (51cca9e7)", () => {
     expect(agents).toContain("Reported by news.example");
   });
   it("the README explains the home queue, IndexedDB, Tokens, the badge and the notes", () => {
-    for (const s of ["newest first", "IndexedDB", "Tokens", "Reported by", "Out of date: N results not folded in", "Out of date: built with an older format", "Needs a rebuild"]) expect(readme).toContain(s);
+    for (const s of ["newest first", "IndexedDB", "Tokens", "Reported by", "flagged for a rebuild for one reason", "Needs a rebuild"]) expect(readme).toContain(s);
     expect(readme).not.toContain("Open the page to read its record");
   });
 });

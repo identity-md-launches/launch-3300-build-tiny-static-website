@@ -5,8 +5,9 @@ import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { addressText, historicFor, shortJobId } from "./addresses";
 import { explorerAddressUrl } from "./subject";
-import { addressRuns, chainEntries, chainTag, chainText, isChainName } from "./addrDisplay";
-import { keyFacts, splitAddresses, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
+import { addressRuns, chainEntries, chainTag, chainText, isChainName, takeAddress } from "./addrDisplay";
+import { decimalsOf, exactAmount, wholeFact } from "./amounts";
+import { itemEntries, keyFacts, sharedChain, splitAddresses, valueEntries, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
 import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
 import { findSubject, parseLookup, relatedSubject, rowMatches, type Findable, type Lookup } from "./lookup";
@@ -133,15 +134,18 @@ export function Copy({ value, label }: { value: string; label?: string }) {
 }
 
 /** One address as Key facts shows every address: shortened and linked to its explorer, a copy icon, a chain tag. */
-export function Addr({ address, chain, url = "" }: { address: string; chain: string; url?: string }) {
+export function Addr({ address, chain, url = "", tag = true }: { address: string; chain: string; url?: string; tag?: boolean }) {
   const href = safeHref(url) && url.toLowerCase().includes(address.toLowerCase()) ? url : explorerAddressUrl(address, chain);
   return (
     <span className="addr">
+      {/* The short address and its copy button stay together; the chain tag may take its own line. */}
+      <span className="addr-main">
       <a className="addr-link" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${shortHex(address)}${chain ? ` on ${chain}` : ""}, open in the block explorer`}>
         <span className="mono">{shortHex(address)}</span>
       </a>
       <CopyIcon value={address} />
-      {chain && <span className="tok-chain">{chain}</span>}
+      </span>
+      {chain && tag && <span className="tok-chain">{chain}</span>}
     </span>
   );
 }
@@ -157,7 +161,7 @@ function Runs({ text, chain = "" }: { text: string; chain?: string }) {
 
 
 /** A link shown after a value, its label with any long hex shortened ("etherscan.io/tx/0x0d45…d5d"). */
-const shortLink = (url: string) => linkText(url).replace(/0x[0-9a-fA-F]{12,}/g, (h) => shortHex(h));
+const shortLink = (url: string) => linkText(url).replace(/(?:0x[0-9a-fA-F]{12,}|(?<![0-9a-zA-Z])[0-9a-f]{40,})/g, (h) => shortHex(h));
 
 /** A value: its text with every address as Addr (or an Account list, tokens, entries, chains). */
 export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
@@ -175,20 +179,27 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
         </ul>
       );
   }
-  if (row.items?.length)
+  const named = !!row.mainName && namesNothing(row);
+  if (row.items?.length) {
+    const shared = sharedChain(row, chain);
     return (
-      <ul className="kf-values kf-items">
-        {row.items.map((v, i) => (
-          <li key={i}>
-            <ItemValue v={v} chain={chain} />
-          </li>
-        ))}
-      </ul>
+      <>
+        {shared && <p className="kf-shared small">All on {shared}</p>}
+        <ul className="kf-values kf-items">
+          {row.items.flatMap((v) => itemEntries(row.label, v)).map((v, i) => (
+            <li key={i}>
+              {named && i === 0 && <strong className="kf-main-name">{row.mainName}</strong>}
+              <ItemValue v={v} chain={chain} tag={!shared} />
+            </li>
+          ))}
+        </ul>
+      </>
     );
+  }
   if (row.values.length)
     return (
       <ul className="kf-values">
-        {row.values.map((v, i) => (
+        {row.values.flatMap((v) => valueEntries(row.label, v)).map((v, i) => (
           <li key={i}>
             <Runs text={v} chain={chain} />
           </li>
@@ -235,8 +246,20 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
       </ul>
     );
   }
+  const entries = valueEntries(row.label, row.value);
+  if (entries.length > 1)
+    return (
+      <ul className="kf-values">
+        {entries.map((v, i) => (
+          <li key={i}>
+            {i === entries.length - 1 ? <ValueText text={v} url={safeHref(row.url) && addressRuns(row.value).some((r) => r.kind === "address") ? row.url : ""} chain={chain} /> : <Runs text={v} chain={chain} />}
+          </li>
+        ))}
+      </ul>
+    );
   return (
     <>
+      {named && <><strong className="kf-main-name">{row.mainName}</strong>{" "}</>}
       <ValueText text={row.value} url={row.url} chain={chain} />
       {row.note && <span className="small"> {row.note}</span>}
     </>
@@ -246,8 +269,16 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
 /** "example.com/docs" for a link shown after an entry's text. */
 const linkText = (url: string) => url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "");
 
+/** True when a Main contract value is only its address and chain, so a name is put before it. */
+const namesNothing = (row: Pick<KeyRow, "value" | "items">): boolean => {
+  const first = row.items?.[0];
+  if (first) return !first.name && !takeAddress(first.text)?.rest && !(first.text && !takeAddress(first.text));
+  const t = takeAddress(row.value);
+  return !!t && !t.rest;
+};
+
 /** One values entry: its name in bold, then its text, then its link or its address as Addr. */
-function ItemValue({ v, chain }: { v: ShownItem; chain: string }) {
+function ItemValue({ v, chain, tag = true }: { v: ShownItem; chain: string; tag?: boolean }) {
   return (
     <>
       <span className="tok-name">
@@ -258,7 +289,7 @@ function ItemValue({ v, chain }: { v: ShownItem; chain: string }) {
       {v.address ? (
         <>
           {" "}
-          <Addr address={v.address} chain={chainTag(v.chain || chain)} url={v.explorer} />
+          <Addr address={v.address} chain={chainTag(v.chain || chain)} url={v.explorer} tag={tag} />
         </>
       ) : (
         v.url && (
@@ -364,16 +395,17 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
   return (
     <section className="keyfacts" aria-labelledby="keyfacts-title">
       <h2 id="keyfacts-title">Key facts</h2>
-      <table>
-        <tbody>
+      {/* Phones lay each row out as a small grid (label, badge and pencil over the value); the roles keep the table. */}
+      <table role="table">
+        <tbody role="rowgroup">
           {shown.map((r, i) => {
             const target = keyFactTarget(r.label, r.value || r.accounts.map((a) => a.name).join(", "), r.lines.map((l) => l.id), r.lines[0]?.id ? originOfLine(r.lines[0].id, m.scope) : null);
             const src = r.lines[0]?.srcKeys[0];
             const url = src ? m.sourceList.find((x) => x.key === src)?.url ?? "" : r.url;
             return (
               <Fragment key={i}>
-                <tr className="has-pencil">
-                  <th scope="row">
+                <tr className="has-pencil kf-row" role="row">
+                  <th scope="row" role="rowheader">
                     {hasRowDetails(r) ? (
                       <button type="button" className="kf-toggle" aria-expanded={openRow === r.label} aria-controls={`kf-d-${i}`} onClick={() => setOpenRow(openRow === r.label ? null : r.label)}>
                         <span className="chev" aria-hidden="true" />
@@ -383,20 +415,20 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                       r.label
                     )}
                   </th>
-                  <td className="kf-value">
+                  <td className="kf-value" role="cell">
                     <KeyValue row={r} chain={mainChain} />
                     <PendingTag targetKey={target.key} />
                   </td>
-                  <td className="kf-badge">
+                  <td className="kf-badge" role="cell">
                     {!r.perAccount && <RowBadge r={r} ui={ui} />}
                   </td>
-                  <td className="kf-edit">
+                  <td className="kf-edit" role="cell">
                     <Pencil target={target} label={`Suggest a change`} />
                   </td>
                 </tr>
                 {openRow === r.label && hasRowDetails(r) && (
-                  <tr className="kf-details" id={`kf-d-${i}`}>
-                    <td colSpan={4}>
+                  <tr className="kf-details" id={`kf-d-${i}`} role="row">
+                    <td colSpan={4} role="cell">
                       <dl className="facts">
                         {r.updatedBy && (
                           <>
@@ -437,8 +469,8 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                   </tr>
                 )}
                 {s.open === target.key && (
-                  <tr className="kf-panel">
-                    <td colSpan={4}>
+                  <tr className="kf-panel" role="row">
+                    <td colSpan={4} role="cell">
                       <ChangePanel target={target} mode="line" sourceUrl={url} line={r.lines[0] ?? { text: r.value }} evidence={evidenceOf(r.lines, allLines(m))} onOpenLines={ui.openLines} />
                     </td>
                   </tr>
@@ -884,8 +916,8 @@ function Related({ m, subjects }: { m: RecordModel; subjects: Findable[] }) {
 /** "A newer source disputes N parts of this page.", when a kept change left anything in its affects list. */
 function DisputedNote({ m }: { m: RecordModel }) {
   const { rows } = useKeyFacts(m);
-  // disputesOf already drops every row or sentence an applied fix covers (a patch of the same or a later job), so
-  // what is counted here is only what no applied fix covers; a job whose own fixes cover all it disputes adds none.
+  // disputesOf drops every row or sentence an applied fix covers (a patch of the same or a later job) and marks the
+  // lines one covers, so what is counted here is only what no applied fix covers, also for a partly patched job.
   if (!m.page || !m.disputes.fromKept) return null;
   const n = disputedCount(m.disputes, rows.map((r) => r.label), m.summary);
   if (!n) return null;
@@ -1057,28 +1089,93 @@ interface Ctx {
   numbers: Map<string, ListedSource>;
   /** Every line's settle state and the proofs a settled row already shows. */
   settled: { by: Map<string, Settle>; absorbed: Set<string> };
+  /** Token decimals the record's proofs give, for amounts in whole tokens. */
+  decimals: Map<string, number>;
   research: { payer: string; payerAddr?: string; href: string; time: number | null } | null;
   m: RecordModel;
   ui: Ui;
 }
 
-function SourceNumbers({ keys, numbers }: { keys: string[]; numbers: Map<string, ListedSource> }) {
-  if (!keys.length) return null;
+/** One site a line cites and every page of it the line cites, each once. */
+export interface SourceGroup {
+  name: string;
+  pages: string[];
+}
+/** A line's sources by site: each page once, the pages of one site together, in the order first cited. Pure, for tests. */
+export function sourceGroups(keys: string[], numbers: Map<string, Pick<ListedSource, "url">>): SourceGroup[] {
+  const by = new Map<string, SourceGroup>();
+  for (const k of keys) {
+    const url = numbers.get(k)?.url.trim();
+    if (!url) continue;
+    const name = hostOf(url) || shortLink(url);
+    const g = by.get(name) ?? { name, pages: [] };
+    by.set(name, g);
+    if (!g.pages.some((p) => samePage(p, url))) g.pages.push(url);
+  }
+  return [...by.values()];
+}
+const samePage = (a: string, b: string) => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
+/** "/jobs/…/result" for one page of a site named beside it. */
+const pageName = (url: string, name: string) => {
+  const t = shortLink(url);
+  return t.toLowerCase().startsWith(name.toLowerCase()) ? t.slice(name.length) || "/" : t;
+};
+const groupName = (g: SourceGroup) => (g.pages.length > 1 ? `${g.name}, ${g.pages.length} pages` : g.name);
+
+/** A line's sources: each site once by name, linking to the page read; several pages of one site open as a list. */
+export function SourceNames({ keys, numbers }: { keys: string[]; numbers: Map<string, ListedSource> }) {
+  const groups = sourceGroups(keys, numbers);
+  if (!groups.length) return null;
   return (
-    <span className="nums">
-      {keys.map((k) => {
-        const s = numbers.get(k);
-        return s ? (
-          <a key={k} className="chip mono" href={to(`source-${s.n}`)} aria-label={`Source ${s.n}`}>
-            {s.n}
-          </a>
-        ) : (
-          <span key={k} className="chip mono" title="Source not listed">
-            ?
-          </span>
-        );
-      })}
-    </span>
+    <ul className="srcs small" aria-label="Sources">
+      {groups.map((g) => (
+        <li key={g.name}>
+          {g.pages.length === 1 ? (
+            <ExtLink url={g.pages[0]!}>{g.name}</ExtLink>
+          ) : (
+            <details className="src-pages">
+              <summary>{groupName(g)}</summary>
+              <PageLinks g={g} />
+            </details>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function PageLinks({ g }: { g: SourceGroup }) {
+  return (
+    <ul className="plain src-list">
+      {g.pages.map((u) => (
+        <li key={u}>
+          <ExtLink url={u} className="break">{pageName(u, g.name)}</ExtLink>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Re-run steps: a monospace block that wraps, and a button that copies all of it. */
+export function RerunSteps({ steps }: { steps: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <div className="rerun">
+      <pre className="mono" tabIndex={0} aria-label="Re-run steps">{steps}</pre>
+      <button
+        type="button"
+        className="copy"
+        onClick={() => {
+          void navigator.clipboard?.writeText(steps).then(() => {
+            setDone(true);
+            window.setTimeout(() => setDone(false), 1500);
+          });
+        }}
+      >
+        {done ? "Copied" : "Copy"}
+        <span className="sr-only"> the re-run steps</span>
+      </button>
+    </div>
   );
 }
 
@@ -1088,6 +1185,8 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
   const st = ctx.settled.by.get(line.id);
   const settledBy = st && (st.state === "proven" || st.state === "contradicted") ? (st.state === "proven" ? st.confirms : st.contradicts) : [];
   const listed = line.srcKeys.map((k) => ctx.numbers.get(k)).filter((s): s is ListedSource => !!s);
+  const groups = sourceGroups(line.srcKeys, ctx.numbers);
+  const whole = line.fact ? wholeFact(line.fact, line.text, ctx.decimals) : null;
   const checked = whyLabel(line, ctx.m.page?.name || ctx.m.subject.id, ctx.m.page?.domain ?? ctx.m.subject.domain, listed[0]?.url ?? "");
   // First recorded: the job that added the line, else the earliest earlier file it was carried over from, else the page job.
   const fromTimes = line.from.map(ctx.m.fromTime).filter((t): t is number => !!t);
@@ -1112,13 +1211,10 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
             <dd>{line.text}</dd>
           </>
         )}
-        {line.fact && formatNumbers(line.fact.value) !== line.fact.value && (
+        {line.fact && (whole || formatNumbers(line.fact.value) !== line.fact.value) && (
           <>
             <dt>Exact value</dt>
-            <dd className="mono">
-              {line.fact.value}
-              {line.fact.unit ? ` ${line.fact.unit}` : ""}
-            </dd>
+            <dd className="mono">{whole ? exactAmount(line.fact.value, line.fact.unit) : `${line.fact.value}${line.fact.unit ? ` ${line.fact.unit}` : ""}`}</dd>
           </>
         )}
         {line.quote && (
@@ -1135,7 +1231,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
                 <dt>{st!.state === "proven" ? "Proof" : disputeWho(proof)}</dt>
                 <dd>
                   {proof.text}
-                  {proof.kind === "proof" && (proof.rerun ? <span className="block">Re-run: {proof.rerun}</span> : <span className="block small">The proof gives no re-run steps.</span>)}
+                  {proof.kind === "proof" && (proof.rerun ? <><span className="block">Re-run:</span><RerunSteps steps={proof.rerun} /></> : <span className="block small">The proof gives no re-run steps.</span>)}
                 </dd>
               </Fragment>
             );
@@ -1158,19 +1254,26 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
         {line.rerun && (
           <>
             <dt>Re-run</dt>
-            <dd>{line.rerun}</dd>
+            <dd><RerunSteps steps={line.rerun} /></dd>
           </>
         )}
         <dt>Why it has this label</dt>
         <dd>{checked}</dd>
-        {listed.length > 0 && (
+        {groups.length > 0 && (
           <>
-            <dt>Source</dt>
+            <dt>{groups.length > 1 || groups[0]!.pages.length > 1 ? "Sources" : "Source"}</dt>
             <dd>
-              <ul className="links">
-                {listed.map((s) => (
-                  <li key={s.key}>
-                    <span className="chip mono">{s.n}</span> <ExtLink url={s.url}>{hostOf(s.url) || s.url || "source"}</ExtLink>
+              <ul className="plain src-groups">
+                {groups.map((g) => (
+                  <li key={g.name}>
+                    {g.pages.length === 1 ? (
+                      <ExtLink url={g.pages[0]!}>{g.name}</ExtLink>
+                    ) : (
+                      <>
+                        {groupName(g)}
+                        <PageLinks g={g} />
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -1216,7 +1319,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
                     ) : (
                       "Block not given: "
                     )}
-                    <span className="num">{h.value}</span>
+                    <span className="num">{(line.fact && wholeFact(line.fact, line.text, ctx.decimals, h.value)) || `${formatNumbers(h.value)}${line.fact?.unit && /^[\d.,]+$/.test(h.value) ? ` ${line.fact.unit}` : ""}`}</span>
                   </li>
                 ))}
               </ul>
@@ -1229,12 +1332,12 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
             <dd>
               <ul className="plain">
                 {row.same.map((o, i) => {
-                  const nums = o.line.srcKeys.map((k) => ctx.numbers.get(k)?.n).filter((n): n is number => n !== undefined);
+                  const sites = sourceGroups(o.line.srcKeys, ctx.numbers).map(groupName);
                   const who = o.line.kind === "proof" ? "A proof" : speakerText(o.line);
                   return (
                     <li key={i}>
                       {who}
-                      {nums.length ? `, source${nums.length === 1 ? "" : "s"} ${nums.join(", ")}` : ""}
+                      {sites.length ? `, from ${allNames(sites)}` : ""}
                       {o.line.quote ? <span className="block">“{o.line.quote}”</span> : null}
                     </li>
                   );
@@ -1560,9 +1663,9 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
             {row.origin?.raised && <span className="by small">raised by <PayerLink name={row.origin.payer} address={row.origin.payerAddr} /></span>}
           </span>
         </button>
-        <SourceNumbers keys={line.srcKeys} numbers={ctx.numbers} />
         <Pencil target={target} />
       </div>
+      <SourceNames keys={line.srcKeys} numbers={ctx.numbers} />
       <PendingTag targetKey={target.key} />
       {settled?.state === "outdated" && <NewerNotes ids={settled.outdates} ctx={ctx} />}
       <AlsoSaid also={also} lineId={line.id} open={open} toggle={toggle} ctx={ctx} />
@@ -1592,7 +1695,8 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
           const anchor = lineAnchor(row.line.id || f.name);
           const open = ctx.ui.openSet.has(row.line.id);
           const toggle = () => ctx.ui.toggle(row.line.id);
-          const target = lineTarget(row.line.id || f.name, `${f.name}: ${f.value}${f.unit ? ` ${f.unit}` : ""}`, row.line.id ? originOfLine(row.line.id, ctx.m.scope) : null);
+          const whole = wholeFact(f, row.line.text, ctx.decimals);
+          const target = lineTarget(row.line.id || f.name, `${f.name}: ${whole ?? `${f.value}${f.unit ? ` ${f.unit}` : ""}`}`, row.line.id ? originOfLine(row.line.id, ctx.m.scope) : null);
           const st = ctx.settled.by.get(row.line.id);
           const stale = st?.state === "outdated" ? st : null;
           const disputed = st?.state === "contradicted" ? st : null;
@@ -1612,9 +1716,8 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                   {row.origin?.raised && <span className="by small block">raised by <PayerLink name={row.origin.payer} address={row.origin.payerAddr} /></span>}
                   <PendingTag targetKey={target.key} />
                 </th>
-                <td data-label="Value" className="num" title={formatNumbers(f.value) !== f.value ? `Exact: ${f.value}` : undefined}>
-                  {formatNumbers(f.value)}
-                  {f.unit ? ` ${f.unit}` : ""}
+                <td data-label="Value" className="num" title={!whole && formatNumbers(f.value) !== f.value ? `Exact: ${f.value}` : undefined}>
+                  {whole ?? `${formatNumbers(f.value)}${f.unit ? ` ${f.unit}` : ""}`}
                 </td>
                 <td data-label="Chain and block">
                   {f.chain || "Chain not given"}
@@ -1846,6 +1949,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const ctx: Ctx = {
     settled,
     numbers: new Map(m.sourceList.map((s) => [s.key, s])),
+    decimals: decimalsOf(all.map((r) => r.line)),
     research: latest ? { payer: payerName(latest), payerAddr: latest.req.payer, href: jobLink(via?.jobId ?? latest.jobId, latest.req.transactionHash), time: latest.doneTime ?? null } : null,
     m,
     ui,

@@ -9,7 +9,7 @@ import type { InstructionName } from "../instructions";
 export type PriceReader = (action: string) => Promise<bigint>;
 
 export interface ResultFile {
-  /** The output name in the body ("page", "logo", "changes"). */
+  /** The output name in the body ("page", "logo", "changes"). The first file of a kind is its result file. */
   name: string;
   path: string;
   mediaType: string;
@@ -33,7 +33,7 @@ export interface RequestKind<Input> {
    * fixed number. The Intake's priceOf for the action is the price; IMD's quote route (POST /requests/quote) answers
    * a keyless browser with "request_token_required" (checked 2026-11-24), so no kind sold here applies one.
    */
-  price(read: PriceReader, body: Record<string, unknown>): Promise<bigint>;
-  /** The result files the site reads from the finished job. */
+  price(read: PriceReader, body?: Record<string, unknown>): Promise<bigint>;
+  /** The result files the site reads from the finished job, the result file itself first. */
   results: readonly ResultFile[];
 }

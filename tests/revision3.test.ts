@@ -160,9 +160,9 @@ describe("CSS and copy findings", () => {
   it("f591ee05: touch pencils at 0.74 opacity", () => {
     expect(css).toContain("@media (hover: none) { .pencil { opacity: 0.74; width: 40px; height: 40px; } }");
   });
-  it("2b09b99e: lookup padding 8px through 25rem; 2px gap, 6px button padding and 14px label below 23rem", () => {
-    expect(css).toMatch(/@media \(max-width: 25rem\) \{\s*\.lookup input \{ padding: 0 var\(--space-2\); \}\s*\.lookup \.btn-lookup \{ padding: 0 var\(--space-2\); \}/);
-    expect(css).toMatch(/@media \(max-width: 22\.99rem\) \{\s*\.lookup \{ gap: 2px; \}[\s\S]*?\.lookup \.btn-lookup \{ padding: 0 6px; font-size: var\(--text-nav\); \}/);
+  it("2b09b99e: on phones the lookup's input has its own row, its hint 14px, 13px below 23rem", () => {
+    expect(css).toMatch(/@media \(max-width: 40rem\) \{\s*\.lookup \{ flex-wrap: wrap;[\s\S]*?\.lookup input \{ flex: 1 1 100%;[\s\S]*?placeholder \{ font-size: var\(--text-nav\); \}/);
+    expect(css).toMatch(/@media \(max-width: 22\.99rem\) \{\s*\.lookup input \{ padding: 0 var\(--space-2\); \}\s*\.lookup input::placeholder \{ font-size: var\(--text-small\); \}/);
   });
   it("fe85fe21: Home's first step leads to suggesting changes", () => {
     const home = readFileSync("src/Home.tsx", "utf8");

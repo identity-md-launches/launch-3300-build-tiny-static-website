@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatUnits, pad, stringToHex, type Hex } from "viem";
+import { formatUnits, stringToHex, type Hex } from "viem";
 import { ACTIONS, CHAIN_ID, EMPTY_SELECTOR, ERC20_ABI, ETHERSCAN, IMD, INTAKE, INTAKE_ABI, ZERO_ADDRESS } from "./config";
 import {
   MAX_OBJECTIVE,
@@ -48,67 +48,37 @@ import { useDigests } from "./digest";
 import type { Activity } from "./useActivity";
 import { NoteForm, SuggestProvider, TrayBar, type Quote } from "./Suggest";
 import { parseItems, takeConfirmSeed, type ConfirmSeed } from "./changes";
-import { FIRST_PAGE, REBUILD, type RequestKind } from "./requests";
+import { CHANGES, FIRST_PAGE, REBUILD, type RequestKind } from "./requests";
+import { actionId, askFor, noteShownPrice, prepareAsk, priceOfAsk, readPrice, shownPrice, type Ask, type Prepared } from "./requests/ask";
+
+export { askFor, priceOfAsk, type Ask };
 
 type RecordState = RecordModel;
-const actionId = (a: string) => pad(stringToHex(a), { dir: "right", size: 32 });
 const imd = (v: bigint) => `${formatUnits(v, 18)} IMD`;
 
-async function readPrice(action: string): Promise<bigint> {
-  return publicClient.readContract({ address: INTAKE, abi: INTAKE_ABI, functionName: "priceOf", args: [actionId(action), IMD] });
-}
-
 /**
- * The price the page showed for each action, from its last read. A pay dialog reads the price again for its exact
- * request; when that differs from what the page showed, it says so before the wallet is asked.
+ * What IMD charges for a kind of request, read through that kind on load; refresh reads it again (the tray does, with
+ * its request as it stands, so its price stays live).
  */
-const shownPrices = new Map<string, bigint>();
-/** What IMD charges for this exact request: the kind's own price reading, else the Intake's price for its action. */
-export const priceOfAsk = (a: Pick<Ask, "action" | "price">) => (a.price ? a.price() : readPrice(a.action));
-
-/** The price of an action, read once on load; refresh reads it again (the tray does, so its price stays live). */
-function usePrice(action: string): Quote {
+function useKindPrice(kind: Pick<RequestKind<never>, "id" | "action" | "price">): Quote {
   const [price, setPrice] = useState<bigint | null>(null);
   const [failed, setFailed] = useState(false);
-  const refresh = useCallback(() => {
-    readPrice(action).then(
+  const refresh = useCallback((body?: Record<string, unknown>) => {
+    kind.price(readPrice, body).then(
       (p) => {
-        shownPrices.set(action, p);
+        noteShownPrice({ action: kind.action, kindId: kind.id }, p);
         setPrice(p);
         setFailed(false);
       },
       () => setFailed(true),
     );
-  }, [action]);
-  useEffect(refresh, [refresh]);
+  }, [kind]);
+  useEffect(() => refresh(), [refresh]);
   return useMemo(() => ({ text: failed ? "Price unavailable" : price === null ? "Reading price…" : imd(price), failed, refresh }), [failed, price, refresh]);
 }
 
-export interface Ask {
-  title: string;
-  /** The subject the request belongs to; after paying, the site opens its Activity. */
-  subject?: string;
-  action: string;
-  /** What the request is (add, source, proof, statement, claim), remembered with the sent transaction. */
-  kind: string;
-  body: Record<string, unknown>;
-  /** The instruction file the objective names, shown under the body. */
-  instructions?: InstructionName;
-  warning?: string;
-  /** A rebuild (or first page) of `subject`: one at a time, so the review checks for one already running. */
-  rebuild?: boolean;
-  /** Runs once the request is paid and mined: the tray of changes is emptied. */
-  afterSent?: () => void;
-  /** Reads what IMD charges for this exact request (its kind's price, src/requests/). */
-  price?: () => Promise<bigint>;
-}
-
-/** An Ask for a request kind (src/requests/): its action, tag kind, body, instructions and price reading. */
-export function askFor<I>(kind: RequestKind<I>, input: I, extra: Pick<Ask, "title"> & Partial<Ask>): Ask {
-  const body = kind.body(input);
-  return { action: kind.action, kind: kind.tagKind, body, instructions: kind.instructions, price: () => kind.price(readPrice, body), ...extra };
-}
-
+/** A panel question's price (the Confirm a fact card, hidden for now): the Intake's price for its action. */
+const PANEL_PRICE: Pick<RequestKind<never>, "id" | "action" | "price"> = { id: ACTIONS.oracle, action: ACTIONS.oracle, price: (read) => read(ACTIONS.oracle) };
 
 /**
  * Whether a request must pass the instruction preflight before its pay dialog opens: a rebuild, a set of changes,
@@ -322,7 +292,7 @@ type ConfirmFields = { url: string; handle: string; text: string; chain: string;
  * three types says so. Opened on its own it explains how and offers "Write a question from scratch" (the full form).
  */
 function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState }) {
-  const oraclePrice = usePrice(ACTIONS.oracle).text;
+  const oraclePrice = useKindPrice(PANEL_PRICE).text;
   const defaultChain = String(CHAIN_CHOICES.some((c) => c.id === rec.subject.chainId) ? rec.subject.chainId : 1);
   const blank: ConfirmFields = { url: "", handle: "", text: "", chain: defaultChain, signature: "", address: rec.subject.address || rec.main, value: "" };
   const [mode, setMode] = useState<ConfirmMode>("intro");
@@ -491,7 +461,7 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
  */
 export const PANEL_CHECKS = false;
 
-export function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing, items, unreadable, jobs }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState; onRefresh: () => void; refreshing: boolean; items: unknown[] | null; unreadable: number; jobs: PageJobs }) {
+export function ContributeTab({ onAsk, researchPrice, firstPrice, rec, onRefresh, refreshing, items, unreadable, jobs }: { onAsk: (a: Ask) => void; researchPrice: string; firstPrice?: string; rec: RecordState; onRefresh: () => void; refreshing: boolean; items: unknown[] | null; unreadable: number; jobs: PageJobs }) {
   // Page upkeep is closed by default; it starts open only once the chain and the files have answered and show no page,
   // no finished page job and no unreadable result, so "Create the page" is not hidden from a subject that has nothing else.
   // A scan read from the browser's cache cannot show that no page job finished since: known waits for the current scan.
@@ -510,7 +480,7 @@ export function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing
         <p className="small pay-line">Every request is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
         <details className="upkeep" id="rebuild" open={firstPage || undefined}>
           <summary>Page upkeep</summary>
-          <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} known={known} unreadable={unreadable} jobs={jobs} />
+          <RebuildCard onAsk={onAsk} rec={rec} price={rec.page || jobs.finished ? researchPrice : firstPrice ?? researchPrice} onRefresh={onRefresh} refreshing={refreshing} known={known} unreadable={unreadable} jobs={jobs} />
         </details>
       </div>
     </section>
@@ -531,10 +501,10 @@ export function askSentence(a: Pick<Ask, "action" | "kind" | "subject" | "rebuil
   }
   if (a.kind === "changes") {
     const n = parseItems((a.body as { objective?: unknown }).objective).length;
-    return `A research job checks your ${n === 1 ? "suggested change" : `${n} suggested changes`} to ${who} against their sources and keeps what they support.`;
+    return `A research job checks your ${n === 1 ? "suggested change" : `${n} suggested changes`} to ${who} against their sources and adds what they support.`;
   }
   if (a.kind === "source") return `A research job reads the links you gave and adds what they say about ${who} to its record.`;
-  if (a.kind === "edit") return `A research job checks your edit to the summary of ${who} and keeps what the record supports.`;
+  if (a.kind === "edit") return `A research job checks your edit to the summary of ${who} and adds what the record supports.`;
   if (/^Create/i.test(a.title)) return `A research job researches ${who} and writes its first page from public sources.`;
   return `A research job rebuilds the page of ${who} from its sources and earlier results.`;
 }
@@ -552,13 +522,17 @@ export interface SentNote {
   afterSent?: () => void;
 }
 
-function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () => void; onSent: (sent: SentNote) => void; running?: Activity | null }) {
+/** "The price changed since the page loaded…", when the page showed another price for this kind of request. */
+export const priceChangedText = (shown: bigint | undefined, now: bigint): string => (shown !== undefined && shown !== now ? `The price changed since the page loaded: it is now ${imd(now)} (the page showed ${imd(shown)}). You pay ${imd(now)}.` : "");
+
+/** `quoted`: the price of this exact request, read before the dialog opened. `exists`: a first page is no longer needed. */
+function PayDialog({ ask, quoted, onClose, onSent, running, exists = false }: { ask: Ask; quoted: bigint; onClose: () => void; onSent: (sent: SentNote) => void; running?: Activity | null; exists?: boolean }) {
   const { address, isConnected, chainId } = useWalletAccount();
-  const [price, setPrice] = useState<bigint | null>(null);
+  const [price, setPrice] = useState<bigint>(quoted);
   const [allowance, setAllowance] = useState<bigint | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
   const [step, setStep] = useState<Step>("review");
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState(() => priceChangedText(shownPrice(ask), quoted));
   const [priceFailed, setPriceFailed] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<Element | null>(document.activeElement);
@@ -567,34 +541,32 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
   // One rebuild at a time: a rebuild someone else started while this review was open blocks paying for another.
   // The latest value is read again at the click, just before anything is sent to the wallet.
   const blocked = !!running && (step === "review" || step === "error");
-  const runningRef = useRef<Activity | null>(null);
-  runningRef.current = running ?? null;
+  const stopRef = useRef(false);
+  stopRef.current = !!running || exists;
 
-  const refresh = async () => {
-    // The price for this exact request, read before the dialog offers to pay; if the page showed another, say so.
-    const p = await priceOfAsk(ask);
-    const shown = shownPrices.get(ask.action);
-    if (shown !== undefined && shown !== p) setMsg(`The price changed since the page loaded: it is now ${imd(p)} (the page showed ${imd(shown)}). You pay ${imd(p)}.`);
-    shownPrices.set(ask.action, p);
-    setPrice(p);
-    if (address) {
-      const [a, b] = await Promise.all([
-        publicClient.readContract({ address: IMD, abi: ERC20_ABI, functionName: "allowance", args: [address, INTAKE] }),
-        publicClient.readContract({ address: IMD, abi: ERC20_ABI, functionName: "balanceOf", args: [address] }),
-      ]);
-      setAllowance(a);
-      setBalance(b);
-    }
-    return p;
-  };
-  /** Reads the price (and the wallet's allowance and balance); on failure the amount says so and Retry price shows. */
+  useEffect(() => noteShownPrice(ask, quoted), [ask, quoted]);
+  /** A connected wallet: the price again (it may have moved while the visitor connected), its allowance and balance. */
   const readQuote = () => {
     setPriceFailed(false);
-    setMsg("");
-    refresh().catch(() => {
-      setPriceFailed(true);
-      setMsg("Unable to read the price. Check your connection and use Retry price.");
-    });
+    if (!address) return;
+    Promise.all([
+      priceOfAsk(ask),
+      publicClient.readContract({ address: IMD, abi: ERC20_ABI, functionName: "allowance", args: [address, INTAKE] }),
+      publicClient.readContract({ address: IMD, abi: ERC20_ABI, functionName: "balanceOf", args: [address] }),
+    ]).then(
+      ([p, a, b]) => {
+        const changed = priceChangedText(shownPrice(ask), p);
+        if (changed) setMsg(changed);
+        noteShownPrice(ask, p);
+        setPrice(p);
+        setAllowance(a);
+        setBalance(b);
+      },
+      () => {
+        setPriceFailed(true);
+        setMsg("Unable to read the price again. Check your connection and use Retry price.");
+      },
+    );
   };
   useEffect(() => {
     readQuote();
@@ -632,7 +604,7 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
   };
 
   const pay = async () => {
-    if (payment.current.busy || !address || price === null) return;
+    if (payment.current.busy || !address) return;
     setMsg("");
     const from = address;
     const out = await payment.current.pay(
@@ -650,7 +622,7 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
             chainId: CHAIN_ID,
           }),
         receipt,
-        running: () => !!runningRef.current,
+        running: () => stopRef.current,
         // Signed: the dialog closes at once; the page's bar waits for Ethereum (App, SendBar).
         handoff: (hash) => {
           rememberSent({ hash, kind: ask.kind, action: ask.action, at: Date.now() });
@@ -666,14 +638,16 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
         },
       },
       (s) => {
-        if (s === "approved" && price !== null) setAllowance(price);
+        if (s === "approved") setAllowance(price);
         if (alive.current) setStep(s);
       },
     );
     if (!out || out.kind === "gone" || !alive.current) return;
     if (out.kind === "price") {
+      // Nothing was sent: the new amount is reviewed and needs its own Pay click (and approval, when it is higher).
       setPrice(out.price);
-      shownPrices.set(ask.action, out.price);
+      noteShownPrice(ask, out.price);
+      if (out.approved !== undefined) setAllowance(out.approved);
       setStep("review");
       setMsg(`The price changed to ${imd(out.price)}. Review it and pay again.`);
       return;
@@ -691,9 +665,9 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
     }
   };
 
-  const short = balance !== null && price !== null && balance < price;
-  const needsApprove = allowance !== null && price !== null && allowance < price;
-  const priceText = price !== null ? imd(price) : priceFailed ? "Price unavailable" : "Reading price…";
+  const short = balance !== null && balance < price;
+  const needsApprove = allowance !== null && allowance < price;
+  const priceText = imd(price);
 
   return (
     <div className="sheet-bg" onClick={close}>
@@ -719,7 +693,7 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
             <summary>Show the full request</summary>
             <dl className="facts">
               <dt>Amount, in raw units</dt>
-              <dd className="mono">{price !== null ? `${imd(price)} (${price.toString()})` : priceText}</dd>
+              <dd className="mono">{`${priceText} (${price.toString()})`}</dd>
               <dt>To</dt>
               <dd className="mono break">IMD Intake v2 {INTAKE}</dd>
               <dt>Action</dt>
@@ -748,12 +722,16 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
           </p>
         ) : (
           <div className="row-actions">
-            {priceFailed && price === null && (
+            {priceFailed && (
               <button type="button" className="btn" onClick={readQuote}>
                 Retry price
               </button>
             )}
-            {blocked ? (
+            {exists && (step === "review" || step === "error") ? (
+              <p className="running" role="status">
+                {ask.subject} has a page already, so nothing more is needed. <a href={subjectHref(ask.subject!)} onClick={onClose}>Open its page</a>
+              </p>
+            ) : blocked ? (
               <p className="running" role="status">
                 A rebuild is running, started {startedAt(running!)} by <PayerLink name={payerName(running!)} address={running!.req.payer} />.{" "}
                 <a href={jobLink(running!.jobId, running!.req.transactionHash)} target="_blank" rel="noopener noreferrer">Follow on the explorer</a>
@@ -763,8 +741,8 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
             ) : !right ? (
               <Connect />
             ) : (
-              <button className="btn btn-primary" onClick={pay} disabled={price === null || short}>
-                {step === "error" ? "Try again" : needsApprove ? `Approve and pay ${price !== null ? imd(price) : ""}` : `Pay ${price !== null ? imd(price) : ""}`}
+              <button className="btn btn-primary" onClick={pay} disabled={short || priceFailed}>
+                {step === "error" ? "Try again" : needsApprove ? `Approve and pay ${priceText}` : `Pay ${priceText}`}
               </button>
             )}
           </div>
@@ -898,7 +876,7 @@ function useRoute() {
   return route;
 }
 
-function SubjectView({ subject, items, allItems, activity, route, onAsk, researchPrice, researchQuote, subjects, readingFiles, sent, jobs }: {
+function SubjectView({ subject, items, allItems, activity, route, onAsk, researchPrice, firstPrice, changesQuote, subjects, readingFiles, sent, jobs }: {
   readingFiles: boolean;
   jobs: SentJobs;
   /** Requests sent from this page this visit, for the pending state. */
@@ -912,8 +890,10 @@ function SubjectView({ subject, items, allItems, activity, route, onAsk, researc
   activity: ReturnType<typeof useActivity>;
   route: ReturnType<typeof useRoute>;
   onAsk: (a: Ask) => void;
+  /** What a rebuild costs, and what a first page costs, each read through its own kind. */
   researchPrice: string;
-  researchQuote: Quote;
+  firstPrice: string;
+  changesQuote: Quote;
 }) {
   const rec = useRecordModel(items, activity.error, subject);
   const [filter, setFilter] = useState<Filter>("all");
@@ -1006,10 +986,19 @@ function SubjectView({ subject, items, allItems, activity, route, onAsk, researc
       {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
       {route.tab === "sources" && <SourcesTab m={rec} />}
       {route.tab === "activity" && <ActivityList {...activity} items={allItems} shown={rec} subject={subject} />}
-      {route.tab === "contribute" && <ContributeTab onAsk={onAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} items={items} unreadable={unreadableCount(allItems ?? [])} jobs={pageJobs} />}
-      <TrayBar rec={rec} quote={researchQuote} onAsk={onAsk} />
+      {route.tab === "contribute" && <ContributeTab onAsk={onAsk} researchPrice={researchPrice} firstPrice={firstPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} items={items} unreadable={unreadableCount(allItems ?? [])} jobs={pageJobs} />}
+      <TrayBar rec={rec} quote={changesQuote} onAsk={onAsk} />
     </SuggestProvider>
   );
+}
+
+/** Why a pay dialog did not open. */
+export function notOpenedText(r: Prepared, a: Pick<Ask, "subject">): string {
+  if (r.kind === "instructions") return INSTRUCTIONS_UNREACHABLE;
+  if (r.kind === "price") return "The price could not be read, so nothing was opened and nothing can be paid.";
+  if (r.kind === "chain") return "Ethereum could not be read again, so the site cannot tell whether this project already has a page. Nothing was opened.";
+  if (r.kind === "running") return `A first page of ${a.subject ?? "this project"} is already being written. Open its page to follow it.`;
+  return "";
 }
 
 export const CHAIN_READ_BLOCK = "The project list could not be read. Try again before reviewing a rebuild.";
@@ -1018,7 +1007,7 @@ export default function App() {
   const route = useRoute();
   const subject = route.subject;
   const activity = useActivity(subject ?? null);
-  const [ask, setAsk] = useState<Ask | null>(null);
+  const [ask, setAsk] = useState<{ ask: Ask; price: bigint } | null>(null);
   const [sent, setSent] = useState<SentNote[]>([]);
   const [toast, setToast] = useState<SentNote | null>(null);
   const [sendState, setSendState] = useState<SendState>("waiting");
@@ -1047,25 +1036,37 @@ export default function App() {
     );
     return () => stops.forEach((s) => s());
   }, [lookFor]);
-  // A rebuild or a set of changes opens its pay dialog only after its instruction file was fetched and its sha256
-  // matched (instructionsReachable); otherwise the visitor is told, and nothing can be paid.
+  // A pay dialog opens only once the price of its exact request is read, its instruction file was fetched with a
+  // matching sha256 (instructionsReachable), and, for a first page, Ethereum was read again and shows no finished page
+  // job (prepareAsk); otherwise the visitor is told why, and nothing can be paid.
   const [checking, setChecking] = useState(false);
-  const [unreachable, setUnreachable] = useState(false);
+  const [notOpened, setNotOpened] = useState<{ ask: Ask; why: string } | null>(null);
+  const preparing = useRef(false);
   const openAsk = useCallback((a: Ask) => {
-    setUnreachable(false);
-    if (!needsInstructionCheck(a)) {
-      setAsk(a);
-      return;
-    }
+    if (preparing.current) return;
+    preparing.current = true;
+    setNotOpened(null);
     setChecking(true);
-    void askInstructionsReachable(a).then((ok) => {
+    void prepareAsk(a, {
+      instructionsOk: (x) => askInstructionsReachable(x),
+      price: priceOfAsk,
+      fresh: async (id) => {
+        const now = await reloadRef.current();
+        if (!now) return null;
+        const mine = now.filter((x) => x.req.subject === id);
+        return { finished: pageJobsOf(mine, false).finished, running: !!pendingRebuildOf(readable(mine)) };
+      },
+    }).then((r) => {
+      preparing.current = false;
       setChecking(false);
-      if (ok) setAsk(a);
-      else setUnreachable(true);
+      if (r.kind === "open") setAsk({ ask: a, price: r.price });
+      else if (r.kind === "exists") location.hash = subjectHref(a.subject!);
+      else setNotOpened({ ask: a, why: notOpenedText(r, a) });
     });
   }, []);
-  const researchQuote = usePrice(ACTIONS.research);
-  const researchPrice = researchQuote.text;
+  const rebuildQuote = useKindPrice(REBUILD);
+  const firstQuote = useKindPrice(FIRST_PAGE);
+  const changesQuote = useKindPrice(CHANGES);
   // Requests not sent through this record's instructions are left out of every view but Activity (counts.ts).
   const counted = useMemo(() => (activity.items ? readable(activity.items) : null), [activity.items]);
   const { digests, logos, reading, failed, busy, retry } = useDigests(counted, subject ?? null, activity.readSubject);
@@ -1091,12 +1092,19 @@ export default function App() {
     if (activity.items === null) return "Wait until the list has loaded from Ethereum.";
     // A failed read leaves no earlier files to start from; never offer a paid rebuild on an unknown record.
     if (activity.error) return CHAIN_READ_BLOCK;
+    // A list read from this browser's cache cannot show that a page job finished since: wait for the current scan.
+    if (activity.cached) return "Still reading newer blocks from Ethereum. Try again in a moment.";
     const typed = refFromInput(input);
     const mine = readable(activity.items).filter((a) => a.req.subject === typed.id);
     const known = subjectRefFor(typed.id, mine, null);
     const ref: SubjectRef = typed.address ? typed : known;
     const busyWith = pendingRebuildOf(mine);
     if (busyWith) return `A rebuild of ${ref.id} is running, started ${startedAt(busyWith)} by ${payerName(busyWith)}. Open its page to follow it.`;
+    // A subject with a finished page job is never offered a first page again: its page opens instead.
+    if (pageJobsOf(activity.items.filter((a) => a.req.subject === typed.id), false).finished) {
+      location.hash = subjectHref(ref.id);
+      return null;
+    }
     const plan = planRebuild(mine, ref);
     if (plan.needsReads) return `The page of ${ref.id} dropped lines whose files must be read first. Open its page and rebuild it from Contribute.`;
     if (!plan.ok) return `An earlier result of ${ref.id} could not be read yet. Open its page and use Refresh.`;
@@ -1118,13 +1126,13 @@ export default function App() {
       </header>
       <main id="root-main" tabIndex={-1}>
         {route.docs ? (
-          <Docs quote={researchQuote} />
+          <Docs quote={rebuildQuote} />
         ) : route.wallet ? (
           <Profile key={route.wallet} address={route.wallet} activity={activity} />
         ) : subject ? (
-          <SubjectView key={subject} sent={sent} jobs={jobs} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} allItems={allItems} activity={activity} route={route} onAsk={openAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
+          <SubjectView key={subject} sent={sent} jobs={jobs} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} allItems={allItems} activity={activity} route={route} onAsk={openAsk} researchPrice={rebuildQuote.text} firstPrice={firstQuote.text} changesQuote={changesQuote} />
         ) : (
-          <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} unreadable={unreadable} />
+          <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={firstQuote.text} bad={route.bad} prefill={route.add} unreadable={unreadable} />
         )}
         <footer className="about">
           <p>Beta. Payments go to IMD and are not refunded. Every line comes from a paid job on Ethereum.</p>
@@ -1135,21 +1143,28 @@ export default function App() {
       </main>
       {checking && (
         <p className="toast" role="status">
-          Checking that this job can read its instructions…
+          Reading the price and checking this request…
         </p>
       )}
-      {unreachable && (
+      {notOpened && (
         <div className="toast toast-error" role="alert">
-          <p>{INSTRUCTIONS_UNREACHABLE}</p>
-          <button type="button" className="btn" onClick={() => setUnreachable(false)}>
+          <p>{notOpened.why}</p>
+          {notOpened.why !== INSTRUCTIONS_UNREACHABLE && (
+            <button type="button" className="btn" onClick={() => openAsk(notOpened.ask)}>
+              Try again
+            </button>
+          )}
+          <button type="button" className="btn" onClick={() => setNotOpened(null)}>
             Close
           </button>
         </div>
       )}
       {ask && (
         <PayDialog
-          ask={ask}
-          running={ask.rebuild && ask.subject ? pendingRebuildOf((activity.items ?? []).filter((a) => a.req.subject === ask.subject)) : null}
+          ask={ask.ask}
+          quoted={ask.price}
+          running={ask.ask.rebuild && ask.ask.subject ? pendingRebuildOf((activity.items ?? []).filter((a) => a.req.subject === ask.ask.subject)) : null}
+          exists={ask.ask.kindId === "first-page" && pageJobsOf((activity.items ?? []).filter((a) => a.req.subject === ask.ask.subject), activity.cached).finished}
           onClose={() => setAsk(null)}
           onSent={(note) => {
             setAsk(null);
@@ -1170,7 +1185,7 @@ export default function App() {
               });
             void activity.reload();
             // From Home (a new project), the visitor is taken to that project's page, where its pending state shows.
-            if (ask.subject && route.subject !== ask.subject) location.hash = subjectHref(ask.subject, "overview");
+            if (ask.ask.subject && route.subject !== ask.ask.subject) location.hash = subjectHref(ask.ask.subject, "overview");
           }}
         />
       )}

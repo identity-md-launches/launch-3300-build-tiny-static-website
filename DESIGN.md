@@ -32,19 +32,21 @@ amounts, ids and request bodies. Weights 400 and 600. Six sizes:
 
 | Token | Size | Use |
 | --- | --- | --- |
-| `--text-display` | 32px | The page h1: "Projects, on the record" on Home, the subject's name (or id) on Overview |
+| `--text-display` | 32px | The page h1: "Crowdsourced research on any project or protocol." on Home, the subject's name (or id) on Overview |
 | `--text-title` | 22px | Tab titles, "Summary" |
 | `--text-heading` | 17px | Card headings, "Key facts" |
 | `--text-body` | 16px | Body, buttons, rows, summary paragraphs (line height 1.6, at most 68ch) |
-| `--text-nav` | 14px | The five tabs below 512px wide; the lookup hint and its button label below 368px |
+| `--text-nav` | 14px | The five tabs below 512px wide; the lookup hint below 640px |
 | `--text-small` | 13px | Meta lines, infobox rows, kind markers, notes |
 
 No tracked capitals, no eyebrows above headings.
 
 ## Components
 
-- **Header**: brand "On the record (test)" (a link to Home) and the wallet's Connect control on one row. The row
-  (`.top-row`) has the page's own `--page-max` and `--page-pad`, so its edges line up with the content below.
+- **Header**: brand "Swarmpedia" (a link to Home) with a small outlined "beta" tag (`.brand-beta`), the "How it works"
+  link and the wallet's Connect control. The row (`.top-row`) has the page's own `--page-max` and `--page-pad`, so its
+  edges line up with the content below. At 30rem and below it is two rows: the name and the wallet control, then How
+  it works, also with a connected wallet, so nothing scrolls sideways at 320 to 480.
 - **Chip outline** (`.acct-chip.acct-chip-ghost`, `ChipOutline` in `src/walletLazy.tsx`): while a remembered wallet
   reconnects on page load, the header shows the chip's shape in place of Connect: the same 44px pill, at least
   8.5rem wide, a grey dot (`--color-border`) and a 0.6rem rounded bar in `--color-bg-hover` where the name goes. It
@@ -64,27 +66,24 @@ No tracked capitals, no eyebrows above headings.
   and years where a date is meant ("in 2024", "March 2024", "(2021)") are left as written. The facts table shows a
   block number as supplied. The exact value stays in the line's details ("Exact value" / "Exact text") and in the
   facts table cell's `title`.
-- **Home lookup** (`#/`, first screen): h1 "Look up any crypto project.", one lead line, and a 56px bar: an input
-  with the hint "A domain or a 0x address" on a grey fill and a primary "Look it up" button. How it works has
-  three steps; the first is "Contribute: add a project or suggest changes to its record."
-- **Home list**: the search row (a search input and, below
-  832px, an "Add a project" primary button that scrolls to and focuses the form), the count line and the subject
-  list. Each subject is a row with a top rule: its name as a 17px link with the id in small mono beside it, the
-  one_line (or "No page yet: …"), then the kind counts with their 9px coloured dots, "Changed <date>" and any
-  pending requests. A subject whose only research came back `found: false` is not listed. While the chain read
-  fails the list area shows only the error and "Try again"; "No projects yet" appears only after a good empty read.
-- **Add a project**: a card with Website domain, Main contract address (optional, mono) and "Chain of that
-  contract" (six named chains plus **Other chain ID**, which reveals a numeric mono "Chain ID" field). Errors
-  sit under their field in red and the first wrong field takes focus. A small line shows the page it will make
-  (`#/s/<id>`), then "Review the first rebuild" (primary) and the price. A failed chain read or an unread
-  earlier result shows a red alert line instead of opening the dialog.
+- **Home lookup** (`#/`, first screen): h1 "Crowdsourced research on any project or protocol.", one lead line, and a
+  56px bar: an input with the hint "A project's website or a contract address" (16px) on a grey fill, a primary "Look
+  it up" button and the text link "or see an example" beside it. A lookup with no match waits while Ethereum is read
+  ("Reading newer blocks from Ethereum…"); the offer then holds the price, a chain picker for an address, "Research to
+  start from" (a mono text area) and "Add this project".
+- **Home example** (`.example`): one fact shown as a Claim, a Statement and a Proof, three `.label-card`s in one row
+  from 44rem and stacked below, each with its badge, in its own colours, then "From the page of <project>" when the
+  three lines come from one record (`src/example.ts`); fixed text otherwise. Under "Projects" one line of totals
+  (`.totals-line`), "Reading project totals…" until every count is read.
+- **Home list**: All and Needs a rebuild filter buttons, the count line and the subject list. Each subject is a row with
+  a top rule: its name as a 17px link with the id in small mono beside it, the one_line or the first page's status, then
+  the counts with their coloured dots, "Changed <date>" and any pending requests.
 - **Subject tabs**: links `#/s/<id>/overview`, `/record`, `/sources`, `/activity`, `/contribute` with
   `aria-current="page"` and a 2px accent underline on the active one; old links open imd.fun. After a link the
   tab's heading or the target takes focus.
 - **Overview**: h1 name (the subject id until a page names it; headings and paragraphs use
   `overflow-wrap: anywhere`, so a `1:0x…` id or a long domain wraps inside the column), `one_line` as the lead,
-  the reader's note only when results are not folded in ("N additions not yet merged. Rebuild") or a newer source
-  disputes parts ("A newer source disputes…"), then `.overview`, one column at every width: the **Summary**
+  a note only when a newer source disputes parts no applied fix covers ("A newer source disputes…"), then `.overview`, one column at every width: the **Summary**
   (`.summary-col`, at most `--read-max` 760px wide), then **Key facts** (`.keyfacts`, a direct child of `.overview`) at the full content width,
   then **Related** chips. Key facts is a bordered box with a table, one row per fact: label, value (linked when it
   has a url; addresses mono, shortened, with a Copy button) and badge; the first 8 rows, then a "Show all N" text
@@ -117,15 +116,16 @@ No tracked capitals, no eyebrows above headings.
 - **Record**: the accounting warning (orange left rule on orange-50), a closed `details` "Dropped in the last
   rebuild", the kind filter (All, Proof, Statement, Claim with counts; pressed state is dark fill), then one card
   per section. "On chain" starts with the **facts table** (name, value with unit, chain and block). Each line row
-  has a chevron, the sentence, a kind marker and the speaker, source number chips, and under it "Confirmed by:
+  has a chevron, the sentence, a kind marker and the speaker, its sources by site name, and under it "Confirmed by:
   …" in green or "Contradicted by: …" in red, linking the line or panel answer. Then "Other channels" (channels
   not in key facts, with their labels), "Not known yet", and **Panel answers** always last (also with no page):
   each answer's title, a true/false pill, "panel, N of M agreed", its kind marker and a link to the request.
 - **Sources**: channels with their label (Own domain, Linked from own site, Verified on chain, Not verified) and a key saying what each
   means, then one numbered source list.
 - **Activity**: one card per request of the subject, newest first: state pill, time, what it was (Page rebuild,
-  Sources, Edit, Question), the label "Shown now", "Folded into the page shown" or "Not yet folded in: included
-  in the next rebuild", refusal reasons, "Not a project record: … Its notes: …" for a `found: false` result,
+  Sources, Edit, Question; a finished changes job reads "Updated the page: 3 added, 1 not added" and lists each change
+  as "Added" or "Not added" with the job's reason under it), the label "Shown now" or "Folded into the page shown",
+  refusal reasons, "Not a project record: … Its notes: …" for a `found: false` result,
   panel answers, per-source outcomes, edit verdict pills with "Backed by" links, and links to the job and result
   file.
 - **Pencil** (`.pencil`): a 16px pencil icon in a 32px button (40px on touch) at the right end of every Record
@@ -146,7 +146,7 @@ No tracked capitals, no eyebrows above headings.
   target, and Reword it on a summary sentence. None is required; with none picked the change is a note. Above
   them "About: <text>" names the item. Then the note (a count of 1,000; 4 rows in the pencil's form so the whole
   placeholder shows at 390, 5 on Contribute), the Sources box (one link per line), and "Add to my changes" (dark
-  `btn-ink`) and "Cancel". "Your wording is kept if those lines, or a link you add, support it." appears only under
+  `btn-ink`) and "Cancel". "Your wording is added if those lines, or a link you add, support it." appears only under
   Reword it. "Add to my changes" is natively disabled until there is a note or a link ("Write what is wrong or
   missing, or add a link."), Back this up needs a usable link, and Reword it waits until the new sentence differs
   from the current one; the reason is in 13px text under the buttons (`aria-describedby`). Closing it returns focus
@@ -183,15 +183,26 @@ No tracked capitals, no eyebrows above headings.
   dialog's Connect button. While a dialog or the
   wallet sheet is open, everything else in the app (skip link, header, main) is inert, Tab and Shift+Tab cycle
   inside it (a wallet sheet opened over the pay dialog holds focus until it closes), and closing returns focus to
-  the control that opened it (`src/modal.ts`). The pay dialog's Amount reads "Reading price…", then the price, or
-  "Price unavailable" with a secondary "Retry price" button beside the actions when the read fails; Pay stays
-  disabled until a price is read.
+  the control that opened it (`src/modal.ts`). The pay dialog opens only once the exact price
+  is read, so its Price is always an amount; a price that differs from the one the page showed says so above Pay. After
+  an approval the price is read again, and a new one returns to review with its own Pay button. "Retry price" shows
+  when a later read fails, and Pay is disabled until one succeeds. It closes when the wallet has signed.
+- **Send bar** (`.send-bar`): a fixed dark bar, at most 36rem, "Sent. Waiting for Ethereum…", then "Your N changes are
+  with the swarm. Follow the job", with a dismiss button. With changes waiting it sits above the tray
+  (`--tray-h`, the tray's measured height), never over "Review and submit".
+- **Source names** (`.srcs`, `.src-pages`): under a line, each site once as 13px links to the page read; several pages of
+  one site are a dotted-underlined disclosure, "api.imd.fun, 4 pages". The line's details list every page
+  (`.src-groups`, `.src-list`), long hashes shortened. No numbers and no chips.
+- **Re-run steps** (`.rerun`): a 13px mono `pre` that wraps, 1px border, 10px radius on `--color-bg-subtle`, focusable,
+  with a Copy button under it. Also used for the proof inside a settled line's details.
+- **Amounts** (`src/amounts.ts`): a proof's base-unit amount reads in whole tokens with its unit ("0.5 IMD") in the facts
+  table and Earlier readings; the grouped integer is only under Exact value.
 
 - **Toast** (`.toast`, `src/App.tsx`): a fixed notice over the bottom edge, inset `--space-4` (and the safe area)
   from the sides and bottom, at most 36rem wide, `--radius-control`, `--shadow-sheet`, small text. Dark
-  (`--gray-900` on `--gray-0`, `role="status"`) while the site checks a job's instruction file; `.toast-error`
-  (`--red-800` on `--red-50` with a 1px `--red-800` border, `role="alert"`) with the "cannot be reached right now"
-  message and a 44px Close button when it fails. Its text wraps (`overflow-wrap: anywhere`), so it fits at 320.
+  (`--gray-900` on `--gray-0`, `role="status"`) while the site reads the price and checks the request (its instruction file, and Ethereum for a first page); `.toast-error`
+  (`--red-800` on `--red-50` with a 1px `--red-800` border, `role="alert"`) saying why no dialog opened, with 44px
+  "Try again" and Close buttons. Its text wraps (`overflow-wrap: anywhere`), so it fits at 320.
 - **Size note** (`.warn`, orange-800, small, 600): in an Activity row, "This result is too large to show in full: N
   lines" under the line count.
 - **Patched row or sentence**: a Key facts row a change patched keeps its normal badge; its details start with
@@ -206,27 +217,28 @@ No tracked capitals, no eyebrows above headings.
   track, so no content (a change panel, a long URL) can widen the page.
 - Overview at every width: `.overview` is one `minmax(0, 1fr)` track with a 24px gap: Summary (its text column at
   most 760px), then Key facts at the full 960px content width, then Related. There is no side column at any width,
-  so a long Key facts table never leaves an empty area under the summary. The Key facts table keeps label, value
-  and badge on one row at every width (fixed layout, badges wrap in their cell); see Key facts below.
+  so a long Key facts table never leaves an empty area under the summary. See Key facts below for its phone layout.
 - The change panel's choice tiles: as many 9.5rem columns as fit, one per row below about 20rem of panel width;
   below 384px the panel's padding drops to 12px.
 - Review's footer stays one row (price, Read the full request, Submit). Below 480px the price and the link share
   two equal tracks (13px, 8px gaps), each wrapping by words inside its own track; Submit keeps its width at the
   right (measured: 57px tall at 390, 76px at 320).
-- Home: one column below 832px (list, then the Add form, with an "Add a project" button beside search on the
-  first screen); from 832px the list and a 20rem Add form side by side, and the jump button is hidden.
+- Home: one column at every width: the lookup, the example, the totals and list, then How it works.
 - The subject tab bar wraps instead of scrolling: below 512px the tabs use 14px and spread across the width;
   every tab keeps its full label and a 44px target.
-- Key facts: always one table row per fact, label, value, badge and the pencil side by side with one top edge.
-  From 641px the label column is 11rem, the badge column 16rem and the pencil 2.5rem. At 640px and below the card's
-  padding drops to 12px, the label column is 26% and the badge column 24% of the table, the pencil keeps its own
-  40px column, and label and badge text wrap inside their cells (measured at 320 and 390 in `tests/e2e.mjs`).
+- Key facts: from 641px one table row per fact: an 11rem label column, the value, a 16rem badge column and a 2.5rem
+  pencil. From 481 to 640px the same row with 30% and 24% columns. At 480px (30rem) and below each row is a grid: the
+  label (never narrower than its longest word), the badge and the pencil on the first line, the value at 16px across
+  the full width under them. An address keeps its copy button beside it and its chain tag takes the next line
+  (`.addr` is a column), so no control meets a badge at 320. Explicit table roles keep the table's semantics. Main
+  contract starts with a name (`.kf-main-name`), a Contracts row whose entries share a chain says "All on Ethereum"
+  once (`.kf-shared`), and Supply shows one entry per line.
 - Below 640px the facts table becomes stacked rows. Contribute's cards are always one full-width column.
 - What to check: one column of equal buttons below 640px (40rem), three equal columns from 640px, so the longest
   label ("A contract returns") fits on one line inside its button.
-- Home lookup: up to 400px (25rem) both controls use 8px inline padding; up to 384px the bar takes 8px of the
-  gutter on each side with a 4px gap and a 16px button label; below 368px the gap is 2px, the button padding 6px,
-  and the hint and button label are 14px.
+- Home lookup: from 641px the input, the button and the example link share one row. At 640px and below the input takes
+  the first row (hint 14px, 13px below 368px) so the whole hint shows at 320 and 390, and the button and the link share
+  the second. An opened line's facts (`.details .facts`) are one column at 480px and below.
 - The tray wraps its text above the button on narrow screens and respects the bottom safe area.
 - Controls are at least 44px tall, except the pencil (32px with a pointer, 40px on touch), filter buttons (40px), the Edit button (36px), the Copy button and
   badges (24px) and the summary dots (24px targets).
@@ -246,9 +258,8 @@ No tracked capitals, no eyebrows above headings.
 ## Revision 22 additions (from src/styles.css, end of file)
 
 - **Key facts on phones** (below 40rem): `.kf-tokens`, `.kf-items` and `.kf-values` are one `minmax(0, 1fr)` column,
-  their items `min-width: 0`; inside a value cell `.addr` wraps (`inline-flex`, `flex-wrap: wrap`, `white-space:
-  normal`, `max-width: 100%`) so the chain tag drops to the next line instead of running under the badge column;
-  the short address itself (`.addr-link`) never breaks; `.tok-also` and each `.tok-also-one` wrap the same way.
+  their items `min-width: 0`; `.addr` wraps and the short address with its copy button (`.addr-main`) never breaks. At
+  30rem and below the row grid above applies.
 - **Tokens on several chains**: home address and chain tag first, then `.tok-also` ("also on" in 13px secondary)
   with each other chain's short address, copy icon, its own chain tag and its own explorer (Polygon PoS:
   polygonscan.com; a chain the text does not name gets no tag and a Blockscan link).

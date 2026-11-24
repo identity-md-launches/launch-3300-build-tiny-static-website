@@ -171,8 +171,12 @@ export function chainEntry(text: string, chain: string | number | null = null): 
   const m = LEAD.exec(t);
   const named = chain !== null && chain !== "" ? chainTag(String(chain)) : "";
   if (m) {
-    const role = tidy(t.slice(m[0].length).replace(/^\s*(mainnet|network)\b/i, ""));
-    return { chain: named || chainTag(m[1]!), role };
+    // "Sepolia testnet" is the chain Sepolia in the role testnet: the role stays, whether the entry's name holds it
+    // ("Sepolia testnet") or its text does ("Sepolia", "testnet").
+    const net = /\s(testnet|devnet)$/i.exec(m[1]!);
+    const rest = tidy(t.slice(m[0].length).replace(/^\s*(mainnet|network)\b/i, ""));
+    const role = net ? [net[1]!.toLowerCase(), rest].filter(Boolean).join(", ") : rest;
+    return { chain: named || chainTag(net ? m[1]!.slice(0, net.index) : m[1]!), role };
   }
   return { chain: named || t, role: named ? tidy(t) : "" };
 }
@@ -192,5 +196,10 @@ export function chainEntries(entries: { text: string; chain?: string | number | 
   return out;
 }
 
-/** "Chain: role" or "Chain". */
-export const chainText = (c: { chain: string; role: string }) => (c.role ? `${c.chain}: ${c.role}` : c.chain);
+/** "Chain: role", "Sepolia testnet" for a network role, or "Chain". */
+export const chainText = (c: { chain: string; role: string }) => {
+  const net = /^(testnet|devnet)\b[,:;]?\s*/i.exec(c.role);
+  if (!net) return c.role ? `${c.chain}: ${c.role}` : c.chain;
+  const rest = c.role.slice(net[0].length);
+  return `${c.chain} ${net[1]!.toLowerCase()}${rest ? `: ${rest}` : ""}`;
+};

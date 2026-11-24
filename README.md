@@ -18,10 +18,10 @@ npm run preview        # serve the built dist/ locally
 npm run typecheck      # tsc --noEmit only
 npm test               # vitest unit tests (tests/*.test.ts)
 npx vite-node scripts/agents-md.ts   # rewrite public/agents.md from src/bodies.ts, then npm run build
-# browser interaction checks on dist/, with every chain and api.imd.fun read answered from a fixture
-# (needs Playwright with a Chromium that can start):
-npx vite-node tests/make-fixture.ts test/scratch/fx.json
-IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/e2e.mjs test/scratch/fx.json test/scratch/e2e
+# browser checks on dist/ against the live record (needs Playwright with a Chromium that can start):
+IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/browser/read.mjs
+IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/browser/pay.mjs
+# tests/e2e.mjs is the older fixture suite; its wording checks predate Swarmpedia and several fail (see Validation)
 ```
 
 `dist/` is committed and is what gets hosted. Vite's `base` is `./`, so every asset URL is relative and
@@ -118,22 +118,27 @@ job with its notes, and the subject's Overview shows "No project found" with the
 | `src/page.ts` | Parses untrusted `page.json` and `lines.json` into plain strings; the Statement label rule; facts; `differs` levels and pairs; source outcomes; merges source lines and the one numbered source list |
 | `src/Record.tsx` | Overview (key facts, summary with kind dots), Record (accounting, filter, sections, one facts table, Confirmed/Contradicted by, other channels, open questions, and Panel answers last) and Sources tabs |
 | `src/ActivityList.tsx` | Activity, including each source job's per-source outcome and each edit sentence's verdict |
+| `src/requests/` | One module per request kind, and `ask.ts`: what a pay dialog takes, how prices are read, what is checked before it opens |
+| `src/amounts.ts`, `src/example.ts`, `src/outcome.ts` | Base-unit amounts in whole tokens; Home's example; what a changes job did, in one line |
 | `src/format.ts` | Shared display helpers (kind names, tie words, job links, line anchors) |
 | `src/useActivity.ts` | Follows every request of this site to completion; refusal reasons; source files; ENS names; polling |
 | `src/wallet.tsx`, `src/wallet-icons.ts` | wagmi config and the connect sheet (EIP-6963 browser-extension wallets, "Open in" links on phones) |
 | `src/App.tsx`, `src/styles.css` | Tabs and their links, Contribute (rebuild, confirm, add sources, suggest an edit), pay dialog and About line; all styles |
-| `tests/` | Unit tests, the fixture builder `make-fixture.ts` and the Playwright interaction script |
+| `tests/` | Unit tests, the fixture builder `make-fixture.ts`, the older Playwright script `e2e.mjs`, and `browser/`: checks on the live record |
 
 ## How a paid action works
 
-1. The visitor clicks an action. The site reads `priceOf(action, IMD)` on IMD Intake v2
-   `0xa43e6f75ee006411f79ac1c84120606c2330de82` and opens a dialog. The dialog shows the amount (for
-   example `0.5 IMD (500000000000000000)`), the Intake address, the action id and the **full body**. All
-   of this appears before any wallet prompt.
+1. The visitor clicks an action. Before any dialog opens, the site reads the price of that exact request through its
+   request kind (today `priceOf(action, IMD)` on IMD Intake v2 `0xa43e6f75ee006411f79ac1c84120606c2330de82`), checks
+   that the job can read its instruction file and, for a first page, reads Ethereum again: a subject with a finished or
+   running page job opens no dialog (`prepareAsk` in `src/requests/ask.ts`). When any of these fails it says why and
+   offers Try again. The dialog shows the amount, the Intake address, the action id and the **full body**, all before
+   any wallet prompt, and says so when the price differs from the one the page showed.
 2. On "Pay", the price is read again. If it changed, the site shows the new price and stops. The amount
    sent is exactly the value it just read.
 3. If `allowance(payer, Intake)` is below that amount, the wallet is asked to `approve` **exactly** that
-   amount, never more.
+   amount, never more. Once the approval is included the price is read once more: a changed one returns to review with
+   the new amount and needs a new Pay click, and nothing is sent at the old one (`src/payFlow.ts`).
 4. `request(action, body, (address(0), 0x00000000), IMD, amount)` with IMD
    `0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7`. The body is compact UTF-8 JSON.
 
@@ -273,7 +278,7 @@ settled line never changes who said it: its kind and `by` stay in the file and o
 
 - **One line per row**: the sentence, a coloured marker with its word (Proof, Statement, Claim, or Proven,
   Contradicted, Superseded for a settled row, with "Newer: <the newer line>" under Superseded), who said
-  it (statements and claims) and its source numbers. Clicking the row or pressing Enter on it opens the
+  it (statements and claims) and its sources, each site once by name (several pages of one site open as a list). Clicking the row or pressing Enter on it opens the
   details: quote, re-run steps, how it was checked, who added it (research or source job and its payer) and
   the links. Rows start closed.
 - **Filter**: All, Proven, Stated, Claimed (and Contradicted, Superseded when above zero), each with its count,
@@ -379,21 +384,16 @@ they go to the transaction on Etherscan.
 
 ## Needs a rebuild, and what readers are told
 
-A page needs a rebuild for either of two reasons (`outdatedOf` in `src/model.ts`):
+A page is flagged for a rebuild for one reason (`outdatedOf` in `src/model.ts`): the instruction hash in the objective of
+the request that produced it differs from the current rebuild instruction file's hash (`matchesTemplate` in
+`src/bodies.ts`). A page built before instruction files names no hash and counts as older. The flag shows only under
+Page upkeep and in Home's **Needs a rebuild** filter, which shows no count while reads are outstanding.
 
-- **Results not folded in**: completed results or panel answers that are not listed in the `<PRIOR>` of the request
-  that produced the page shown. A changes result whose patches repaired every part it disputes is not counted
-  (`unfoldedCount`); a rebuild still folds it in.
-- **Built with an older format**: the instruction hash in the objective of the request that produced the page
-  differs from the current rebuild instruction file's hash (`matchesTemplate` in `src/bodies.ts`). A page built
-  before instruction files names no hash and counts as older.
-
-Readers see a note only when results are not folded in ("N additions not yet merged. Rebuild"; "1 addition" for
-one; `readerNoteText` in `src/model.ts`), on Overview and on the home row, or when a newer source disputes parts no
-change has repaired ("A newer source disputes N parts of this page. Rebuild to update them."). The format reason
-("Out of date: built with an older format", or both reasons as "Out of date: N results not folded in; built with an
-older format"; `outdatedText`) appears only in Home's **Needs a rebuild** filter, on the Contribute tab and under
-Page upkeep. While reads are outstanding the filter shows no count and says "Checking which pages need a rebuild…".
+An edit's added lines and key-fact fixes already show on the page, so a result after the page is never shown as
+unfinished. Overview says "A newer source disputes N parts of this page. Rebuild to update them." only for a dispute no
+applied fix covers (`disputesOf`, `disputedCount` in `src/changeResult.ts`): a Key facts row or sentence that no patch
+of the same or a later job repairs, also when the job patched other parts, and a line whose newer line no patch of
+that job rests on.
 
 ## What a rebuild is asked to research
 
@@ -500,7 +500,7 @@ page file. The site:
   supporting lines, one per row with its marker (Proven, Statement, Claim; Contradicted when a proof contradicts
   it) and who said it; each row opens that line in Record. At most 4, then "and N more", which opens them all. On
   a Record line the panel shows that line's own marker, speaker and quote instead; on a Key facts row each of its
-  lines with its quote. "Your wording is kept if those lines, or a link you add, support it." appears only under
+  lines with its quote. "Your wording is added if those lines, or a link you add, support it." appears only under
   Reword it.
 - **The open form** (revision 21/22). Contribute starts with one form, "What's wrong or missing?": a text area of up
   to 1,000 characters (placeholder "Say it in your own words. For example: the team changed in September, or the
@@ -699,9 +699,8 @@ A kept change now repairs the parts it disputes in the same job; it no longer as
   <payer>" and "Earlier value: …". A patched summary sentence shows its new text, marked "updated by a change from
   <payer>", and its details give the earlier text (`applySentencePatches` in `src/changeResult.ts`). Record lines
   take no patch and keep their Superseded or Contradicted markers.
-- **Banner.** "A newer source disputes N parts of this page" counts only parts in `affects` that got no patch
-  (`disputesOf`). A changes result whose disputed parts are all patched (`fullyPatched`) does not count as an
-  addition not yet merged.
+- **Banner.** "A newer source disputes N parts of this page" counts only what no applied fix covers (see Needs a
+  rebuild).
 - **Rebuild.** The rebuild still folds every changes result in later and treats its patches as part of it: "fold
   each patch into the infobox row or summary sentence it names, resting on the lines it gives, unless newer evidence
   says otherwise."
@@ -710,7 +709,9 @@ A kept change now repairs the parts it disputes in the same job; it no longer as
 
 Every request the site sells is one module under `src/requests/` (`firstPage.ts`, `rebuild.ts`, `changes.ts`),
 each a `RequestKind` (`src/requests/kind.ts`). A new kind is one new module, listed in `src/requests/index.ts`; no
-other kind changes. It must supply:
+other kind changes. Every request the site opens is an Ask built from its kind (`askFor`, `askOf` in
+`src/requests/ask.ts`): its action, body and price are the kind's own, and `resultNameOf` in `src/useActivity.ts`
+takes the file to read from the kind's `results`. It must supply:
 
 - `id` and `label`: a stable id and what the pay dialog calls it;
 - `action`: the Intake action it is sent to (today every kind uses `job.open@job-1`);
@@ -719,7 +720,8 @@ other kind changes. It must supply:
 - `body(input)`: the exact body sent, and `instructions` when its objective names an instruction file;
 - `price(read, body)`: how its price is read for that exact request. Never a fixed number: today the Intake's
   `priceOf(action, IMD)`; a kind that IMD quotes per request reads that quote here;
-- `results`: the result files the site reads from the finished job (name, path, media type).
+- `results`: the result files the site reads from the finished job (name, path, media type), the result file itself
+  first. Kinds no longer sold keep theirs in `HISTORICAL_RESULTS` (sources, edits).
 
 The job check (`src/counts.ts`) must also learn the kind's objective shape before its results are read. IMD plans to
 sell many-agent goals through the Intake; that will be the next kind. None is added now.
@@ -732,7 +734,8 @@ is known it is its own sentence: "Its main contract is 0x… on chain N. ". "Res
 links) is listed after the earlier results as "Leads to read first: <link>, <link>.". The opening is tied to the
 instruction file's sha256 (`src/openings.ts`): every file published before this revision is checked with the older
 openings (`templates/rebuild-v1.txt`, `templates/changes-v1.txt`); every later file with the new ones. The check
-accepts any https links in the leads slot and nothing else there.
+accepts up to ten https links in the leads slot, each exactly as written (an apostrophe, a closing full stop or comma
+is part of the link; only a space ends it), and nothing else there.
 
 ## Instruction files
 
@@ -916,6 +919,41 @@ full body is shown before any wallet prompt, and `agents.md` tells agents to run
 pins the site's bodies to them.
 
 ## Validation results
+
+### 2026-11-24, review fixes to revision 24 (after the last source change)
+
+Run on this machine, on the final source:
+
+- `npm ci`, `npm run typecheck` (no errors), `npm run build`, `npm test` (37 files, 515 tests, all pass).
+- `node .imd/reads/skills/design-critic/scripts/taste.mjs`: ran with Chromium (Playwright 1, headless) on the export at
+  320, 390 and 1440 wide. All 16 checks pass (render, layout, targets, contrast, casing, tracking, eyebrows, type-sizes,
+  type-faces, glyphs, slogans, repetition, copy-budget, chrome, motion, share).
+- `tests/browser/read.mjs` on the live record (Ethereum logs and api.imd.fun): Home at 320, 390 and 1440 has no
+  overflow, the Connect control fits, the whole hint shows, the example link is on the button's row, the totals read
+  "Reading project totals…" and then one figure, and the example is three lines of imdusd.com stating one INFER supply.
+  All five subjects show their pages. At 320 no address link, copy button, chain tag or label meets a badge or pencil
+  in any Key facts row of the five. imd.fun: Main contract "IMD token", "Sepolia testnet", "All on Ethereum" once, three
+  Supply lines, no dispute banner; its changes job reads "Updated the page: 3 added, 1 not added" with four reasons; Job
+  price reads 0.5 IMD, also in Earlier readings, with the integer under Exact value; the steps copy as shown; sources
+  read "imd.fun" and "api.imd.fun, 4 pages".
+- `tests/browser/pay.mjs` with a stand-in wallet (nothing was sent or paid): with a 1.5 s price read no dialog opens
+  until the new price is there; a price that moves while the approval is included returns to review and sends nothing,
+  then approves and requests exactly the new price; the dialog closes at signing and the bar takes over; a failed price
+  read opens nothing; the header fits with a connected wallet at 320, 360, 390, 416, 480 and 560; a stale IndexedDB
+  list offers nothing for imd.fun and opens its page once the scan settles.
+- "Not read" notes in Activity are the same as in the previous export on all five subjects (imd.fun 2, ens.domains 1,
+  imdusd.com 2, the others none).
+- Better Interface, six domains. Accessibility: labelled copy buttons, focusable steps, table roles kept in the phone
+  layout, status and alert roles on why a dialog did not open. Layout: header, Key facts and lookup at 320 to 480
+  (`src/styles.css` `.top-row`, `.kf-row`, `.lookup`); found and fixed the send bar covering "Review and submit"
+  (`body.has-tray .send-bar`), labels clipped under badges at 320, and facts squeezed into half a phone's width. Writing:
+  "added" and "not added" everywhere, a reason on every change. Typography: six sizes, unchanged. Colors: no new
+  colour. UI: disclosures for several pages of one site, Copy on steps.
+- Limits: Chromium only; WebKit and real phones were not run. No real wallet or payment. `tests/e2e.mjs`, the older
+  fixture suite, was run for 280 s: 42 checks passed, 8 failed on wording and layout from before Swarmpedia (its first
+  expects the old site name), and it did not finish; it was not rewritten. The share image is drawn text ("Swarmpedia", "swarmpedia.imd.site"); no preview service
+  was asked. Two subjects on chain (nousresearch.com, tacit.finance) have a first page in progress, so Home counts 7
+  projects.
 
 ### 2026-11-23, revision 15 review fixes (after the last source change)
 

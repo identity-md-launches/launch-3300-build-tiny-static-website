@@ -11,6 +11,7 @@ import { fromStored, loadTaggedRequests, stateOf, getBlockTime, toStored, type C
 import { dropOldFileCache, kvGet, kvSet } from "./store";
 import { cacheGet, cacheSet, fetchLogo, fetchOracle, fetchResearchPage, fetchResultHash, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
+import { kindOfRequest, resultFileOf, resultNamesOf } from "./requests";
 import { parseChanges, parseEdit, parseLines, parsePage, rejectionOf, type ChangesResult, type EditResult, type Page, type SourceLines } from "./page";
 import { publicClient } from "./reads";
 import { domainOfId } from "./subject";
@@ -70,6 +71,11 @@ export const isSourceJob = (r: TaggedRequest) => r.action === ACTIONS.research &
 export const isEditJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "edit";
 export const isChangesJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "changes";
 export const isPageJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "add";
+/**
+ * The result file the site reads from this request's finished job, from its request kind's own descriptors
+ * (src/requests/); sources and edits, no longer sold, keep theirs. Null when no kind reads a file from it.
+ */
+export const resultNameOf = (r: Pick<TaggedRequest, "action" | "kind">): string | null => (r.action === ACTIONS.research || kindOfRequest(r) ? resultFileOf(r.kind) : null);
 
 export interface SentTx {
   hash: Hex;
@@ -157,7 +163,8 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, mo
   let logo: string | null = null;
   let logoError: string | null = null;
   let logoHash: string | null = null;
-  const research = isSourceJob(req) || isEditJob(req) || isPageJob(req) || isChangesJob(req);
+  const name = resultNameOf(req);
+  const research = name !== null;
   // The objective is checked before any result byte is read: a job not sent through this record's instructions is
   // never fetched (an older job that a later rebuild may adopt still is: its file hash is what that rebuild lists).
   const shape = research ? shapeOf(req) : null;
@@ -165,7 +172,6 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, mo
   const hasFiles = research && !notRead && state === "completed" && !!completion;
   if (hasFiles && mode === "meta") {
     // Only the hash the job result lists: the gate checks earlier results and channels before any byte is read.
-    const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : isChangesJob(req) ? "changes" : "lines";
     try {
       fileHash = await fetchResultHash(req, jobId, name);
     } catch (e) {
@@ -173,7 +179,6 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, mo
     }
   }
   if (hasFiles && withFiles && completion) {
-    const name = isEditJob(req) ? "edit" : isPageJob(req) ? "page" : isChangesJob(req) ? "changes" : "lines";
     try {
       const f = await fetchResearchPage(req, completion, jobId, name);
       fileHash = f.hash ?? null;
@@ -190,14 +195,14 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, mo
         via = { jobId: f.jobId, path: f.path };
         // The logo file is shown only when the page says where it came from (page.logo). A job that found no
         // icon still writes a placeholder PNG to satisfy the declared output, and leaves page.logo out.
-        if (page.logo) try {
+        if (page.logo && resultNamesOf(req.kind).includes("logo")) try {
           const l = await fetchLogo(req, completion, f.jobId ?? jobId);
           logo = l.url;
           logoHash = l.hash;
         } catch (e) {
           logoError = e instanceof Error ? e.message : "The logo could not be read";
         }
-      } else sources = parseLines(f.text);
+      } else if (name === "lines") sources = parseLines(f.text);
       jobId ??= f.jobId;
     } catch (e) {
       sourcesError = e instanceof Error ? e.message : `The ${name} file could not be read`;
@@ -220,7 +225,8 @@ export interface ActivityState {
   retrying: boolean;
   /** True while the items shown come from the browser's cache and the scan for newer blocks has not ended. */
   cached: boolean;
-  reload: () => Promise<void>;
+  /** Reads Ethereum again; resolves the requests as they are now, or null when it could not be read. */
+  reload: () => Promise<Activity[] | null>;
   /**
    * Reads one subject's result files (page, lines, edit, changes and the logo) without opening its page, and returns
    * its requests. What is read is kept, so opening the subject later does not read it again.
@@ -335,15 +341,16 @@ export function useActivity(subject: string | null = null): ActivityState {
     return out;
   }, [followed]);
 
-  const build = useCallback(async () => {
+  const build = useCallback(async (): Promise<Activity[] | null> => {
     const s = scan.current;
-    if (!s) return;
+    if (!s) return null;
     const sub = open.current;
     const out = await readFull(s, s.requests, (r) => r.subject === sub);
     if (scan.current === s && open.current === sub) setItems(out);
+    return out;
   }, [readFull]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<Activity[] | null> => {
     setLoading(true);
     window.clearTimeout(retry.current);
     try {
@@ -359,13 +366,15 @@ export function useActivity(subject: string | null = null): ActivityState {
       const next = await loadTaggedRequests(scan.current, { onRetry: () => setRetrying(true) });
       scan.current = next;
       await kvSet("scan", SCAN_KEY, toStored(next));
-      await build();
+      const out = await build();
       setError(null);
       setCached(false);
+      return out;
     } catch (e) {
       setError(e instanceof Error ? e.message : "The chain could not be read");
       // Never an empty page: with nothing read yet, "Still reading the chain" stays up and the scan tries again.
       if (!scan.current) retry.current = window.setTimeout(() => void load(), 20_000);
+      return null;
     } finally {
       setLoading(false);
       setRetrying(false);
@@ -394,7 +403,7 @@ export function useActivity(subject: string | null = null): ActivityState {
     async (id: string) => {
       const s = scan.current;
       if (!s) return [];
-      const research = (r: TaggedRequest) => isPageJob(r) || isSourceJob(r) || isEditJob(r) || isChangesJob(r) || r.action.startsWith("oracle.");
+      const research = (r: TaggedRequest) => resultNameOf(r) !== null || r.action.startsWith("oracle.");
       const out = readable(await readFull(s, s.requests.filter((r) => r.subject === id), research));
       // A job a full read did not count leaves the light list too (Home, its totals and digests, Profile).
       const v = verdicts.current;

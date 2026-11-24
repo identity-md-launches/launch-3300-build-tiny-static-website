@@ -162,8 +162,10 @@ export interface Disputes {
   infobox: Map<string, Dispute>;
   /** Summary sentences by their normalised text. */
   summary: Map<string, Dispute>;
-  /** True when a changes job with a kept change listed anything in affects. */
+  /** True when a changes job with a kept change left a dispute no applied fix covers: Overview's banner shows then. */
   fromKept: boolean;
+  /** Record line ids disputed by a newer line that an applied fix of the same job rests on: the fix covers them. */
+  covered?: Set<string>;
   /** Each changes job's place in the order the jobs completed (request id to index). */
   order: Map<string, number>;
 }
@@ -173,14 +175,18 @@ export interface Disputes {
  * newer job's entry for the same target wins; contradicts wins over outdates within one job.
  */
 export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disputes {
-  const out: Disputes = { lines: new Map(), infobox: new Map(), summary: new Map(), fromKept: false, order: new Map(scope.after.map((a, i) => [a.req.requestId, i] as const)) };
+  const out: Disputes = { lines: new Map(), infobox: new Map(), summary: new Map(), fromKept: false, covered: new Set(), order: new Map(scope.after.map((a, i) => [a.req.requestId, i] as const)) };
   const put = (m: Map<string, Dispute>, k: string, d: Dispute) => {
     const was = m.get(k);
     if (!was || was.type !== "contradicts" || d.type === "contradicts") m.set(k, d);
   };
+  const keptJobs = new Set<string>();
   for (const a of scope.after) {
     if (!a.changes) continue;
     const key = a.req.requestId;
+    if (a.changes.items.some((v) => v.kept)) keptJobs.add(key);
+    // The job's own lines its patches rest on: the correction they make is already on the page.
+    const fixLines = new Set(patchesOf(a.changes).flatMap((p) => p.lines));
     // A patch repairs its row or sentence: a dispute an earlier job left on it is superseded. Jobs that complete
     // after this one are read later in this loop and can dispute it again.
     for (const p of patchesOf(a.changes)) {
@@ -190,7 +196,6 @@ export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disp
         if (t) out.summary.delete(t);
       }
     }
-    let any = false;
     for (const f of a.changes.affects) {
       const by = `${key}:${f.byLine}`;
       if (!has(by)) continue;
@@ -201,18 +206,22 @@ export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disp
         const t = resolveChangeTarget(f.target, a, scope, has);
         if (!t || t === by) continue;
         put(out.lines, t, d);
+        // The older line reads Superseded or Contradicted, and the part of the page that showed it was corrected.
+        if (out.lines.get(t) === d) {
+          if (fixLines.has(f.byLine)) out.covered!.add(t);
+          else out.covered!.delete(t);
+        }
       } else if (f.kind === "infobox") put(out.infobox, f.target.trim().toLowerCase(), d);
       else {
         const t = norm(unquote(f.target));
         if (!t) continue;
         put(out.summary, t, d);
       }
-      any = true;
     }
-    // The page banner counts only disputes no applied fix covers: a job whose own fixes are applied (it gave patches)
-    // shows its result on the page, so it raises no "A newer source disputes" banner; its dots stay on the parts.
-    if (any && a.changes.items.some((v) => v.kept) && patchesOf(a.changes).length === 0) out.fromKept = true;
   }
+  // Only what no applied fix covers, read at the end: a later job's patch removes an earlier job's dispute above.
+  const left = [...[...out.lines].filter(([id]) => !out.covered!.has(id)).map(([, d]) => d), ...out.infobox.values(), ...out.summary.values()];
+  out.fromKept = left.some((d) => d.job !== undefined && keptJobs.has(d.job));
   return out;
 }
 
@@ -234,12 +243,13 @@ export function sentenceDispute(s: { text: string; original?: string; rewordJob?
   return hit;
 }
 
-/** How many parts of the page shown the disputes mark: lines, Key facts rows and summary sentences. */
+/** How many parts of the page shown a dispute no applied fix covers marks: lines, Key facts rows and summary sentences. */
 export function disputedCount(d: Disputes, rowLabels: string[], sentences: { text: string; original?: string; rewordJob?: Activity }[]): number {
   const labels = new Set(rowLabels.map((l) => l.trim().toLowerCase()));
   const rows = [...d.infobox.keys()].filter((k) => labels.has(k)).length;
   const sent = sentences.filter((s) => sentenceDispute(s, d)).length;
-  return d.lines.size + rows + sent;
+  const lines = [...d.lines.keys()].filter((id) => !d.covered?.has(id)).length;
+  return lines + rows + sent;
 }
 
 /* ---------- Patches ---------- */

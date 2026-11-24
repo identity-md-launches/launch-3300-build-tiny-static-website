@@ -110,7 +110,7 @@ describe("one change", () => {
     expect(planLinks(Array.from({ length: 25 }, (_, i) => `https://x${i}.com`).join("\n"), 20).links).toHaveLength(20);
   });
   it("shows the no-source line word for word", () => {
-    expect(NO_SOURCE).toBe("No source yet. Without a link, this only reaches the page if the swarm finds a source for it. With one, it is far more likely to be kept.");
+    expect(NO_SOURCE).toBe("No source yet. Without a link, this only reaches the page if the swarm finds a source for it. With one, it is far more likely to be added.");
   });
 });
 

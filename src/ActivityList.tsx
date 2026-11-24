@@ -10,6 +10,7 @@ import { to } from "./route";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity, type useActivity } from "./useActivity";
 import { CHANGE_WORDS, keyFactTarget, lineTarget, newChangeId, noTarget, parseItems, sentenceTarget, type ChangeTarget, type SentItem } from "./changes";
 import { originOfLine, resolveChangeTarget } from "./changeResult";
+import { changesOutcome } from "./outcome";
 import { useSuggest } from "./Suggest";
 import { useState } from "react";
 
@@ -18,7 +19,7 @@ function what(a: Activity) {
   if (a.req.action !== ACTIONS.research) return `Question · ${TEMPLATE_TITLES[a.req.template as Template] ?? "Panel answer"}`;
   if (isSourceJob(a.req)) return "Sources";
   if (isEditJob(a.req)) return "Edit";
-  if (isChangesJob(a.req)) return "Changes";
+  if (isChangesJob(a.req)) return (!a.notRead && changesOutcome(a)) || "Changes";
   if (isPageJob(a.req)) return "Page rebuild";
   return "Job";
 }
@@ -53,7 +54,7 @@ export function retryTarget(item: SentItem, a: Activity, shown: Pick<Shown, "sco
   return refs.length > 0 && !ids.length ? { ...target, lost: true } : target;
 }
 
-/** Every change of a changes job, with "Kept" or "Not kept: <why>"; one not kept for lack of a source can go back in the tray. */
+/** Every change of a changes job, "Added" or "Not added", each with its reason; one not added for lack of a source can go back in the tray. */
 function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
   const s = useSuggest();
   const [back, setBack] = useState<Map<number, "added" | "opened">>(() => new Map());
@@ -82,9 +83,15 @@ function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
             {item.note && <span className="small">{item.type === "reword" ? "New sentence: " : "Note: "}{item.note}</span>}
             {v ? (
               v.kept ? (
-                <span className="verdict verdict-supported">Added{v.type === "reword" && v.finalText ? `: “${v.finalText}”` : ""}</span>
+                <>
+                  <span className="verdict verdict-supported">Added{v.type === "reword" && v.finalText ? `: “${v.finalText}”` : ""}</span>
+                  <span className="small">{v.why || "no reason given"}</span>
+                </>
               ) : (
-                <span className="verdict verdict-unsupported">Not added: {v.why || "no reason given"}</span>
+                <>
+                  <span className="verdict verdict-unsupported">Not added</span>
+                  <span className="small">{v.why || "no reason given"}</span>
+                </>
               )
             ) : a.state === "completed" && a.changes ? (
               <span className="small">No verdict given</span>
@@ -107,9 +114,13 @@ function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
   );
 }
 
-/** Shown now, folded in (its artifact URL is in the objective of the page shown), or not yet folded in. */
-function standing(a: Activity, shown: Shown): string {
+/**
+ * Shown now, folded in (its artifact URL is in the objective of the page shown), or, for a panel answer, not yet
+ * folded in. A changes, sources or edit result already shows on the page as applied, so it names no next rebuild.
+ */
+export function standing(a: Activity, shown: Pick<Shown, "standing">): string {
   const s = shown.standing(a);
+  if ((s === "next" || s === "left-out") && (isChangesJob(a.req) || isSourceJob(a.req) || isEditJob(a.req))) return "";
   return s ? STANDING_WORDS[s] : "";
 }
 
@@ -190,9 +201,6 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                   </p>
                 )}
                 {isChangesJob(a.req) && <ChangeItems a={a} shown={shown} />}
-                {isChangesJob(a.req) && a.changes && (
-                  <p className="small">{onTop ? `${plural(a.changes.data.lines.length, "line")} added to the record` : `${plural(a.changes.data.lines.length, "line")} in result`}</p>
-                )}
                 {isSourceJob(a.req) && a.sources && (
                   <ul className="outcomes" aria-label="What each source gave">
                     {a.sources.sources.map((s, i) => {

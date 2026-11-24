@@ -248,10 +248,13 @@ export function sourceBody(urls: string[], channels: ChannelTie[], main: string,
   };
 }
 
-/** Why one pasted line is not used, or null when it is a usable link. `max` is the longest link allowed (0: any). */
+/**
+ * Why one pasted line is not used, or null when it is a usable link. `max` is the longest link allowed (0: any). Any
+ * https address counts, as written: only a space is reserved, because spaces separate links in an objective.
+ */
 export function linkProblem(line: string, max = SOURCE_MAX_URL): string | null {
   if (max > 0 && line.length > max) return `longer than ${max} characters`;
-  if (/["'`\s]/.test(line)) return "has a quote or a space";
+  if (/\s/.test(line)) return "has a space";
   if (!line.startsWith("https://")) return "not an https link";
   try {
     const u = new URL(line);
@@ -432,12 +435,16 @@ export const mainSentence = (s: SubjectRef) => (s.domain && s.address && s.chain
 export const LEADS_MAX = 10;
 /** The leads slot: " Leads to read first: <link>, <link>." after "Earlier results: <PRIOR>.", or "" with none. */
 export const leadsText = (links: string[]) => (links.length ? ` Leads to read first: ${links.join(", ")}.` : "");
-/** A lead is any https link with no space, quote or comma-space (the slot's separator), of any length that fits. */
-export const leadProblem = (line: string): string | null => linkProblem(line, 0) ?? (/,$/.test(line) ? "ends with a comma" : null);
-/** Reads a leads slot back ("<link>, <link>"); null when anything in it is not an https link. */
+/** A lead is any https link with no space (", " separates the slot's links), of any length that fits. */
+export const leadProblem = (line: string): string | null => linkProblem(line, 0);
+/**
+ * Reads a leads slot back ("<link>, <link>", without the template's closing full stop); null when anything in it is
+ * not an https link, or it lists more than LEADS_MAX. No link holds a space, so ", " is always between two links,
+ * also after a link that itself ends with a comma, and a link's own closing full stop stays part of it.
+ */
 export function readLeads(text: string): string[] | null {
-  const parts = text.split(", ");
-  return parts.length && parts.every((u) => u && leadProblem(u) === null && !u.endsWith(".")) ? parts : null;
+  const parts = text.split(/, (?=https:\/\/)/);
+  return parts.length <= LEADS_MAX && parts.every((u) => leadProblem(u) === null) ? parts : null;
 }
 
 /** "Research to start from", one link per line: the usable links in order (at most 10) and why others are not used. */
@@ -448,7 +455,7 @@ export function planLeads(text: string): { links: string[]; rejected: { line: st
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
-    const why = leadProblem(line) ?? (line.endsWith(".") ? "ends with a full stop" : null);
+    const why = leadProblem(line);
     if (why) rejected.push({ line, why });
     else if (seen.has(new URL(line).href)) rejected.push({ line, why: "already listed" });
     else if (links.length >= LEADS_MAX) rejected.push({ line, why: `past the limit of ${LEADS_MAX} links` });

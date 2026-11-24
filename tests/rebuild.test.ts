@@ -168,7 +168,7 @@ describe("suggest an edit", () => {
     const links = Array.from({ length: 7 }, (_, i) => `https://a.example/${i}`);
     const p = planEditLinks([...links, "http://x.example", "https://a.example/0", "https://b.example/ x"].join("\n"));
     expect(p.links.length).toBe(EDIT_MAX_LINKS);
-    expect(p.rejected.map((r) => r.why)).toEqual(["past the limit of 5 links", "past the limit of 5 links", "not an https link", "already listed", "has a quote or a space"]);
+    expect(p.rejected.map((r) => r.why)).toEqual(["past the limit of 5 links", "past the limit of 5 links", "not an https link", "already listed", "has a space"]);
     expect(cleanEditText("  One.   Two.\r\n\r\n\r\nThree.\n")).toBe("One. Two.\n\nThree.");
   });
   it("reads edit.json: verdicts, accepted summary with paragraphs, and new lines like added-source lines", () => {

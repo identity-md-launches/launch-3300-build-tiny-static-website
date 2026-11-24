@@ -166,10 +166,10 @@ describe("add sources", () => {
     expect(b.objective).toContain("Sources: [1] https://x.com/a/status/1; [2] https://example.com/p. Output exactly one file");
     expect(numberLinks([])).toBe("");
   });
-  it("accepts only https links up to 300 characters with no quotes or spaces, and drops repeats", () => {
+  it("accepts only https links up to 300 characters with no spaces, and drops repeats", () => {
     const p = planSources(["https://a.com/x", "http://b.com", "https://a.com/x", "https://c.com/\"q", "https://d.com/a b", "https://" + "e".repeat(293) + ".com", "", "  https://f.com/ok  ", "ftp://g.com"].join("\n"), ch, MAIN, IMD);
-    expect(p.links).toEqual(["https://a.com/x", "https://f.com/ok"]);
-    expect(p.rejected.map((r) => r.why)).toEqual(["not an https link", "already listed", "has a quote or a space", "has a quote or a space", "longer than 300 characters", "not an https link"]);
+    expect(p.links).toEqual(["https://a.com/x", "https://c.com/\"q", "https://f.com/ok"]);
+    expect(p.rejected.map((r) => r.why)).toEqual(["not an https link", "already listed", "has a space", "longer than 300 characters", "not an https link"]);
   });
   it("stops at 20 links and keeps the objective under 7,500 characters, counting what still fits", () => {
     const many = Array.from({ length: 25 }, (_, i) => `https://example.com/${i}`).join("\n");

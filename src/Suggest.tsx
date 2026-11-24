@@ -1,6 +1,7 @@
 /** Suggest changes where you read: the pencil, the inline panel, the tray bar at the bottom and its review. */
 import { createContext, Fragment, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
-import { ACTIONS } from "./config";
+import { CHANGES } from "./requests";
+import { askOf, type Ask } from "./requests/ask";
 import { artifactUrl, fitsObjective, MAX_OBJECTIVE } from "./bodies";
 import { InstructionsBlock } from "./Instructions";
 import {
@@ -52,21 +53,12 @@ import type { Line } from "./page";
 export interface Quote {
   text: string;
   failed: boolean;
-  refresh: () => void;
+  /** Reads it again, for the exact request when its body is given. */
+  refresh: (body?: Record<string, unknown>) => void;
 }
 
-/** The one Ask shape PayDialog takes (kept here so the tray can build one without importing App). */
-export interface ChangesAsk {
-  title: string;
-  subject?: string;
-  action: string;
-  kind: string;
-  body: Record<string, unknown>;
-  /** The instruction file the objective names: the pay dialog opens only after it was fetched with a matching sha256. */
-  instructions?: "changes";
-  warning?: string;
-  afterSent?: () => void;
-}
+/** What the tray hands to the pay dialog: an Ask of the changes kind (src/requests/changes.ts). */
+export type ChangesAsk = Ask;
 
 /* ---------- Shared state: which panel is open, and the tray ---------- */
 
@@ -455,7 +447,7 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
           <>
             <label htmlFor={`${id}-corrected`}>Corrected sentence (optional)</label>
             <textarea id={`${id}-corrected`} rows={2} maxLength={SUGGEST_MAX} value={corrected} onChange={(e) => setCorrected(e.target.value)} aria-describedby={`${id}-corrected-hint`} />
-            <p id={`${id}-corrected-hint`} className="small">Sent as a suggestion. If the change is kept, the summary shows the corrected sentence the job writes.</p>
+            <p id={`${id}-corrected-hint`} className="small">Sent as a suggestion. If the change is added, the summary shows the corrected sentence the job writes.</p>
           </>
         )}
         <label htmlFor={`${id}-links`}>{SOURCES_LABEL}</label>
@@ -553,7 +545,7 @@ export function planChanges(rec: Pick<RecordModel, "pageHash" | "after" | "scope
   const measure = (p: Prior) => changesObjective(changes, p, ch.list, rec.subject, makeRefOf(p, pageUrl, jobFiles), ch.more).length;
   const fit = fitChangesPrior(pageUrl, rec.results, rec.answers, required, measure);
   const refOf = makeRefOf(fit.prior, pageUrl, jobFiles);
-  const body = changesBody(changes, fit.prior, ch.list, rec.subject, refOf, ch.more);
+  const body = CHANGES.body({ changes, prior: fit.prior, channels: ch.list, subject: rec.subject, refOf, moreChannels: ch.more }) as ReturnType<typeof changesBody>;
   const unplaced = new Set(targeted.filter((c) => idsOf(c.target).some((x) => !refOf(x))).map((c) => c.id));
   // Never sent with an empty target: a line or key facts row with neither a line reference nor its text.
   for (const c of changes) if ((c.target.kind === "line" || c.target.kind === "keyfact") && !c.target.text.trim() && !idsOf(c.target).some((x) => refOf(x))) unplaced.add(c.id);
@@ -574,7 +566,11 @@ export function TrayBar({ rec, quote, onAsk }: { rec: RecordModel; quote: Quote;
   const [review, setReview] = useState(false);
   const plan = useChangesPlan(rec, list, s.live);
   const on = list.length > 0;
-  const { refresh } = quote;
+  const { refresh: readQuote } = quote;
+  // The price is read for the request as it stands now, through the changes kind.
+  const bodyNow = useRef(plan.body);
+  bodyNow.current = plan.body;
+  const refresh = useCallback(() => readQuote(bodyNow.current), [readQuote]);
   useEffect(() => {
     document.body.classList.toggle("has-tray", on);
     return () => document.body.classList.remove("has-tray");
@@ -586,6 +582,15 @@ export function TrayBar({ rec, quote, onAsk }: { rec: RecordModel; quote: Quote;
     const t = setInterval(refresh, PRICE_EVERY_MS);
     return () => clearInterval(t);
   }, [on, refresh]);
+  // The bar of a sent request sits above the tray: its height is published for the stylesheet.
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = bar.current;
+    if (!on || !el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => document.body.style.setProperty("--tray-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [on]);
   if (!on) return null;
   const withSource = list.filter(hasSource).length;
   const openReview = () => {
@@ -594,7 +599,7 @@ export function TrayBar({ rec, quote, onAsk }: { rec: RecordModel; quote: Quote;
   };
   return (
     <>
-      <div className="tray" role="region" aria-label="Your changes">
+      <div ref={bar} className="tray" role="region" aria-label="Your changes">
         <div className="tray-in">
           <p className="tray-text" aria-live="polite">
             <strong>{plural(list.length, "change")}</strong>
@@ -619,7 +624,7 @@ export function TrayBar({ rec, quote, onAsk }: { rec: RecordModel; quote: Quote;
           </button>
         </div>
       </div>
-      {review && <Review rec={rec} quote={quote} onClose={() => setReview(false)} onAsk={onAsk} />}
+      {review && <Review rec={rec} quote={{ ...quote, refresh }} onClose={() => setReview(false)} onAsk={onAsk} />}
     </>
   );
 }
@@ -734,7 +739,7 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
     if (!ready || plan.over || held) return;
     const clear = s.tray.clear;
     onClose();
-    onAsk({ title: `Submit ${plural(n, "change")}`, subject: rec.subject.id, action: ACTIONS.research, kind: "changes", body: plan.body, instructions: "changes", afterSent: clear });
+    onAsk(askOf(CHANGES, plan.body, { title: `Submit ${plural(n, "change")}`, subject: rec.subject.id, afterSent: clear }));
   };
   return (
     <div className="sheet-bg" onClick={onClose}>
@@ -800,7 +805,7 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
             {quote.failed ? (
               <>
                 {quote.text}{" "}
-                <button type="button" className="linklike" onClick={quote.refresh}>
+                <button type="button" className="linklike" onClick={() => quote.refresh()}>
                   Retry price
                 </button>
               </>

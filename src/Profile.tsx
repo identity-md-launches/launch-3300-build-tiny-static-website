@@ -9,6 +9,7 @@ import { ACTIONS, ETHERSCAN } from "./config";
 import { jobLink } from "./format";
 import { publicClient } from "./reads";
 import { subjectHref } from "./route";
+import { changesOutcome } from "./outcome";
 import { CopyIcon } from "./Record";
 import { parsePrior } from "./bodies";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, readable, type Activity, type ActivityState } from "./useActivity";
@@ -24,13 +25,7 @@ export function profileKind(a: Activity): string {
   return a.req.kind || "request";
 }
 
-/** "Updated the page: 3 added, 1 not added" for a completed changes job whose file was read. */
-export function changesOutcome(a: Activity): string {
-  const items = a.changes?.items ?? [];
-  if (!items.length) return "";
-  const kept = items.filter((i) => i.kept).length;
-  return `Updated the page: ${kept} added, ${items.length - kept} not added`;
-}
+export { changesOutcome };
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
@@ -113,7 +108,7 @@ export function Profile({ address, activity }: { address: string; activity: Acti
           <dd className="num">{started}</dd>
         </div>
         <div>
-          <dt>Changes kept</dt>
+          <dt>Changes added</dt>
           <dd className="num">{kept}</dd>
         </div>
         <div>
