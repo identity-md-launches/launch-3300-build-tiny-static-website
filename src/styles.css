@@ -1000,14 +1000,22 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
 .totals-proofs { display: inline-flex; align-items: center; gap: 4px; }
 /* The list note is empty in the default view (the totals line already counts the projects): it takes no room. */
 .list-note:empty { display: none; }
+/* Phones: the totals keep only their counts ("7 projects, 877 lines, 242 proofs"), on one line. */
+@media (max-width: 30rem) {
+  .totals-more { display: none; }
+  .totals-line { margin-bottom: 0; }
+}
 /*
  * Phones 375 to 480 wide: the first screen holds the headline, the lookup, the three cards and the first project row.
- * The header keeps one row (8 px between its links), Home's sections sit 16 px apart and the list header 8 px, and
- * each card puts its icon and labels in a 132 px column beside the example sentence.
+ * The header keeps one row inside the page (4 px between its links, How it works at the small size, Connect with 8 px
+ * inline padding), the headline is 28 px, Home's sections sit 16 px apart and the list header 8 px, and each card puts
+ * its icon and labels in a 132 px column beside the example sentence.
  */
 @media (min-width: 23.4375rem) and (max-width: 30rem) {
-  .top-row { flex-wrap: nowrap; column-gap: var(--space-2); }
-  .top-row > .top-link { order: 0; flex: none; }
+  :root { --text-display: 1.75rem; /* 28px: the display size on these phones, still one of six sizes */ }
+  .top-row { flex-wrap: nowrap; column-gap: var(--space-1); }
+  .top-row > .top-link { order: 0; flex: none; font-size: var(--text-small); }
+  .top-row > .acct-wrap > .btn, .top-row > .btn { padding-inline: var(--space-2); }
   .top-row:has(.acct-wrap) { flex-wrap: wrap; }
   .home { gap: var(--space-4); }
   .hero { gap: var(--space-3); padding-top: var(--space-2); }

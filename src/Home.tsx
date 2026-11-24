@@ -237,15 +237,28 @@ export function totalsText(rows: { counts: { all: number; checks: number } | nul
   return `${f(rows.length)} ${rows.length === 1 ? "project" : "projects"}, ${f(lines)} ${lines === 1 ? "line" : "lines"}, ${f(proofs)} of them ${proofs === 1 ? "a proof" : "proofs"} anyone can re-run.`;
 }
 
-/** The totals sentence with the Proof icon beside its proof count: "5 projects, 812 lines, ✓64 of them proofs …". */
+/**
+ * The totals sentence with the Proof icon beside its proof count: "5 projects, 812 lines, ✓64 of them proofs anyone
+ * can re-run." On phones the words after the counts are hidden (.totals-more), so it reads "5 projects, 812 lines,
+ * ✓64 proofs" on one line.
+ */
 function TotalsLine({ text }: { text: string }) {
   const at = text.lastIndexOf(", ") + 2;
+  const m = /^([\d,]+) of them (a proof|proofs)( anyone can re-run\.)$/.exec(text.slice(at));
   return (
     <>
       {text.slice(0, at)}
       <span className="kind-proof totals-proofs">
         <KindIcon kind="proof" size={14} />
-        {text.slice(at)}
+        {m ? (
+          <span>
+            {m[1]} <span className="totals-more">of them </span>
+            {m[2] === "a proof" ? <><span className="totals-more">a </span>proof</> : "proofs"}
+            <span className="totals-more">{m[3]}</span>
+          </span>
+        ) : (
+          text.slice(at)
+        )}
       </span>
     </>
   );

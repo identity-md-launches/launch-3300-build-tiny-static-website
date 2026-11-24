@@ -1,6 +1,6 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
 import { chainOnlyPiece, chainTag, otherAddresses, takeAddress, type OtherAddr } from "./addrDisplay";
-import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem, TEST_NETWORK, isLiveContract, liveMainOf } from "./page";
+import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem, type Contract, TEST_NETWORK, isLiveContract, liveMainOf } from "./page";
 import { chainIdOf, chainLabel, chainName, explorerAddressUrl } from "./subject";
 import { decimalsOf, wholeFact } from "./amounts";
 import { proofIdsOf, settleOf } from "./settle";
@@ -707,11 +707,11 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
     const id = chainIdOf(main.chain);
     rows.push({ label: "Main contract", mainName: mainContractName(page, all, main.address), value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines, all, sourceUrl), status: null, accounts: [], tokens: [], values: [] });
   }
-  const tests = page.contracts.filter((c) => c.status === "test" && /^0x[0-9a-fA-F]{40}$/.test(c.address));
+  // Every test program, EVM or not (a Solana devnet program has no 0x address), is listed under Test networks.
+  const tests = page.contracts.filter((c) => c.status === "test");
   if (tests.length) {
-    const addrs = tests.map((c) => c.address.toLowerCase());
-    const lines = all.filter((l) => [l.text, l.rerun, l.quote, l.fact?.value ?? ""].some((s) => addrs.some((a) => s.toLowerCase().includes(a))));
-    const nets = [...new Set(tests.map((c) => c.chain.trim()).filter(Boolean))];
+    const lines = linesNaming(all, tests);
+    const nets = [...new Map(tests.map((c) => testNetworksIn(`${c.chain} ${c.role}`)[0] ?? c.chain.trim()).filter(Boolean).map((n) => [n.toLowerCase(), n])).values()];
     rows.push({ label: "Test networks", value: nets.join(", ") || "Test network", url: "", note: "", lines, channel: null, badge: badgeOf(lines, all, sourceUrl), status: null, accounts: [], tokens: [], values: [] });
   }
   const token = tokenAddresses(page);
@@ -749,14 +749,6 @@ const MAIN_ROW = /^main contract$/i;
 /** The rows that describe live main-network deployments only. */
 export const LIVE_ONLY_ROWS = /^(?:main contract|chains?|contracts?|deployed by|controlled by)$/i;
 export const TEST_ROW = /^test networks?$/i;
-/** Each thing a row lists, as text: its items, else its values, else its one value. */
-const entriesOf = (r: Pick<KeyRow, "value" | "values" | "items" | "note">) =>
-  r.items?.length ? r.items.map((i) => [i.name, i.text, i.chain].join(" ")) : r.values.length ? r.values : [`${r.value} ${r.note}`];
-/** True when everything a row lists is on a test network ("on Solana devnet", "Sepolia"). */
-export const isTestOnly = (r: Pick<KeyRow, "value" | "values" | "items" | "note">) => {
-  const e = entriesOf(r).filter((x) => x.trim());
-  return e.length > 0 && e.every((x) => TEST_NETWORK.test(x));
-};
 /** "Solana devnet", "Base Sepolia", "testnet": the test networks a text names, each once. */
 export function testNetworksIn(text: string): string[] {
   const re = /\b(?:(?:[A-Z][\w.]*|zkSync|opBNB)\s+)?(?:test[- ]?net|devnet|Sepolia|Goerli|Holesky|Hoodi|Fuji|Mumbai|Amoy|Chiado|Alfajores)(?:\s+test[- ]?net)?\b/gi;
@@ -768,24 +760,95 @@ export function testNetworksIn(text: string): string[] {
   return [...out.values()];
 }
 
+type DeployStatus = "live" | "test" | "past";
+const norm = (s: string) => s.trim().toLowerCase().replace(/\s+(?:mainnet|one|pos|network|chain)$/, "");
 /**
- * Main contract, Chains, Contracts, Deployed by and Controlled by describe live main-network deployments only. A row
- * of these that lists only test-network deployments is left out and its network goes in a Test networks row (added
- * after the others unless the page has one). When the page then has no live contract left (no live Main contract,
- * Chains or Contracts row and no live contract in subject.contracts), Deployed by and Controlled by are left out too.
+ * What one entry of a live-only row describes: the deployment it names, resolved against the page's contracts. An
+ * entry naming a contract's address takes that contract's status (live, test or past); an entry naming a test
+ * network is test; an entry that names only a chain takes the status of the page's contracts on that chain when none
+ * of them is live; anything else is live. net is the test network to list under Test networks.
+ */
+export function entryStatus(text: string, chain: string, contracts: Contract[]): { status: DeployStatus; net: string } {
+  const t = `${text} ${chain}`;
+  const lower = t.toLowerCase();
+  const named = contracts.find((c) => c.address.trim().length >= 20 && lower.includes(c.address.trim().toLowerCase()));
+  const netOf = (c?: Contract) => testNetworksIn(t)[0] ?? (c?.chain.trim() || chain.trim() || text.trim());
+  if (named) {
+    if (named.status === "past") return { status: "past", net: "" };
+    if (named.status === "test" || !isLiveContract(named)) return { status: "test", net: netOf(named) };
+    return { status: "live", net: "" };
+  }
+  if (TEST_NETWORK.test(t)) return { status: "test", net: netOf() };
+  // A chain with no address: the page's contracts on that chain say whether anything live is there.
+  if (!ADDR.test(t) && contracts.length) {
+    const on = contracts.filter((c) => c.chain.trim() && [norm(chain), norm(text)].includes(norm(c.chain)));
+    if (on.length && !on.some(isLiveContract)) return on.some((c) => c.status === "test") ? { status: "test", net: netOf(on.find((c) => c.status === "test")) } : { status: "past", net: "" };
+  }
+  return { status: "live", net: "" };
+}
+
+/** A row value that lists several things in one text ("Ethereum and Sepolia", "A; B"), split into them. */
+const partsOf = (value: string) => value.split(/\s*(?:[;,]|\band\b)\s*/i).map((x) => x.trim()).filter(Boolean);
+
+/**
+ * Main contract, Chains, Contracts, Deployed by and Controlled by describe live main-network deployments only. Each
+ * thing such a row lists is resolved against the deployment it names (entryStatus): live entries stay, an entry on a
+ * test network moves to a Test networks row with its network, and a past one is left out. A row left with nothing is
+ * left out. When the page has no live deployment at all (no live contract in subject.contracts and no live entry left
+ * in Main contract, Chains or Contracts), all five rows are left out. The page's test contracts, EVM or not, are
+ * listed under Test networks too; that row is added after the others unless the page has one.
  */
 export function liveOnlyRows(rows: KeyRow[], page: Pick<Page, "contracts">, all: Line[], sourceUrl: (l: Line) => string = () => ""): KeyRow[] {
   const isLive = (r: KeyRow) => LIVE_ONLY_ROWS.test(r.label.trim());
-  const test = rows.filter((r) => isLive(r) && isTestOnly(r));
-  if (!test.length) return rows;
-  const liveLeft = rows.some((r) => /^(?:main contract|chains?|contracts?)$/i.test(r.label.trim()) && !isTestOnly(r)) || page.contracts.some((c) => isLiveContract(c) && c.status === "live");
-  const drop = new Set(liveLeft ? test : rows.filter(isLive));
-  const kept = rows.filter((r) => !drop.has(r));
-  if (kept.some((r) => TEST_ROW.test(r.label.trim()))) return kept;
-  const nets = [...new Map(test.flatMap((r) => entriesOf(r).flatMap(testNetworksIn)).map((n) => [n.toLowerCase(), n])).values()];
-  const lines = [...new Set(test.flatMap((r) => r.lines))];
+  const nets = new Map<string, string>();
+  const addNet = (n: string) => n && !nets.has(n.toLowerCase()) && nets.set(n.toLowerCase(), n);
+  const testLines: Line[] = [];
+  const out: KeyRow[] = [];
+  for (const r of rows) {
+    if (!isLive(r)) {
+      out.push(r);
+      continue;
+    }
+    let kept: KeyRow | null = r;
+    if (r.items?.length) {
+      const st = r.items.map((i) => entryStatus([i.name, i.text, i.address, i.url].join(" "), i.chain, page.contracts));
+      const keep = st.map((x) => x.status === "live");
+      if (keep.some((k) => !k)) {
+        const items = r.items.filter((_, i) => keep[i]);
+        const values = r.values.length === r.items.length ? r.values.filter((_, i) => keep[i]) : r.values;
+        kept = items.length ? { ...r, items, values, value: values.join("; ") || items.map((i) => i.name || i.text || i.address).join("; ") } : null;
+      }
+      st.forEach((x) => x.status === "test" && addNet(x.net));
+      if (st.some((x) => x.status === "test")) testLines.push(...r.lines);
+    } else {
+      const list = r.values.length ? r.values : partsOf(`${r.value}`);
+      const st = list.map((v) => entryStatus(v, "", page.contracts));
+      // The row's own note ("on Sepolia") applies to every entry.
+      const noteTest = !!r.note && TEST_NETWORK.test(r.note);
+      if (noteTest) st.forEach((x) => (x.status === "live" ? ((x.status = "test"), (x.net = testNetworksIn(r.note)[0] ?? r.note)) : x));
+      const keep = st.map((x) => x.status === "live");
+      if (keep.some((k) => !k)) {
+        const liveParts = list.filter((_, i) => keep[i]);
+        kept = !liveParts.length ? null : r.values.length ? { ...r, values: liveParts, value: liveParts.join("; ") } : { ...r, value: liveParts.join(", ") };
+      }
+      st.forEach((x) => x.status === "test" && addNet(x.net));
+      if (st.some((x) => x.status === "test")) testLines.push(...r.lines);
+    }
+    if (kept) out.push(kept);
+  }
+  const liveLeft = page.contracts.some((c) => isLiveContract(c) && !!c.address.trim()) || out.some((r) => /^(?:main contract|chains?|contracts?)$/i.test(r.label.trim()));
+  const result = liveLeft ? out : out.filter((r) => !isLive(r));
+  // Every test program the page lists, whatever its address format, has its network named.
+  for (const c of page.contracts) if (c.status === "test" || (!isLiveContract(c) && c.status !== "past")) addNet(testNetworksIn(`${c.chain} ${c.role}`)[0] ?? c.chain.trim());
+  if (!nets.size || result.some((r) => TEST_ROW.test(r.label.trim()))) return result;
+  const lines = [...new Set([...testLines, ...linesNaming(all, page.contracts.filter((c) => c.status === "test"))])];
   const badge = badgeOf(lines, all, sourceUrl);
-  return [...kept, { label: "Test networks", value: nets.join(", ") || "Test network", url: "", note: "", lines, channel: null, badge, status: null, accounts: [], tokens: [], values: [], ...speakersField(badge, lines, sourceUrl) }];
+  return [...result, { label: "Test networks", value: [...nets.values()].join(", "), url: "", note: "", lines, channel: null, badge, status: null, accounts: [], tokens: [], values: [], ...speakersField(badge, lines, sourceUrl) }];
+}
+/** The record lines that name any of these contracts' addresses. */
+function linesNaming(all: Line[], contracts: Contract[]): Line[] {
+  const addrs = contracts.map((c) => c.address.trim().toLowerCase()).filter((a) => a.length >= 20);
+  return addrs.length ? all.filter((l) => [l.text, l.rerun, l.quote, l.fact?.value ?? ""].some((s) => addrs.some((a) => s.toLowerCase().includes(a)))) : [];
 }
 const tokenName = (name: string) => (/\btoken$/i.test(name.trim()) ? name.trim() : `${name.trim()} token`);
 
