@@ -584,7 +584,7 @@ export function statusText(s: FirstPageStatus): string {
 export interface Digest {
   type: "digest";
   /** 7 since it keeps Home's example; older digests are read again. */
-  v: 7;
+  v: 8;
   id: string;
   /** The completed results it was taken from; a different list means newer results exist. */
   sig: string;
@@ -632,7 +632,7 @@ export function digestOf(id: string, list: Activity[]): Digest | null {
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
   const example = core.page ? exampleOf(core.sections.flatMap((x) => x.rows.map((r) => r.line))) : null;
-  return { type: "digest", v: 7, example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
+  return { type: "digest", v: 8, example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
 }
 
 /** Results and panel answers still to fold into the page shown: the number the out-of-date note gives. */
@@ -739,8 +739,10 @@ function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSu
     main: core.page?.main ?? "",
     contracts: recordAddresses(core.page),
     ranked: rankedAddresses(core.page),
-    logo: core.latest?.logo ?? null,
-    logoHash: core.latest?.logoHash ?? null,
+    // A cached row's logo is shown only while its page, parsed by this version, still names an icon source: a share
+    // banner saved by an earlier read (isShareImage) gives the letter tile.
+    logo: core.page?.logo ? core.latest?.logo ?? null : null,
+    logoHash: core.page?.logo ? core.latest?.logoHash ?? null : null,
     status: core.page ? null : firstPageStatus(list),
     outdated: outdatedOf(core),
     incomplete: list.filter((a) => a !== core.latest && a.sourcesError).length,

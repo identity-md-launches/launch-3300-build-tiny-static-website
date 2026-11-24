@@ -1,6 +1,6 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
 import { chainOnlyPiece, chainTag, otherAddresses, takeAddress, type OtherAddr } from "./addrDisplay";
-import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem } from "./page";
+import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem, TEST_NETWORK, isLiveContract, liveMainOf } from "./page";
 import { chainIdOf, chainLabel, chainName, explorerAddressUrl } from "./subject";
 import { decimalsOf, wholeFact } from "./amounts";
 import { proofIdsOf, settleOf } from "./settle";
@@ -444,18 +444,38 @@ export function withPatches(
   ctx: { channels: Channel[]; domain: string } = { channels: [], domain: "" },
 ): KeyRow[] {
   if (!patches.size) return rows;
-  return rows.map((r0) => {
-    const got = patches.get(r0.label.trim().toLowerCase());
-    if (!got) return r0;
-    // Patches in completion order: each one's "earlier" is the value shown just before it.
+  const seen = new Set(rows.map((r) => r.label.trim().toLowerCase()));
+  // Patches in completion order: each one's "earlier" is the value shown just before it. A remove leaves the row out
+  // (a later set brings it back); a set on a row the record lacks (Test networks) adds it after the others.
+  const apply = (r0: KeyRow | null, got: RowPatchIn | RowPatchIn[]): KeyRow | null => {
     let r = r0;
-    for (const p of Array.isArray(got) ? got : [got]) r = patchRow(r, p, all, sourceUrl, ctx);
+    for (const p of Array.isArray(got) ? got : [got]) {
+      if (p.op === "remove") r = null;
+      else r = patchRow(r ?? newRow(p.label ?? r0?.label ?? ""), p, all, sourceUrl, ctx);
+    }
     return r;
+  };
+  const out = rows.flatMap((r0) => {
+    const got = patches.get(r0.label.trim().toLowerCase());
+    const r = got ? apply(r0, got) : r0;
+    return r ? [r] : [];
   });
+  for (const [label, got] of patches) {
+    if (seen.has(label)) continue;
+    const list = Array.isArray(got) ? got : [got];
+    const name = list.find((p) => p.label)?.label ?? label.replace(/^./, (c) => c.toUpperCase());
+    const r = apply(null, list.map((p) => ({ ...p, label: p.label ?? name })));
+    if (r) out.push(r);
+  }
+  return out;
 }
+const newRow = (label: string): KeyRow => ({ label, value: "", url: "", note: "", lines: [], channel: null, badge: null, status: null, accounts: [], tokens: [], values: [] });
 
-/** A patch as withPatches takes it: the new value, its resolved lines, the payer and when it completed. */
-export type RowPatchIn = { value: string; lines: Line[]; payer: string; at?: number | null };
+/**
+ * A patch as withPatches takes it: the new value, its resolved lines, the payer and when it completed. op remove
+ * leaves the row out; label is the row's name as the patch wrote it, used when the patch adds a row.
+ */
+export type RowPatchIn = { value: string; lines: Line[]; payer: string; at?: number | null; op?: "set" | "remove"; label?: string };
 
 function patchRow(r: KeyRow, p: RowPatchIn, all: Line[], sourceUrl: (l: Line) => string, ctx: { channels: Channel[]; domain: string }): KeyRow {
   {
@@ -467,6 +487,7 @@ function patchRow(r: KeyRow, p: RowPatchIn, all: Line[], sourceUrl: (l: Line) =>
     const link = tied ? patchedLink(r.label, p.value, p.lines, all, ctx) : { url: "", channel: null, status: null };
     const shown = displayedOf(r);
     const before = shown.length > 1 ? shown.join("; ") : shown[0] ?? "";
+    // A row the patch adds (Test networks) keeps an empty earlier value: Overview shows it as "none".
     const history: RowChange[] = [{ value: before, ...(shown.length > 1 ? { values: shown } : {}), by: p.payer, at: p.at ?? null }, ...(r.history ?? [])];
     return { ...rest, ...link, value: p.value, values: [], items: [], tokens: [], accounts: [], perAccount: false, lines: p.lines, badge, updatedBy: p.payer, earlier: before, history, ...speakersField(badge, p.lines, sourceUrl) };
   }
@@ -669,7 +690,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       const main = MAIN_ROW.test(r.label.trim()) ? ADDR.exec([r.value, ...(r.items ?? []).map((x) => x.address)].join(" "))?.[0] ?? "" : "";
       return { label: r.label, value, url: r.url, note: "", ...(main ? { mainName: mainContractName(page, all, main) } : {}), lines, channel, badge, status, accounts, perAccount, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...(!tokens.length && !accounts.length && r.items?.length ? { items: r.items.map(shownItemOf) } : {}), ...speakersField(badge, lines, sourceUrl) };
     });
-    return { rows, fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
+    return { rows: liveOnlyRows(rows, page, all, sourceUrl), fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }
   const rows: KeyRow[] = [];
   const site = websiteOf(page.channels, domain);
@@ -678,12 +699,20 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
     const shown = site.url.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
     rows.push({ label: "Website", value: shown || site.url, url: site.url, note: "", lines, channel: site, badge: null, status: statusBadge(site, domain), accounts: [], tokens: [], values: [] });
   }
-  const main = page.contracts.find((c) => c.main && /^0x[0-9a-fA-F]{40}$/.test(c.address));
+  // Main contract describes a live main-network deployment only; test deployments get their own Test networks row.
+  const main = liveMainOf(page.contracts);
   if (main) {
     const addr = main.address.toLowerCase();
     const lines = all.filter((l) => [l.text, l.rerun, l.quote, l.fact?.value ?? ""].some((s) => s.toLowerCase().includes(addr)));
     const id = chainIdOf(main.chain);
     rows.push({ label: "Main contract", mainName: mainContractName(page, all, main.address), value: main.address, url: "", note: main.chain ? `on ${id !== null ? chainName(id) : main.chain}` : "", lines, channel: null, badge: badgeOf(lines, all, sourceUrl), status: null, accounts: [], tokens: [], values: [] });
+  }
+  const tests = page.contracts.filter((c) => c.status === "test" && /^0x[0-9a-fA-F]{40}$/.test(c.address));
+  if (tests.length) {
+    const addrs = tests.map((c) => c.address.toLowerCase());
+    const lines = all.filter((l) => [l.text, l.rerun, l.quote, l.fact?.value ?? ""].some((s) => addrs.some((a) => s.toLowerCase().includes(a))));
+    const nets = [...new Set(tests.map((c) => c.chain.trim()).filter(Boolean))];
+    rows.push({ label: "Test networks", value: nets.join(", ") || "Test network", url: "", note: "", lines, channel: null, badge: badgeOf(lines, all, sourceUrl), status: null, accounts: [], tokens: [], values: [] });
   }
   const token = tokenAddresses(page);
   for (const which of ["symbol", "supply"] as const) {
@@ -716,6 +745,48 @@ export function mainContractName(page: Pick<Page, "name" | "infobox" | "contract
   return page.name ? `${page.name} contract` : "Contract";
 }
 const MAIN_ROW = /^main contract$/i;
+
+/** The rows that describe live main-network deployments only. */
+export const LIVE_ONLY_ROWS = /^(?:main contract|chains?|contracts?|deployed by|controlled by)$/i;
+export const TEST_ROW = /^test networks?$/i;
+/** Each thing a row lists, as text: its items, else its values, else its one value. */
+const entriesOf = (r: Pick<KeyRow, "value" | "values" | "items" | "note">) =>
+  r.items?.length ? r.items.map((i) => [i.name, i.text, i.chain].join(" ")) : r.values.length ? r.values : [`${r.value} ${r.note}`];
+/** True when everything a row lists is on a test network ("on Solana devnet", "Sepolia"). */
+export const isTestOnly = (r: Pick<KeyRow, "value" | "values" | "items" | "note">) => {
+  const e = entriesOf(r).filter((x) => x.trim());
+  return e.length > 0 && e.every((x) => TEST_NETWORK.test(x));
+};
+/** "Solana devnet", "Base Sepolia", "testnet": the test networks a text names, each once. */
+export function testNetworksIn(text: string): string[] {
+  const re = /\b(?:(?:[A-Z][\w.]*|zkSync|opBNB)\s+)?(?:test[- ]?net|devnet|Sepolia|Goerli|Holesky|Hoodi|Fuji|Mumbai|Amoy|Chiado|Alfajores)(?:\s+test[- ]?net)?\b/gi;
+  const out = new Map<string, string>();
+  for (const m of text.matchAll(re)) {
+    const name = m[0].replace(/^(?:on|the|a|an|its|in)\s+/i, "").trim();
+    if (!out.has(name.toLowerCase())) out.set(name.toLowerCase(), name);
+  }
+  return [...out.values()];
+}
+
+/**
+ * Main contract, Chains, Contracts, Deployed by and Controlled by describe live main-network deployments only. A row
+ * of these that lists only test-network deployments is left out and its network goes in a Test networks row (added
+ * after the others unless the page has one). When the page then has no live contract left (no live Main contract,
+ * Chains or Contracts row and no live contract in subject.contracts), Deployed by and Controlled by are left out too.
+ */
+export function liveOnlyRows(rows: KeyRow[], page: Pick<Page, "contracts">, all: Line[], sourceUrl: (l: Line) => string = () => ""): KeyRow[] {
+  const isLive = (r: KeyRow) => LIVE_ONLY_ROWS.test(r.label.trim());
+  const test = rows.filter((r) => isLive(r) && isTestOnly(r));
+  if (!test.length) return rows;
+  const liveLeft = rows.some((r) => /^(?:main contract|chains?|contracts?)$/i.test(r.label.trim()) && !isTestOnly(r)) || page.contracts.some((c) => isLiveContract(c) && c.status === "live");
+  const drop = new Set(liveLeft ? test : rows.filter(isLive));
+  const kept = rows.filter((r) => !drop.has(r));
+  if (kept.some((r) => TEST_ROW.test(r.label.trim()))) return kept;
+  const nets = [...new Map(test.flatMap((r) => entriesOf(r).flatMap(testNetworksIn)).map((n) => [n.toLowerCase(), n])).values()];
+  const lines = [...new Set(test.flatMap((r) => r.lines))];
+  const badge = badgeOf(lines, all, sourceUrl);
+  return [...kept, { label: "Test networks", value: nets.join(", ") || "Test network", url: "", note: "", lines, channel: null, badge, status: null, accounts: [], tokens: [], values: [], ...speakersField(badge, lines, sourceUrl) }];
+}
 const tokenName = (name: string) => (/\btoken$/i.test(name.trim()) ? name.trim() : `${name.trim()} token`);
 
 const SUPPLY_ROW = /^(?:(?:total|circulating|max(?:imum)?|token) )?supply$/i;

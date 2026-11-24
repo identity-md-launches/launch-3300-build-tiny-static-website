@@ -44,3 +44,9 @@ export function ToneMark({ tone }: { tone: string }) {
   const k = iconKind(tone);
   return k ? <KindIcon kind={k} /> : <span className="dot" aria-hidden="true" />;
 }
+
+/** The kind's icon before a badge's or count's text; nothing for any other tone (a channel label, contradicted…). */
+export function BadgeMark({ tone, size = 14 }: { tone: string; size?: number }) {
+  const k = iconKind(tone);
+  return k ? <KindIcon kind={k} size={size} /> : null;
+}

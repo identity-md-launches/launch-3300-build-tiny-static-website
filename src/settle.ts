@@ -167,7 +167,11 @@ export function speakerText(line: Pick<Line, "kind" | "by" | "channel">): string
 
 /** "5 proven, 2 stated, 3 claimed", then contradicted and superseded only when there are any. */
 export function countsWords(c: Counts): string {
-  return shownGroups(c)
-    .map((g) => `${c[g].toLocaleString("en-US")} ${g === "outdated" ? "superseded" : g}`)
+  return countsParts(c)
+    .map((p) => p.text)
     .join(", ");
+}
+/** countsWords one group at a time ("5 proven"), so each count can carry its kind's icon. */
+export function countsParts(c: Counts) {
+  return shownGroups(c).map((g) => ({ group: g, text: `${c[g].toLocaleString("en-US")} ${g === "outdated" ? "superseded" : g}` }));
 }

@@ -992,3 +992,29 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
   .rerun .copy { margin-inline-start: 0; }
   .keyfacts .kf-value .addr { display: flex; }
 }
+
+/* Kind icons beside badge and count text (BadgeMark): the icon then the words, in the badge's colour. */
+.badge { gap: 4px; }
+.section-counts .count-part { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.section-counts .count-part .kicon { margin-inline-start: 2px; }
+.totals-proofs { display: inline-flex; align-items: center; gap: 4px; }
+/* The list note is empty in the default view (the totals line already counts the projects): it takes no room. */
+.list-note:empty { display: none; }
+/*
+ * Phones 375 to 480 wide: the first screen holds the headline, the lookup, the three cards and the first project row.
+ * The header keeps one row (8 px between its links), Home's sections sit 16 px apart and the list header 8 px, and
+ * each card puts its icon and labels in a 132 px column beside the example sentence.
+ */
+@media (min-width: 23.4375rem) and (max-width: 30rem) {
+  .top-row { flex-wrap: nowrap; column-gap: var(--space-2); }
+  .top-row > .top-link { order: 0; flex: none; }
+  .top-row:has(.acct-wrap) { flex-wrap: wrap; }
+  .home { gap: var(--space-4); }
+  .hero { gap: var(--space-3); padding-top: var(--space-2); }
+  .home-list { gap: var(--space-2); }
+  .home-list .filter { margin-block: 0; }
+  .example .label-cards { gap: var(--space-2); }
+  .example .label-card { grid-template-columns: 132px minmax(0, 1fr); column-gap: var(--space-2); align-items: center; padding: var(--space-2); }
+  .example .card-head { align-items: center; }
+  .example-from { margin-top: var(--space-1); }
+}

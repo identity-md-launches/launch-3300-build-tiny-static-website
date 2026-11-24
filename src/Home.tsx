@@ -135,7 +135,7 @@ function ListFilter({ all, needs, only, set, checking }: { all: number; needs: n
 }
 
 const listNote = (shown: number, all: number, q: string, only: boolean) =>
-  q ? `${plural(shown, "project")} ${only ? "that need a rebuild " : ""}match “${q}”.` : only ? `${plural(shown, "project")} need${shown === 1 ? "s" : ""} a rebuild.` : `${plural(all, "project")} on the record, newest change first.`;
+  q ? `${plural(shown, "project")} ${only ? "that need a rebuild " : ""}match “${q}”.` : only ? `${plural(shown, "project")} need${shown === 1 ? "s" : ""} a rebuild.` : "";
 
 export type AddInput = { domain: string; address: string; chain: string; leads?: string[] };
 
@@ -202,7 +202,7 @@ function AddOffer({ q, shown, price, onAdd }: { q: Extract<Lookup, { kind: "doma
 
 /** One fact shown three ways. Fixed text, used when neither uniswap.org nor zora.co has a live example. */
 export const EXAMPLE_FALLBACK = {
-  proof: "The token contract reports a total supply of ten billion. Anyone can re-run it.",
+  proof: "The ZORA token contract on Base reports a total supply of 10 billion ZORA.",
   statement: "zora.co states a total supply of 10,000,000,000 ZORA.",
   claim: "A news site reports that ZORA has a supply of ten billion.",
 } as const;
@@ -235,6 +235,20 @@ export function totalsText(rows: { counts: { all: number; checks: number } | nul
   const proofs = rows.reduce((n, r) => n + (r.counts?.checks ?? 0), 0);
   const f = (n: number) => n.toLocaleString("en-US");
   return `${f(rows.length)} ${rows.length === 1 ? "project" : "projects"}, ${f(lines)} ${lines === 1 ? "line" : "lines"}, ${f(proofs)} of them ${proofs === 1 ? "a proof" : "proofs"} anyone can re-run.`;
+}
+
+/** The totals sentence with the Proof icon beside its proof count: "5 projects, 812 lines, ✓64 of them proofs …". */
+function TotalsLine({ text }: { text: string }) {
+  const at = text.lastIndexOf(", ") + 2;
+  return (
+    <>
+      {text.slice(0, at)}
+      <span className="kind-proof totals-proofs">
+        <KindIcon kind="proof" size={14} />
+        {text.slice(at)}
+      </span>
+    </>
+  );
 }
 
 /** Shown instead of an empty list while nothing has been read: never "No projects" before the chain answered. */
@@ -487,7 +501,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
 
       <div className="home-list">
         <h2 className="list-title">Projects</h2>
-        {items !== null && all.length > 0 && <p className="totals-line num" aria-live="polite">{countsReady ? totalsText(all) : "Reading project totals…"}</p>}
+        {items !== null && all.length > 0 && <p className="totals-line num" aria-live="polite">{countsReady ? <TotalsLine text={totalsText(all)} /> : "Reading project totals…"}</p>}
         {error && items !== null && (
           <p className="error">
             Unable to read the chain: {error}.{" "}
@@ -500,7 +514,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
           <>
             {cached && loading && <p className="small" role="status">Shown from this browser. Reading newer blocks…</p>}
             <ListFilter all={all.length} needs={needs} only={onlyStale} set={setOnlyStale} checking={pendingReads} />
-            <p className="small" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
+            <p className="small list-note" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
             <ul className="subjects">
               {shown.map((s) => (
                 <SubjectItem key={s.id} s={s} reading={!!reading?.has(s.id)} failed={failed?.get(s.id) ?? ""} retry={retry} />

@@ -211,7 +211,26 @@ export interface Contract {
   chain: string;
   role: string;
   main: boolean;
+  /**
+   * live, test (a test network, or a pilot with no real value) or past, as the rebuild gives it; when it gives none, a
+   * chain or role naming a test network (Sepolia, devnet, testnet…) is test, and anything else is "".
+   */
+  status: "live" | "test" | "past" | "";
 }
+
+/** A test network's name: Sepolia, Goerli, Holesky, Hoodi, a devnet or testnet, Fuji, Mumbai, Amoy… */
+export const TEST_NETWORK = /\b(?:test[- ]?nets?|test networks?|devnets?|sepolia|goerli|g[öo]rli|holesky|hoodi|ropsten|rinkeby|kovan|fuji|mumbai|amoy|chiado|alfajores|shasta|nile)\b/i;
+const statusOf = (v: unknown): Contract["status"] => {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return s === "live" || s === "test" || s === "past" ? s : "";
+};
+/**
+ * A live main-network contract: not marked test or past, and its chain and role name no test network. Only these
+ * fill Main contract, Chains, Contracts, Deployed by and Controlled by.
+ */
+export const isLiveContract = (c: Pick<Contract, "chain" | "role" | "status">) => c.status !== "test" && c.status !== "past" && !TEST_NETWORK.test(c.chain) && !(c.status !== "live" && TEST_NETWORK.test(c.role));
+/** The main contract a page gives, only when it is live on a main network (isLiveContract); else undefined. */
+export const liveMainOf = (contracts: Contract[]) => contracts.find((c) => c.main && isLiveContract(c) && /^0x[0-9a-fA-F]{40}$/.test(c.address));
 export type Level = "conflict" | "question";
 export interface Differ {
   lines: string[];
@@ -364,7 +383,28 @@ export function parseRelated(v: unknown): Related[] {
 function parseLogo(v: unknown): LogoSource | null {
   const o = obj(v);
   const url = str(o.url, 400).trim();
-  return url ? { url, fetchedAt: str(o.fetched_at ?? o.time ?? o.at, 64).trim() } : null;
+  // A share image, banner or wordmark is never the logo, even saved square: its artwork is already cut off. The row
+  // then shows the letter tile until a site icon, app icon or official avatar is recorded.
+  if (!url || isShareImage(url)) return null;
+  return { url, fetchedAt: str(o.fetched_at ?? o.time ?? o.at, 64).trim() };
+}
+
+/**
+ * True for the URL of a social share image, banner or wordmark rather than a square icon: a file or folder named og,
+ * opengraph, share, social, card, banner, twitter, preview, cover, hero, header or wordmark (tacit.finance's
+ * /tacit-card.png, /og-image.png, /images/social/banner.jpg). Icons (favicon, apple-touch-icon, icon-512, avatars
+ * at pbs.twimg.com/profile_images or avatars.githubusercontent.com) are not.
+ */
+export function isShareImage(url: string): boolean {
+  let path = url;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    /* a bare path */
+  }
+  path = decodeURIComponent(path).toLowerCase();
+  if (/(?:^|[/_.-])(?:favicon|apple-touch-icon|icon|icons|logo-?mark|avatar|avatars|profile_images)(?:[/_.-]|\d|$)/.test(path)) return false;
+  return /(?:^|[/_.-])(?:og|og-?image|opengraph|open-?graph|share|sharing|social|card|cards|banner|banners|twitter|twitter-?card|preview|cover|hero|header|wordmark|lockup|meta-?image)(?:[/_.-]|\d|$)/.test(path);
 }
 
 function parseDropped(v: unknown): Dropped[] {
@@ -593,9 +633,12 @@ export function parsePage(text: string, domain = ""): Page {
     const o = obj(c);
     return { label: str(o.label, 120), url: str(o.url, 400), tie: tieOf(o.tie) };
   });
-  const contracts: Contract[] = arr(subject.contracts).map((c) => {
-    const o = obj(c);
-    return { address: str(o.address, 64), chain: str(o.chain, 64), role: str(o.role, 300), main: o.main === true };
+  const contracts: Contract[] = arr(subject.contracts).map((x) => {
+    const o = obj(x);
+    const c: Contract = { address: str(o.address, 64), chain: str(o.chain, 64), role: str(o.role, 300), main: o.main === true, status: statusOf(o.status) };
+    // No status given: a chain or role naming a test network is a test deployment.
+    if (!c.status && (TEST_NETWORK.test(c.chain) || TEST_NETWORK.test(c.role))) c.status = "test";
+    return c;
   });
   const sources: Source[] = arr(j.sources).map((s) => {
     const o = obj(s);
@@ -643,7 +686,8 @@ export function parsePage(text: string, domain = ""): Page {
       return applyLabel(line, channels, line.by, ids.map((s) => refOf.get(s) ?? ""), domain);
     })
     .filter((l) => l.text);
-  const main = contracts.find((c) => c.main)?.address ?? "";
+  // Only a live main-network contract is the main contract: a test program marked main never is.
+  const main = liveMainOf(contracts)?.address ?? "";
   return {
     domain: domain.trim().toLowerCase(),
     name: str(subject.name, 200),
@@ -1108,16 +1152,28 @@ export interface Patch {
   target: string;
   value: string;
   lines: string[];
+  /**
+   * remove: a Key facts row is left out (a live-only row that held a test-network program). set, or no op (older
+   * results): the row's or sentence's new value; a set on a Key facts row the record lacks (Test networks) adds it.
+   */
+  op?: "set" | "remove";
 }
-/** Every valid patch: a row or sentence, a target and a new value. */
+/**
+ * Every valid patch: a row or sentence, a target and a new value. An infobox patch with op remove, or with an empty
+ * value, removes its row; a summary patch always needs its new text.
+ */
 export function parsePatches(v: unknown): Patch[] {
   return bounded(v).list.flatMap((x): Patch[] => {
     const o = obj(x);
     const kind = str(o.kind, 16).toLowerCase();
     const target = str(o.target, 600).trim();
     const value = str(o.value ?? o.text, 600).trim();
-    if ((kind !== "infobox" && kind !== "summary") || !target || !value) return [];
-    return [{ kind, target, value, lines: arr(o.lines).map((l) => str(l, 64).trim()).filter(Boolean) }];
+    const op = str(o.op, 16).trim().toLowerCase();
+    const lines = arr(o.lines).map((l) => str(l, 64).trim()).filter(Boolean);
+    if ((kind !== "infobox" && kind !== "summary") || !target) return [];
+    if (kind === "infobox" && (op === "remove" || (!value && (o.value === "" || o.value === null)))) return [{ kind, target, value: "", lines, op: "remove" }];
+    if (!value || (op && op !== "set")) return [];
+    return [{ kind, target, value, lines, ...(op === "set" ? { op: "set" as const } : {}) }];
   });
 }
 export interface ChangesResult {

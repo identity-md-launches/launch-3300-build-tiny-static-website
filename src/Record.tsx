@@ -10,9 +10,9 @@ import { decimalsOf, exactAmount, wholeFact } from "./amounts";
 import { itemEntries, keyFacts, sharedChain, splitAddresses, valueEntries, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
 import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
-import { ToneMark } from "./KindIcon";
+import { BadgeMark, ToneMark } from "./KindIcon";
 import { findSubject, parseLookup, relatedSubject, rowMatches, type Findable, type Lookup } from "./lookup";
-import { countLines, countsWords, FILTER_WORDS, filtersFor, GROUP_TONE, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
+import { countLines, countsParts, FILTER_WORDS, filtersFor, GROUP_TONE, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
 import {
   blockNumber,
   channelStatus,
@@ -505,6 +505,7 @@ function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
         }}
         aria-label={`${r.label}: ${b.text}. Open the newer line that ${b.tone === "contradicted" ? "contradicts" : "outdates"} it`}
       >
+        <BadgeMark tone={b.tone} />
         {b.text}
       </a>
     );
@@ -512,6 +513,7 @@ function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
   if (!r.lines.length)
     return (
       <span className={`badge badge-${b.tone}`} title={title}>
+        <BadgeMark tone={b.tone} />
         {b.text}
       </span>
     );
@@ -526,6 +528,7 @@ function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
       }}
       aria-label={`${r.label}: ${b.text}. Open the ${r.lines.length === 1 ? "line" : `${r.lines.length} lines`} it rests on`}
     >
+      <BadgeMark tone={b.tone} />
       {b.text}
     </a>
   );
@@ -539,7 +542,7 @@ export function useKeyFacts(m: RecordModel) {
   const sourceUrl = (l: Line) => (l.srcKeys[0] ? m.sourceList.find((s) => s.key === l.srcKeys[0])?.url ?? "" : "");
   const kf = keyFacts(m.page, m.resolve, all, sourceUrl);
   // Patches from changes jobs not yet folded in: the row's new value rests on the patch's lines, in that job's scope.
-  const patches = new Map([...rowPatchListsOf(m.after)].map(([k, ps]) => [k, ps.map((p) => ({ value: p.patch.value, lines: m.editRefs(p.job, p.patch.lines, null), payer: p.payer, at: p.job.doneTime ?? null }))] as const));
+  const patches = new Map([...rowPatchListsOf(m.after)].map(([k, ps]) => [k, ps.map((p) => ({ value: p.patch.value, lines: m.editRefs(p.job, p.patch.lines, null), payer: p.payer, at: p.job.doneTime ?? null, op: p.patch.op, label: p.patch.target.trim() }))] as const));
   return { ...kf, rows: withDisputes(withPatches(kf.rows, patches, all, sourceUrl, { channels: m.page?.channels ?? [], domain: m.page?.domain ?? "" }), m.disputes) };
 }
 
@@ -2055,7 +2058,13 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
                 >
                   <span className="chev" aria-hidden="true" />
                   <span className="section-name">{SECTION_TITLES[section] ?? section}</span>
-                  <span className="section-counts small">{countsWords(c)}</span>
+                  <span className="section-counts small">{countsParts(c).map((p, k) => (
+                    <span key={p.group} className={`count-part kind-${GROUP_TONE[p.group]}`}>
+                      {k > 0 && ", "}
+                      <BadgeMark tone={GROUP_TONE[p.group]} size={12} />
+                      {p.text}
+                    </span>
+                  ))}</span>
                 </button>
               </h2>
               {open && (
