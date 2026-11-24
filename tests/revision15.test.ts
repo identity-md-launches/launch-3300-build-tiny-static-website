@@ -170,7 +170,7 @@ describe("A / C6 / E8. the Overview a reader sees", () => {
     expect(html).toContain("0x1f98…F984");
     expect(html).toContain(`aria-label="Copy address ${UNI}"`);
     expect(html).toContain(`href="https://etherscan.io/address/${UNI}"`);
-    expect(html).toContain("<strong>UNI</strong>: <span class=\"break\">1 billion</span>");
+    expect(html).toContain('<span class="tok-name"><strong>UNI</strong>: 1 billion</span>');
   });
   it("keys the dots under the summary in one line", () => {
     const key = html.slice(html.indexOf('class="small dot-key"'));

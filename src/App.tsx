@@ -15,6 +15,7 @@ import {
   questionPost,
   rebuildBody,
   templateBody,
+  contractDefinitions,
   validateContract,
   validatePage,
   validateP4,
@@ -287,7 +288,7 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
       window.setTimeout(() => document.getElementById(`q-${first}`)?.focus(), 0);
       return;
     }
-    onAsk({ title: `Confirm: ${TEMPLATE_TITLES[tpl].toLowerCase()}`, subject: sid, action: ACTIONS.oracle, kind: TEMPLATE_KIND[tpl], body: templateBody(tpl, question, Number(f.chain)) });
+    onAsk({ title: `Confirm: ${TEMPLATE_TITLES[tpl].toLowerCase()}`, subject: sid, action: ACTIONS.oracle, kind: TEMPLATE_KIND[tpl], body: templateBody(tpl, question, Number(f.chain), tpl === "contract" ? contractDefinitions(f.chain, f.signature, f.address, f.value) : undefined) });
   };
   const scratch = () => {
     setTpl("post");

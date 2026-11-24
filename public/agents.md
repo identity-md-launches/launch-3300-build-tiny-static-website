@@ -406,10 +406,17 @@ one of 1, 8453, 42161, 56, 4663 or 11155111 (the chains IMD's check lists), `<FU
 On chain <CHAIN ID> at the request's pinned block, does calling <FUNCTION SIGNATURE> on the contract at <ADDRESS> return <VALUE>? This question is filed under the record of <subject id>.
 ```
 
+A contract body also pins its reading in `definitions` (`call` and `match`, below): IMD's free check answers
+a contract question with a `wording` suggestion ("may be read more than one way"), and its guide says to pin the
+reading in `definitions`. The check's short form does not take `definitions`; the quote accepts the full body.
+A post or page body has no `definitions`, and none of the three sets `toleranceBps` or `guards`: the answer is a
+`bool`, for which the check drops `toleranceBps`, and it reported nothing missing (README, "Panel bodies against
+IMD's current guide").
+
 For example, a contract question on Base filed under example.com:
 
 ```json
-{"v":1,"question":"On chain 8453 at the request's pinned block, does calling totalSupply() on the contract at 0x1111111111111111111111111111111111111111 return 1000000? This question is filed under the record of example.com.","chainId":8453,"window":{"hours":24},"answerType":"bool","evidence":"chain","panelSize":5,"quorum":4,"validForSeconds":86400}
+{"v":1,"question":"On chain 8453 at the request's pinned block, does calling totalSupply() on the contract at 0x1111111111111111111111111111111111111111 return 1000000? This question is filed under the record of example.com.","chainId":8453,"window":{"hours":24},"answerType":"bool","evidence":"chain","panelSize":5,"quorum":4,"validForSeconds":86400,"definitions":{"call":"An eth_call of totalSupply() to 0x1111111111111111111111111111111111111111 on chain 8453, made at the request's pinned block (its toBlock), with the arguments the question writes.","match":"true when the decoded return value equals 1000000 exactly; false when it differs or the call reverts."}}
 ```
 
 The site reads back the three IMD presets it asked before (P1 and P2 statements, P3 a proof, all filed under

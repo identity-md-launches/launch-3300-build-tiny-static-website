@@ -32,7 +32,7 @@ export function researchBody() {
  * evidence ("panel" or "chain"), panelSize, quorum, validForSeconds. These are byte for byte the requests
  * IMD's free check drafted for the three templates on 2026-11-19 (tests/fixtures/drafted-templates.txt).
  */
-export function oracleBody(question: string, evidence: "chain" | "panel", chainId = 1) {
+export function oracleBody(question: string, evidence: "chain" | "panel", chainId = 1, definitions?: Record<string, string>) {
   return {
     v: 1,
     question,
@@ -43,6 +43,20 @@ export function oracleBody(question: string, evidence: "chain" | "panel", chainI
     panelSize: 5,
     quorum: 4,
     validForSeconds: 86400,
+    ...(definitions ? { definitions } : {}),
+  };
+}
+
+/**
+ * The reading of a contract question, pinned in the oracle body's definitions (IMD's guide: "Pin the reading in
+ * definitions"). IMD's free check answers a contract question with a wording suggestion ("may be read more than one
+ * way"), and the wording screen refuses such a question; these two entries say which call and which match count.
+ * Each value stays within the guide's 512 characters: the signature is at most 266, the value at most 200.
+ */
+export function contractDefinitions(chainId: string | number, signature: string, address: string, value: string): Record<string, string> {
+  return {
+    call: `An eth_call of ${signature.trim()} to ${address.trim()} on chain ${chainId}, made at the request's pinned block (its toBlock), with the arguments the question writes.`,
+    match: `true when the decoded return value equals ${noEnd(value)} exactly; false when it differs or the call reverts.`,
   };
 }
 
@@ -90,8 +104,8 @@ export function questionP4(url: string, handle: string, text: string) {
 }
 
 /** The oracle body for a template: chain evidence for a contract, a panel otherwise. */
-export function templateBody(template: Template, question: string, chainId = 1) {
-  return oracleBody(question, TEMPLATE_EVIDENCE[template], template === "contract" ? chainId : 1);
+export function templateBody(template: Template, question: string, chainId = 1, definitions?: Record<string, string>) {
+  return oracleBody(question, TEMPLATE_EVIDENCE[template], template === "contract" ? chainId : 1, template === "contract" ? definitions : undefined);
 }
 
 type Errors<K extends string> = Partial<Record<K, string>>;

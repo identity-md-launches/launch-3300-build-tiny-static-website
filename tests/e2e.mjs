@@ -206,6 +206,20 @@ try {
     await page.click(".btn-lookup");
     await page.waitForFunction(() => location.hash === "#/s/imd.fun", null, { timeout: 5000 }).catch(() => {});
     check(`${W} Look it up opens a subject that exists`, (await page.evaluate(() => location.hash)) === "#/s/imd.fun");
+    // Docs, How it is built (F17): five boxes in one row joined by arrows pointing right from 44rem (704px), one column
+    // with arrows pointing down below it.
+    await page.goto(base + "#/docs");
+    await page.waitForSelector(".doc-flow .doc-box", { timeout: 10000 });
+    const flow = await page.evaluate(() => {
+      const r = (e) => e.getBoundingClientRect();
+      const boxes = [...document.querySelectorAll(".doc-flow .doc-box")].map(r);
+      const arrows = [...document.querySelectorAll(".doc-flow .doc-arrow")].map(r);
+      return { n: boxes.length, tops: boxes.map((b) => Math.round(b.top)), lefts: boxes.map((b) => Math.round(b.left)), arrows: arrows.map((a) => [Math.round(a.width), Math.round(a.height)]), right: Math.max(...boxes.map((b) => b.right)), vw: innerWidth };
+    });
+    const row = flow.n === 5 && new Set(flow.tops).size === 1 && flow.lefts.every((x, i) => i === 0 || x > flow.lefts[i - 1]) && flow.arrows.length === 4 && flow.arrows.every(([w, h]) => w > h) && flow.right <= flow.vw;
+    const col = flow.n === 5 && flow.tops.every((y, i) => i === 0 || y > flow.tops[i - 1]) && flow.arrows.length === 4 && flow.arrows.every(([w, h]) => h > w);
+    check(`${W} How it is built: ${width >= 704 ? "five boxes in one row, arrows pointing right" : "one column, arrows pointing down"}`, width >= 704 ? row : col, JSON.stringify(flow));
+    if (width === 1440) await page.locator(".doc-flow").screenshot({ path: join(out, "1440-doc-flow.png") });
     await page.goto(base);
     await page.waitForSelector(".subjects .subject", { timeout: 30000 });
     check(`${W} no horizontal scroll on home`, (await overflow(page)) <= 0);

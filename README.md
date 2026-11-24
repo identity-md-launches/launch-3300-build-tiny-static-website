@@ -689,7 +689,7 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-bb2a3c8834d1.txt` and `changes-cbb133e479ca.txt`; still served: `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-b6493be79132.txt` and `changes-cbb133e479ca.txt`; still served: `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and

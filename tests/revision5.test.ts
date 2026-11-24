@@ -232,7 +232,9 @@ describe("Tokens values (436ed92e, 11a41834)", () => {
     const src = readFileSync("src/Record.tsx", "utf8");
     // One line per token: symbol in bold, purpose, the address linked with a small copy icon (revision 17, E16).
     expect(src).toContain('<strong className="tok-symbol">{t.symbol}</strong>');
-    expect(src).toContain("<CopyIcon value={t.address} />");
+    // Revision 19 (C10/C11): the address is the shared Addr, shortened, linked, with its copy icon and chain tag.
+    expect(src).toContain("{t.address && <Addr address={t.address} chain={chainTag(t.chain || chain)} url={t.url} />}");
+    expect(src).toMatch(/<span className="mono">\{shortHex\(address\)\}<\/span>[\s\S]*?<CopyIcon value=\{address\} \/>/);
   });
 });
 

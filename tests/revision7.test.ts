@@ -25,7 +25,9 @@ describe("cb46ab83: a Tokens value without values is one text value", () => {
   });
   it("Record renders an unlinked text value with a copy button beside every address", () => {
     const src = readFileSync("src/Record.tsx", "utf8");
-    expect(src).toMatch(/<span className="mono">\{shortHex\(p\.text\)\}<\/span>\s*<Copy value=\{p\.text\} \/>/);
+    // Revision 19 (C10/C11): every address in a text value is the shared Addr, with a copy icon, never a "Copy" text button.
+    expect(src).toMatch(/function Runs[\s\S]*?<Addr address=/);
+    expect(src).toMatch(/<span className="mono">\{shortHex\(address\)\}<\/span>[\s\S]*?<CopyIcon value=\{address\} \/>/);
   });
 });
 

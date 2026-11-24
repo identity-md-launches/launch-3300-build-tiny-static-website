@@ -9,7 +9,7 @@ import { MAX_OBJECTIVE } from "../src/bodies";
 import { describeSubject, refFromId, refFromInput } from "../src/subject";
 import { ACTIONS, API, IMD, INTAKE, INSTRUCTIONS_GATEWAY, TOPIC_COMPLETED, TOPIC_REQUESTED, APP_TAG, LAUNCH_BLOCK } from "../src/config";
 import { CHANGES_TEMPLATE, CHANGE_MAX_LINKS, NOTE_MAX, READ_MAX_LINKS, changesBody, itemsText, lineTarget, noTarget, sentenceTarget, type Change } from "../src/changes";
-import { LEGACY_PRESETS, filedUnder, questionContract, questionPage, questionPost, templateBody, SOURCE_TEMPLATE, EDIT_TEMPLATE, REBUILD_TEMPLATE, EDIT_MAX_LINKS, EDIT_MAX_TEXT, editBody, encodeBody, oracleBody, priorText, questionP4, rebuildBody, sourceBody, SOURCE_MAX_LINKS, SOURCE_MAX_URL, SOURCE_MAX_OBJECTIVE } from "../src/bodies";
+import { LEGACY_PRESETS, filedUnder, questionContract, questionPage, questionPost, templateBody, SOURCE_TEMPLATE, EDIT_TEMPLATE, REBUILD_TEMPLATE, EDIT_MAX_LINKS, EDIT_MAX_TEXT, editBody, encodeBody, oracleBody, priorText, questionP4, contractDefinitions, rebuildBody, sourceBody, SOURCE_MAX_LINKS, SOURCE_MAX_URL, SOURCE_MAX_OBJECTIVE } from "../src/bodies";
 
 const fence = (s: string, lang = "") => "```" + lang + "\n" + s + "\n```";
 const SUBJ = { id: "<SUBJECT ID>", domain: "<DOMAIN>", address: "<ADDRESS>", chainId: null };
@@ -349,9 +349,16 @@ one of 1, 8453, 42161, 56, 4663 or 11155111 (the chains IMD's check lists), \`<F
 
 ${fence(questionContract("<CHAIN ID>", "<FUNCTION SIGNATURE>", "<ADDRESS>", "<VALUE>", "<subject id>"))}
 
+A contract body also pins its reading in \`definitions\` (\`call\` and \`match\`, below): IMD's free check answers
+a contract question with a \`wording\` suggestion ("may be read more than one way"), and its guide says to pin the
+reading in \`definitions\`. The check's short form does not take \`definitions\`; the quote accepts the full body.
+A post or page body has no \`definitions\`, and none of the three sets \`toleranceBps\` or \`guards\`: the answer is a
+\`bool\`, for which the check drops \`toleranceBps\`, and it reported nothing missing (README, "Panel bodies against
+IMD's current guide").
+
 For example, a contract question on Base filed under example.com:
 
-${fence(encodeBody(templateBody("contract", questionContract(8453, "totalSupply()", "0x1111111111111111111111111111111111111111", "1000000", "example.com"), 8453)), "json")}
+${fence(encodeBody(templateBody("contract", questionContract(8453, "totalSupply()", "0x1111111111111111111111111111111111111111", "1000000", "example.com"), 8453, contractDefinitions(8453, "totalSupply()", "0x1111111111111111111111111111111111111111", "1000000"))), "json")}
 
 The site reads back the three IMD presets it asked before (P1 and P2 statements, P3 a proof, all filed under
 imd.fun), and the post question without the closing sentence:
