@@ -31,7 +31,7 @@ import { isChangesJob, readable, rememberSent, sentTxs, useActivity } from "./us
 import { holdFocus } from "./modal";
 import { followAdmission, rpcReceipt, waitForReceipt, type ReceiptRead } from "./receipt";
 import { Payment, type PayStep } from "./payFlow";
-import { leftOutText, pendingRebuildOf, planRebuild, subjectRefFor, subjectSummaries, unreadableBySubject, unreadableCount, useRecordModel, type RecordModel } from "./model";
+import { leftOutText, pendingRebuildOf, upkeepText, planRebuild, subjectRefFor, subjectSummaries, unreadableBySubject, unreadableCount, useRecordModel, type RecordModel } from "./model";
 import { InstructionsBlock } from "./Instructions";
 import { INSTRUCTIONS_UNREACHABLE, instructionsOf, instructionsReachable, type InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
@@ -42,10 +42,10 @@ import { DOCS_HREF, TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, t
 import { Docs } from "./Docs";
 import { Profile } from "./Profile";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
-import { Home, OutdatedNote, StillReading } from "./Home";
+import { Home, StillReading } from "./Home";
 import { useDigests } from "./digest";
 import type { Activity } from "./useActivity";
-import { AddButtons, SuggestProvider, TrayBar, type Quote } from "./Suggest";
+import { NoteForm, SuggestProvider, TrayBar, type Quote } from "./Suggest";
 import { parseItems, takeConfirmSeed, type ConfirmSeed } from "./changes";
 
 type RecordState = RecordModel;
@@ -177,8 +177,35 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
   // One rebuild at a time: while one for this subject is pending, its button is replaced by where to follow it.
   const running = rec.pendingRebuild;
   const ready = rec.snapshot.ok && !ask.warning && !running;
+  // A subject with a finished page job never offers "Create the page", even when its page file failed to load.
+  if (!rec.page && rec.latest)
+    return (
+      <div className="card" id="rebuild-card">
+        <p className="why" role="status">
+          {rec.error ? "The page could not be loaded." : "Reading the page…"}{" "}
+          <button type="button" className="linklike" onClick={onRefresh} disabled={refreshing}>
+            {refreshing ? "Trying again…" : "Try again"}
+          </button>
+        </p>
+      </div>
+    );
+  const note = rec.page && rec.outdated ? upkeepText(rec.outdated) : "";
+  // The upkeep line's link opens the rebuild dialog itself; while it cannot open, it shows why below.
+  const openDialog = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (ready) onAsk(ask);
+    else document.getElementById("rebuild-card")?.querySelector<HTMLElement>(".warn, .running, .small")?.scrollIntoView({ block: "nearest" });
+  };
   return (
-    <div className="card" id="rebuild" tabIndex={-1}>
+    <div className="card" id="rebuild-card">
+      {note && (
+        <p className="outdated small upkeep-note">
+          <span>{note}</span>{" "}
+          <a href="#rebuild" onClick={openDialog} aria-disabled={!ready || undefined}>
+            Rebuild
+          </a>
+        </p>
+      )}
       <h3>{rec.page ? "Rebuild the page" : "Create the page"}</h3>
       <p className="break">Merges repeated lines, folds in the listed results, and looks for what’s new.</p>
       {rec.snapshot.ok ? (
@@ -404,26 +431,31 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
   );
 }
 
+/**
+ * Panel checks step back for now: every "Ask a panel to check" control and "Write a question from scratch" are
+ * hidden. Panel answers that exist are still read and shown. Set to true to bring the Confirm a fact card back.
+ */
+export const PANEL_CHECKS = false;
+
 function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState; onRefresh: () => void; refreshing: boolean }) {
+  // Page upkeep is closed by default; it starts open only when there is no page and no page job has finished, so
+  // "Create the page" is not hidden from a subject that has nothing else.
+  const firstPage = !rec.page && !rec.latest;
   return (
     <section className="tab" aria-labelledby="actions-title">
       <h1 id="actions-title" className="tab-title" tabIndex={-1}>
         Contribute
       </h1>
-      <p className="lead">Every action is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
-      {rec.page && rec.outdated && <OutdatedNote o={rec.outdated} href={to("rebuild")} />}
       <div className="stack">
-        <div className="card" id="suggest-changes" tabIndex={-1}>
-          <h3>Suggest changes</h3>
-          <ol className="howto">
-            <li>Hover any row, or click a summary sentence.</li>
-            <li>Say what is wrong, add context, or back it up with a link.</li>
-            <li>Your changes collect at the bottom and go out as one job.</li>
-          </ol>
-          <AddButtons where="contribute" />
+        <div className="card note-card" id="suggest-changes" tabIndex={-1}>
+          <NoteForm />
         </div>
-        <ConfirmCard key={rec.subject.id} onAsk={onAsk} rec={rec} />
-        <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} />
+        {PANEL_CHECKS && <ConfirmCard key={rec.subject.id} onAsk={onAsk} rec={rec} />}
+        <p className="small pay-line">Every request is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
+        <details className="upkeep" id="rebuild" open={firstPage || undefined}>
+          <summary>Page upkeep</summary>
+          <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} />
+        </details>
       </div>
     </section>
   );
@@ -868,7 +900,7 @@ function SubjectView({ subject, items, allItems, activity, route, onAsk, researc
         ))}
       </nav>
       <PendingBar subject={subject} items={activity.items} sent={sent} jobs={jobs} />
-      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} subjects={subjects} chainError={activity.error} retrying={activity.retrying} readingFiles={readingFiles} unreadable={unreadableCount(allItems ?? [])} />}
+      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} onRetry={refresh} subjects={subjects} chainError={activity.error} retrying={activity.retrying} readingFiles={readingFiles} unreadable={unreadableCount(allItems ?? [])} />}
       {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
       {route.tab === "sources" && <SourcesTab m={rec} />}
       {route.tab === "activity" && <ActivityList {...activity} items={allItems} shown={rec} subject={subject} />}

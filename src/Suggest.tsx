@@ -8,11 +8,16 @@ import {
   CHANGE_MAX_LINKS,
   CHANGE_WORDS,
   KEPT_RULE,
-  NO_SOURCE,
+  NOTE_HEADING,
   NOTE_MAX,
-  PANEL_HINT,
-  PANEL_WORDS,
+  NOTE_PLACEHOLDER,
+  NOTE_STEPS,
+  QUICK_LINE,
+  QUICK_SENTENCE,
   READ_MAX_LINKS,
+  SOURCES_HINT,
+  SOURCES_LABEL,
+  sameSentence,
   changesBody,
   changesObjective,
   cleanNote,
@@ -20,7 +25,6 @@ import {
   hasSource,
   idsOf,
   makeRefOf,
-  NOTE_MIN,
   addReady,
   noSourceSummary,
   wordDiff,
@@ -28,21 +32,18 @@ import {
   noTarget,
   planLinks,
   roomLeft,
-  setConfirmSeed,
-  seedFromLine,
   SUGGEST_MAX,
   useTray,
   validateChange,
-  needsNote,
   type Change,
   type ChangeTarget,
-  type ChangeType,
 } from "./changes";
 import { holdFocus } from "./modal";
 import { lineAnchor } from "./format";
 import { formatNumbers } from "./numbers";
 import { proofIdsOf, settleOf, speakerText } from "./settle";
 import { to } from "./route";
+import type { ChangeType } from "./changes";
 import { lineInFile, originOfLine } from "./changeResult";
 import type { Prior } from "./bodies";
 import type { RecordModel } from "./model";
@@ -152,16 +153,12 @@ export function PendingTag({ targetKey }: { targetKey: string }) {
 
 /* ---------- The panel ---------- */
 
-export type PanelMode = "line" | "sentence" | "new_line" | "links";
-const CHOICES: Record<PanelMode, (ChangeType | "panel")[]> = {
-  line: ["wrong", "context", "backing", "panel"],
-  sentence: ["wrong", "reword", "context"],
-  new_line: ["new_line"],
-  links: ["links"],
-};
-
-const noteLabel = (t: ChangeType) =>
-  t === "reword" ? "The new sentence" : t === "wrong" ? "What is wrong, and what is right" : t === "context" ? "What more there is to know" : t === "new_line" ? "The missing line" : "A note (optional)";
+/**
+ * "line": a Record line or Key facts row; "sentence": a summary sentence; "open": the Contribute form, about
+ * nothing in particular (a note with no target).
+ */
+export type PanelMode = "line" | "sentence" | "open";
+const QUICK: Record<PanelMode, ChangeType[]> = { line: QUICK_LINE, sentence: QUICK_SENTENCE, open: [] };
 
 /** One supporting line as the panel lists it: its marker, who said it, its text and quote. */
 export interface Evidence {
@@ -220,7 +217,7 @@ function EvidenceMark({ e }: { e: Evidence }) {
  * speaker and quote.
  */
 function EvidenceList({ mode, target, evidence, onOpenLines }: { mode: PanelMode; target: ChangeTarget; evidence: Evidence[]; onOpenLines?: (ids: string[]) => void }) {
-  if (mode === "new_line" || mode === "links") return null;
+  if (mode === "open") return null;
   if (mode === "line" && target.kind === "line") {
     const e = evidence[0];
     if (!e) return null;
@@ -283,33 +280,37 @@ function EvidenceList({ mode, target, evidence, onOpenLines }: { mode: PanelMode
   );
 }
 
-/**
- * Opens under the row or sentence, never wider than its column. First what the target rests on, then a choice
- * with one short line under each, a note of 10 to 300 characters and up to 3 https links (20 for "Add links to
- * read"), the no-source warning while there is no link, then Add to my changes and Cancel. Add to my changes stays
- * disabled until the change is complete. "Ask a panel to check it" opens Confirm a fact instead: a panel question
- * is sent on its own.
- */
-/** What "Ask a panel to check it" reads from a line to fill in the panel form. */
+/** What the panel used to read from a line for "Ask a panel to check it" (hidden for now); still accepted. */
 export type SeedLine = { text: string; kind?: string; by?: string; rerun?: string; fact?: { value: string; unit?: string; chain?: string } | null };
 
-export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", line, onClose, onOpenLines }: { target: ChangeTarget; mode: PanelMode; evidence?: Evidence[]; sourceUrl?: string; line?: SeedLine; onClose?: () => void; onOpenLines?: (ids: string[]) => void }) {
+/** The pending change a panel edits: only one it can show (a note, or one of its quick choices). */
+const editable = (c: Change | null) => (c && c.type !== "new_line" && c.type !== "links" ? c : null);
+
+/**
+ * One open form, in two places. On Contribute (mode "open"): "What's wrong or missing?", a text area of up to 1,000
+ * characters, Sources (one link per line), Add to my changes, and three lines on what happens next. Opened by the
+ * pencil on a line, key facts row or summary sentence: the same form under it, with the item shown above as
+ * "About: <text>", what it rests on, and optional quick choices (This is wrong, Add context, Back this up; on a
+ * sentence Reword it). With no choice picked the change is a note. A note may be links alone.
+ */
+export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines }: { target: ChangeTarget; mode: PanelMode; evidence?: Evidence[]; sourceUrl?: string; line?: SeedLine; onClose?: () => void; onOpenLines?: (ids: string[]) => void }) {
   const s = useSuggest();
-  const existing = pendingFor(s, target.key);
-  const choices = CHOICES[mode];
-  const [type, setType] = useState<ChangeType>(existing?.type ?? (choices[0] as ChangeType));
-  const [note, setNote] = useState(existing?.note ?? (mode === "sentence" && type === "reword" ? target.text : ""));
+  const inline = mode !== "open";
+  const existing = inline ? editable(pendingFor(s, target.key)) : null;
+  const quick = QUICK[mode];
+  const [type, setType] = useState<ChangeType>(existing?.type ?? "note");
+  const [note, setNote] = useState(existing?.note ?? "");
   const [links, setLinks] = useState((existing?.links ?? []).join("\n"));
   const [corrected, setCorrected] = useState(existing?.suggest ?? "");
   const [errs, setErrs] = useState<{ note?: string; links?: string }>({});
+  const [added, setAdded] = useState(0);
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
-  const max = type === "links" ? READ_MAX_LINKS : CHANGE_MAX_LINKS;
-  const plan = useMemo(() => planLinks(links, max), [links, max]);
+  const plan = useMemo(() => planLinks(links, CHANGE_MAX_LINKS), [links]);
   // The exact sentence of the result and the sentence as the page shows it: neither counts as a rewording.
   const current = type === "reword" ? [target.text, formatNumbers(target.text)] : "";
   const ready = addReady(type, note, plan.links, plan.rejected.length, current);
-  // The pencil, sentence, Edit or add button that opened the panel: focus goes back there when it closes.
+  // The pencil, sentence or Edit button that opened the panel: focus goes back there when it closes.
   const opener = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);
   const close = () => {
     s.setOpen(null);
@@ -320,18 +321,17 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", line,
     });
   };
   useEffect(() => {
-    ref.current?.querySelector<HTMLElement>("input:checked, textarea")?.focus({ preventScroll: true });
+    if (!inline) return;
+    ref.current?.querySelector<HTMLElement>("textarea")?.focus({ preventScroll: true });
     if (ref.current) revealPanel(ref.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const pick = (t: ChangeType | "panel") => {
-    if (t === "panel") {
-      setConfirmSeed(seedFromLine(line ?? { text: target.text }, sourceUrl));
-      s.setOpen(null);
-      location.hash = to("confirm");
-      return;
-    }
-    if (t === "reword" && !note.trim()) setNote(target.text);
-    setType(t);
+  // A quick choice is optional: pressing the one that is on turns it off again, and the change is a note.
+  const pick = (t: ChangeType) => {
+    const next: ChangeType = t === type ? "note" : t;
+    if (next === "reword" && !note.trim()) setNote(target.text);
+    if (type === "reword" && next !== "reword" && sameSentence(note, [target.text])) setNote("");
+    setType(next);
     setErrs({});
   };
   const submit = (e: React.FormEvent) => {
@@ -341,9 +341,22 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", line,
     setErrs(found);
     if (found.note) return document.getElementById(`${id}-note`)?.focus();
     if (found.links) return document.getElementById(`${id}-links`)?.focus();
-    const c: Change = { id: existing?.id ?? newChangeId(), type, target: mode === "new_line" || mode === "links" ? (existing?.target ?? noTarget()) : target, note: type === "links" ? "" : cleanNote(note), links: plan.links, ...(type === "wrong" && mode === "sentence" && cleanNote(corrected) ? { suggest: cleanNote(corrected).slice(0, SUGGEST_MAX) } : {}) };
+    const c: Change = {
+      id: existing?.id ?? newChangeId(),
+      type,
+      target: inline ? target : noTarget(),
+      note: cleanNote(note),
+      links: plan.links,
+      ...(type === "wrong" && mode === "sentence" && cleanNote(corrected) ? { suggest: cleanNote(corrected).slice(0, SUGGEST_MAX) } : {}),
+    };
     s.tray.put(c);
-    close();
+    if (inline) return close();
+    // The open form stays: emptied for the next note, with a word that this one is in the tray.
+    setNote("");
+    setLinks("");
+    setType("note");
+    setAdded((n) => n + 1);
+    document.getElementById(`${id}-note`)?.focus();
   };
   const remove = () => {
     if (existing) s.tray.remove(existing.id);
@@ -351,44 +364,52 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", line,
   };
   const count = cleanNote(note).length;
   const rejectedNow = plan.rejected[0];
+  const Heading = inline ? "p" : "h2";
   return (
-    <div ref={ref} className="cpanel" role="group" aria-labelledby={`${id}-h`} onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), close())}>
-      <p id={`${id}-h`} className="cpanel-h">
-        {mode === "new_line" ? "Add a line that is missing" : mode === "links" ? "Add links to read" : existing ? "Edit your change" : "Suggest a change"}
-      </p>
+    <div ref={ref} className={inline ? "cpanel" : "noteform"} role={inline ? "group" : undefined} aria-labelledby={inline ? `${id}-h` : undefined} onKeyDown={inline ? (e) => e.key === "Escape" && (e.stopPropagation(), close()) : undefined}>
+      <Heading id={`${id}-h`} className={inline ? "cpanel-h" : "note-h"}>
+        {NOTE_HEADING}
+      </Heading>
+      {inline && (
+        <p className="about">
+          <span className="about-k">About:</span> <span className="about-t">{formatNumbers(target.text)}</span>
+        </p>
+      )}
       <EvidenceList mode={mode} target={target} evidence={evidence} onOpenLines={onOpenLines} />
       <form className="form" onSubmit={submit} noValidate>
-        {choices.length > 1 && (
-          <fieldset className="opts">
-            <legend className="sr-only">What kind of change</legend>
-            {choices.map((c) =>
-              c === "panel" ? (
-                // Not one of the radios: arrowing through the choices never leaves the form. It opens Confirm a fact when activated.
-                <button key={c} type="button" className="opt opt-action" onClick={() => pick(c)}>
-                  <span className="opt-word">{PANEL_WORDS}</span>
-                  <span className="opt-hint">{PANEL_HINT}</span>
-                </button>
-              ) : (
-                <label key={c} className="opt">
-                  <input type="radio" name={`${id}-type`} value={c} checked={c === type} onChange={() => pick(c)} />
-                  <span className="opt-word">{CHANGE_WORDS[c]}</span>
-                  <span className="opt-hint">{CHANGE_HINTS[c]}</span>
-                </label>
-              ),
-            )}
-          </fieldset>
+        {quick.length > 0 && (
+          <div className="quick" role="group" aria-label="Optional: what kind of change">
+            <span className="quick-k">Optional</span>
+            {quick.map((c) => (
+              <button key={c} type="button" className="qchip" aria-pressed={type === c} title={CHANGE_HINTS[c]} onClick={() => pick(c)}>
+                {CHANGE_WORDS[c]}
+              </button>
+            ))}
+          </div>
         )}
-        {type !== "links" && (
+        {type === "reword" ? (
           <>
-            <label htmlFor={`${id}-note`}>{noteLabel(type)}</label>
-            {type === "reword" && <p className="small">{evidence.length ? KEPT_RULE : KEPT_RULE.replace("those lines, or a link you add, support it", "a link you add supports it")}</p>}
-            <textarea id={`${id}-note`} rows={type === "reword" ? 3 : 2} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!errs.note} aria-describedby={`${id}-count${errs.note ? ` ${id}-note-err` : ""}`} />
-            <p id={`${id}-count`} className={count > NOTE_MAX ? "error" : "small"}>
-              {count} of {NOTE_MAX} characters{needsNote(type) && count < NOTE_MIN ? `, at least ${NOTE_MIN}` : ""}
-            </p>
-            {errs.note && <p id={`${id}-note-err`} className="error">{errs.note}</p>}
+            <label htmlFor={`${id}-note`}>The new sentence</label>
+            <p className="small">{evidence.length ? KEPT_RULE : KEPT_RULE.replace("those lines, or a link you add, support it", "a link you add supports it")}</p>
           </>
+        ) : (
+          <label htmlFor={`${id}-note`} className="sr-only">
+            {NOTE_HEADING}
+          </label>
         )}
+        <textarea
+          id={`${id}-note`}
+          rows={inline ? 3 : 5}
+          value={note}
+          placeholder={type === "reword" ? undefined : NOTE_PLACEHOLDER}
+          onChange={(e) => setNote(e.target.value)}
+          aria-invalid={!!errs.note}
+          aria-describedby={`${id}-count${errs.note ? ` ${id}-note-err` : ""}`}
+        />
+        <p id={`${id}-count`} className={count > NOTE_MAX ? "error" : "small"}>
+          {count.toLocaleString("en-US")} of {NOTE_MAX.toLocaleString("en-US")} characters
+        </p>
+        {errs.note && <p id={`${id}-note-err`} className="error">{errs.note}</p>}
         {type === "wrong" && mode === "sentence" && (
           <>
             <label htmlFor={`${id}-corrected`}>Corrected sentence (optional)</label>
@@ -396,92 +417,72 @@ export function ChangePanel({ target, mode, evidence = [], sourceUrl = "", line,
             <p id={`${id}-corrected-hint`} className="small">Sent as a suggestion. If the change is kept, the summary shows the corrected sentence the job writes.</p>
           </>
         )}
-        <label htmlFor={`${id}-links`}>{type === "links" ? `Links to read, one per line (up to ${READ_MAX_LINKS})` : type === "backing" ? `Your source: up to ${CHANGE_MAX_LINKS} https links, one per line` : `Links, one per line (up to ${CHANGE_MAX_LINKS}, optional)`}</label>
-        <textarea id={`${id}-links`} rows={type === "links" ? 5 : 2} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/article" value={links} onChange={(e) => setLinks(e.target.value)} aria-invalid={!!errs.links || !!rejectedNow} aria-describedby={errs.links || rejectedNow ? `${id}-links-err` : undefined} />
+        <label htmlFor={`${id}-links`}>{SOURCES_LABEL}</label>
+        <p id={`${id}-links-hint`} className="small">{SOURCES_HINT}</p>
+        <textarea
+          id={`${id}-links`}
+          rows={inline ? 2 : 3}
+          spellCheck={false}
+          autoCapitalize="none"
+          autoComplete="off"
+          placeholder="https://example.com/article"
+          value={links}
+          onChange={(e) => setLinks(e.target.value)}
+          aria-invalid={!!errs.links || !!rejectedNow}
+          aria-describedby={`${id}-links-hint${errs.links || rejectedNow ? ` ${id}-links-err` : ""}`}
+        />
         {(errs.links || rejectedNow) && (
           <p id={`${id}-links-err`} className="error">
             {errs.links ?? `Cannot use ${rejectedNow!.line.slice(0, 60)}: ${rejectedNow!.why}.`}
           </p>
         )}
-        {plan.links.length === 0 && type !== "links" && type !== "backing" && <p className="nosource">{NO_SOURCE}</p>}
         <div className="row-actions">
           <button className="btn btn-ink" type="submit" disabled={!ready.ok} aria-describedby={ready.ok ? undefined : `${id}-need`}>
             Add to my changes
           </button>
-          <button className="btn" type="button" onClick={close}>
-            Cancel
-          </button>
+          {inline && (
+            <button className="btn" type="button" onClick={close}>
+              Cancel
+            </button>
+          )}
           {existing && (
             <button className="linklike small" type="button" onClick={remove}>
               Remove
             </button>
           )}
         </div>
-        {!ready.ok && (
+        {!ready.ok && (note.trim() || links.trim()) ? (
           <p id={`${id}-need`} className="small" aria-live="polite">
             {ready.need}
           </p>
+        ) : !ready.ok ? (
+          <p id={`${id}-need`} className="sr-only">
+            {ready.need}
+          </p>
+        ) : null}
+        {!inline && added > 0 && (
+          <p className="added small" role="status">
+            Added to your changes. Review and submit them from the bar at the bottom.
+          </p>
         )}
       </form>
+      {!inline && (
+        <ol className="note-steps">
+          {NOTE_STEPS.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }
 
-/* ---------- "Add a line that is missing" and "Add links to read" ---------- */
+/** The open form's target: none. Each note added from it gets a new target key of its own (noTarget). */
+export const OPEN_TARGET: ChangeTarget = { kind: "none", key: "open", lineId: "", text: "" };
 
-/** The addresses of the Overview footer's first two links. */
-export const ADD_LINE = "add-line";
-export const ADD_LINKS = "add-links";
-
-/** "Add a line that is missing" and "Add links to read": buttons, or (variant "links") two text links for the Overview footer. */
-export function AddButtons({ where, variant = "buttons", routeTarget = null, routeN = 0, children }: { where: string; variant?: "buttons" | "links"; routeTarget?: string | null; routeN?: number; children?: React.ReactNode }) {
-  const s = useSuggest();
-  const newKey = `${where}:new_line`;
-  const linksKey = `${where}:links`;
-  const target = (key: string): ChangeTarget => ({ ...noTarget(), key });
-  const { setOpen } = s;
-  // The footer links have their own addresses (#/s/<subject>/add-line, /add-links): opened from a copied link or a
-  // new tab, the page opens the form under the row.
-  useEffect(() => {
-    if (variant !== "links") return;
-    if (routeTarget === ADD_LINE) setOpen(newKey);
-    else if (routeTarget === ADD_LINKS) setOpen(linksKey);
-  }, [variant, routeTarget, routeN, newKey, linksKey, setOpen]);
-  const follow = (key: string) => (e: React.MouseEvent) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; // a new tab or window follows the address
-    e.preventDefault();
-    s.setOpen(s.open === key ? null : key);
-  };
-  if (variant === "links")
-    return (
-      <>
-        <p className="foot-links">
-          <a href={to(ADD_LINE)} aria-expanded={s.open === newKey} onClick={follow(newKey)}>
-            Add a missing line
-          </a>
-          <a href={to(ADD_LINKS)} aria-expanded={s.open === linksKey} onClick={follow(linksKey)}>
-            Add links to read
-          </a>
-          {children}
-        </p>
-        {s.open === newKey && <ChangePanel key={newKey} target={target(newKey)} mode="new_line" />}
-        {s.open === linksKey && <ChangePanel key={linksKey} target={target(linksKey)} mode="links" />}
-      </>
-    );
-  return (
-    <>
-      <div className="row-actions">
-        <button type="button" className="btn" aria-expanded={s.open === newKey} onClick={() => s.setOpen(s.open === newKey ? null : newKey)}>
-          Add a line that is missing
-        </button>
-        <button type="button" className="btn" aria-expanded={s.open === linksKey} onClick={() => s.setOpen(s.open === linksKey ? null : linksKey)}>
-          Add links to read
-        </button>
-      </div>
-      {s.open === newKey && <ChangePanel key={newKey} target={target(newKey)} mode="new_line" />}
-      {s.open === linksKey && <ChangePanel key={linksKey} target={target(linksKey)} mode="links" />}
-    </>
-  );
+/** The Contribute form: "What's wrong or missing?" */
+export function NoteForm() {
+  return <ChangePanel target={OPEN_TARGET} mode="open" />;
 }
 
 /* ---------- The tray: the bar, and the review ---------- */
@@ -615,7 +616,7 @@ function LinkEditor({ change }: { change: Change }) {
   const save = () => {
     const p = planLinks(v, max);
     if (p.rejected.length) return setErr(`Fix or remove: ${p.rejected[0]!.line.slice(0, 60)} (${p.rejected[0]!.why}).`);
-    if (!p.links.length && (change.type === "backing" || change.type === "links")) return setErr("Paste at least one https link.");
+    if (!p.links.length && (change.type === "backing" || change.type === "links" || (change.type === "note" && !change.note))) return setErr("Paste at least one https link.");
     refocusLinks = change.id;
     s.tray.put({ ...change, links: p.links, retry: undefined });
     setErr("");

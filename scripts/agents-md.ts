@@ -23,7 +23,8 @@ const none = { files: [], answers: [] };
 const EXAMPLE_CHANGES: Change[] = [
   { id: "1", type: "wrong", target: lineTarget("L3", "The token has a fixed supply of 1 billion."), note: "The supply was raised to 1.2 billion in March.", links: ["https://example.com/blog/supply"] },
   { id: "2", type: "reword", target: sentenceTarget("It is run by a small team."), note: "It is run by a team of three named founders.", links: [] },
-  { id: "3", type: "links", target: noTarget(), note: "", links: ["https://example.com/docs", "https://example.org/review"] },
+  { id: "3", type: "note", target: noTarget(), note: "The team changed in September: the founder left and a new lead took over.", links: ["https://example.com/blog/team"] },
+  { id: "4", type: "note", target: noTarget(), note: "", links: ["https://example.com/docs", "https://example.org/review"] },
 ];
 const example = {
   files: ["https://api.imd.fun/artifacts/<PAGE HASH>", "https://api.imd.fun/artifacts/<SOURCES HASH>"],
@@ -33,8 +34,9 @@ const md = `# On the record (test): for agents
 
 This site keeps a public record page for any project. Anyone can pay the IMD swarm from their own wallet, on
 Ethereum mainnet (chain 1), to create or rebuild a project's page, to send a batch of suggested changes to it
-(what is wrong, context, a source that backs a line up, a reworded summary sentence, a missing line, links to
-read), or to have a panel confirm one fact. There is no backend. Everything below is what the site itself sends
+(most of them notes in the visitor's own words, with or without sources; also what is wrong, context, a source that
+backs a line up, or a reworded summary sentence). Panel checks of one fact are hidden on the site for now; the
+panel answers that exist are still read and shown. There is no backend. Everything below is what the site itself sends
 and reads.
 
 ## Subjects
@@ -246,11 +248,14 @@ The changes instruction file, in full (${INSTRUCTIONS.changes.file}):
 ${fence(INSTRUCTIONS.changes.text.trim())}
 
 Each item is \`(n) type: <type>; target: <target>; note: <JSON string or none>; links: <space-separated https links or none>\`,
-items separated by one space. Types: \`wrong\`, \`context\`, \`backing\` (a record line or key fact), \`reword\`
-(a summary sentence; the note is the new sentence), \`new_line\` and \`links\` (no target). The target is
+items separated by one space. Types: \`note\` (the open field "What's wrong or missing?": the visitor's own words
+and any sources, with no target when sent from Contribute, or about the line, key fact or summary sentence whose
+pencil opened it; a note may be links alone), and the optional quick choices \`wrong\`, \`context\`, \`backing\` (a
+record line or key fact) and \`reword\` (a summary sentence; the note is the new sentence). \`new_line\` and \`links\`
+(no target) are older types the site no longer offers; jobs sent with them are still read. The target is
 \`F<n>:<line id> "<line text>"\` for a line (its file in \`<PRIOR>\`), \`F<n>:<line id> key fact "<Label: value>"\` for a key
-facts row, \`summary sentence "<text>"\`, or \`none\`. A note is at most ${NOTE_MAX} characters; a change has at most
-${CHANGE_MAX_LINKS} links (\`links\`: up to ${READ_MAX_LINKS}). Example:
+facts row, \`summary sentence "<text>"\`, or \`none\`. A note is at most ${NOTE_MAX.toLocaleString("en-US")} characters; a change has
+as many links as fit in the objective (at most ${CHANGE_MAX_LINKS}; older \`links\` items up to ${READ_MAX_LINKS}). Example:
 
 ${fence(itemsText(EXAMPLE_CHANGES, (id) => (id === "L3" ? "F1:L3" : "")))}
 
@@ -494,10 +499,23 @@ the bottom of Record (and Activity). Key facts values are shown as separate line
 \`values\`; a text value is never split on commas or "and". Addresses in Key facts are shortened with a copy button;
 the full address is in the row's details.
 
-**Panel questions from a line.** "Ask a panel to check it" fills the panel form from the line: "A post on X says"
-when its source is an X post (link and handle from the URL), "A contract call returns" when it is a proof whose
-rerun names an address, a function and a chain, and whose fact gives the value, else "A web page says" with its
-source link. A line whose source fits none of these says so and offers "Write a question from scratch".
+**Panel questions.** Every "Ask a panel to check" control and "Write a question from scratch" are hidden for now;
+the panel bodies below stay documented, and panel answers already on chain are read and shown on the Record.
+
+**Tokens on several chains.** A token's entry gives its home chain and address; its other chains go in a field
+\`also\`, a list of \`{chain, address}\`, and no other chain's address is written inside the text. Key facts shows the
+home address first, then "also on" with each other chain's own address, chain tag and explorer link. An address in
+older text whose chain is written after it ("0x… on Polygon", "0x… (Polygon)") or before it ("Polygon: 0x…") is shown
+under "also on" with that chain; one whose chain is not written gets no chain tag (a multi-chain explorer link),
+never the home chain's.
+
+**Related.** "Add this project" is offered only for an entry given by a domain of its own, never for a chain, a
+standard or another project's token.
+
+**Page upkeep.** "Rebuild the page" sits in a closed "Page upkeep" section at the bottom of Contribute. A page built
+with an older instruction file reads "Built with older instructions. A rebuild applies the current rules." there, and
+its Rebuild link opens the rebuild dialog. A subject with a finished page job never offers "Create the page", also
+when its page file fails to load: it shows "The page could not be loaded. Try again."
 
 **Privacy.** On load the site contacts only its own host, IMD's API and the public RPCs. The wallet code (wagmi
 and the EIP-6963 injected connector; browser-extension wallets only) is loaded only when the visitor presses

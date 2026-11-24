@@ -41,6 +41,59 @@ export function addressRuns(text: string, fallback = ""): Run[] {
   return out.filter((r) => r.kind === "address" || r.text.length > 0);
 }
 
+/** An address on a token's other chain: its own chain ("" when the text names none) and a short note such as "Fren Pet". */
+export interface OtherAddr {
+  address: string;
+  chain: string;
+  note: string;
+}
+const CHAIN_ONLY = new RegExp(`^(?:on\\s+)?(${NAME_RE})(?:\\s+mainnet)?$`, "i");
+/** A chain written just before an address: "Polygon: 0x…", "on Polygon 0x…", "Polygon (chain 137) 0x…". */
+const BEFORE = new RegExp(`(?:^|[\\s,;(])(?:(?:also|bridged|deployed)\\s+)?(?:(?:on|to)\\s+(?:the\\s+)?)?(${NAME_RE})(?:\\s+mainnet)?(?:\\s*\\(\\s*(?:chain(?:\\s*id)?\\s*)?\\d+\\s*\\))?\\s*[:=–-]?\\s*$`, "i");
+
+/**
+ * Every address in a token's text after its home address was taken out, each with the chain written right after it
+ * ("0x… on Polygon", "0x… (Polygon)") or right before it ("Polygon: 0x…"), and the text left without them. An
+ * address whose chain is not written gets no chain: it is never given the token's home chain. Pure, for tests.
+ */
+export function otherAddresses(text: string): { rest: string; also: OtherAddr[] } {
+  const also: OtherAddr[] = [];
+  let out = "";
+  let at = 0;
+  for (const m of text.matchAll(ADDRESS)) {
+    const start = m.index!;
+    let before = text.slice(at, start);
+    let end = start + m[0].length;
+    let chain = "";
+    const after = AFTER.exec(text.slice(end));
+    if (after && after[0].trim()) {
+      chain = after[1] ? chainTag(after[1]) : chainTag(after[2]!);
+      end += after[0].length;
+    } else {
+      const b = BEFORE.exec(before);
+      if (b) {
+        chain = chainTag(b[1]!);
+        before = before.slice(0, b.index + (/^[\s,;(]/.test(b[0]) ? 1 : 0));
+      }
+    }
+    let note = "";
+    const paren = /^\s*\(([^()]{1,60})\)/.exec(text.slice(end));
+    if (paren) {
+      const inner = paren[1]!.trim();
+      const c = CHAIN_ONLY.exec(inner);
+      if (c && !chain) chain = chainTag(c[1]!);
+      else if (!c) note = inner;
+      end += paren[0].length;
+    }
+    out += before;
+    also.push({ address: m[0], chain, note });
+    at = end;
+  }
+  out += text.slice(at);
+  const rest = tidy(out.replace(/\(\s*\)/g, " ").replace(/\b(?:also(?:\s+(?:on|deployed on|bridged to))?|bridged to|and)\s*(?=[,;.]|$)/gi, " ").replace(/\s+/g, " "));
+  return { rest, also };
+}
+
 /** The first address in a text with its chain, and the text without it ("Borrowing dollar"), punctuation tidied. */
 export function takeAddress(text: string, fallback = ""): { address: string; chain: string; rest: string; lead: string; tail: string } | null {
   const m = new RegExp(ADDRESS.source).exec(text);

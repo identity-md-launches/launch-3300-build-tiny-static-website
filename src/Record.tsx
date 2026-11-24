@@ -30,7 +30,7 @@ import { readDate } from "./dates";
 import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, isInstructionsUnavailable, statusText, unreadableText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { OutdatedNote, ReaderNote, StillReading } from "./Home";
-import { AddButtons, ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest } from "./Suggest";
+import { ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest } from "./Suggest";
 import { formatNumbers } from "./numbers";
 import { keyFactTarget, lineTarget, sentenceTarget } from "./changes";
 import { originOfLine } from "./changeResult";
@@ -155,10 +155,6 @@ function Runs({ text, chain = "" }: { text: string; chain?: string }) {
   );
 }
 
-/** A token's purpose up to the first further address it names, and from there on (with that address). */
-const firstAddr = (t: string) => t.search(/0x[0-9a-fA-F]{40}/);
-const purposeLead = (t: string) => (firstAddr(t) < 0 ? t : t.slice(0, firstAddr(t)).replace(/[\s,;]+$/, ""));
-const purposeTail = (t: string) => (firstAddr(t) < 0 ? "" : t.slice(firstAddr(t)));
 
 /** A link shown after a value, its label with any long hex shortened ("etherscan.io/tx/0x0d45…d5d"). */
 const shortLink = (url: string) => linkText(url).replace(/0x[0-9a-fA-F]{12,}/g, (h) => shortHex(h));
@@ -218,10 +214,20 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
         {row.tokens.map((t, i) => (
           <li key={i} className="tok-line">
             {t.symbol && <strong className="tok-symbol">{t.symbol}</strong>}
-            {/* A purpose naming more addresses keeps its own words first, then this token's address, then the others. */}
-            {t.purpose && <span className="tok-purpose"><Runs text={purposeLead(t.purpose)} chain={t.chain || chain} /></span>}
+            {/* Its own words, then the home chain's address, then "also on" with each other chain's own address and tag. */}
+            {t.purpose && <span className="tok-purpose"><Runs text={t.purpose} /></span>}
             {t.address && <Addr address={t.address} chain={chainTag(t.chain || chain)} url={t.url} />}
-            {purposeTail(t.purpose) && <span className="tok-purpose"><Runs text={purposeTail(t.purpose)} chain={t.chain || chain} /></span>}
+            {(t.also?.length ?? 0) > 0 && (
+              <span className="tok-also">
+                <span className="tok-also-k">also on</span>
+                {t.also!.map((o) => (
+                  <span key={`${o.address}@${o.chain}`} className="tok-also-one">
+                    <Addr address={o.address} chain={o.chain} />
+                    {o.note && <span className="small"> {o.note}</span>}
+                  </span>
+                ))}
+              </span>
+            )}
             {!t.address && t.url && <span className="tok-addr"><ExtLink url={t.url} className="break item-link">{shortLink(t.url)}</ExtLink></span>}
           </li>
         ))}
@@ -766,7 +772,7 @@ export function relatedCards(related: { name: string; id: string; relation: stri
     // project's contract resolves to the subject whose record ties it closest.
     if ((q.kind === "domain" && q.domain === self) || (q.kind === "address" && findSubject(q, subjects.filter((x) => x.id === self)) === self && isOwn(q, subjects.find((x) => x.id === self)))) continue;
     const found = relatedSubject(q, subjects, self);
-    const addable = q.kind === "domain" || (q.kind === "address" && q.chainId !== null) ? r.id : q.kind === "address" ? q.address : "";
+    const addable = ownDomainEntry(r, q) ? q.kind === "domain" ? q.domain : "" : "";
     const rel = { name: r.name || r.id, relation: r.relation || "related" };
     const key = found ?? `entry-${i}`;
     const have = by.get(key);
@@ -780,6 +786,19 @@ export function relatedCards(related: { name: string; id: string; relation: stri
     cards.push(card);
   }
   return cards;
+}
+
+/**
+ * Whether a Related entry may offer "Add this project": only an entry given by a domain of its own (a bare host,
+ * no path), and never a chain, a standard or a token, which are not projects to add even when they carry a domain.
+ */
+export function ownDomainEntry(r: { name: string; id: string; relation: string }, q: Lookup = parseLookup(r.id)): boolean {
+  if (q.kind !== "domain") return false;
+  const id = r.id.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(id)) return false;
+  const what = `${r.name} ${r.relation}`;
+  if (/\b(?:chain|network|blockchain|mainnet|layer[ -]?[12]|l[12]|rollup|standard|erc-?\d+|eip-?\d+|token|stablecoin|coin)\b/i.test(what)) return false;
+  return true;
 }
 
 /** True when the address is one of the subject's own contracts (rank 3 or listed), not one its proofs mention. */
@@ -820,8 +839,8 @@ function Related({ m, subjects }: { m: RecordModel; subjects: Findable[] }) {
                 </span>
               ))}
             </span>
-            {!c.found && (
-              <a className="rel-add small" href={addHref(c.addable)} aria-label={c.addable ? `Add this project: ${c.name}` : `Add this project: enter the domain or contract of ${c.name}`}>
+            {!c.found && c.addable && (
+              <a className="rel-add small" href={addHref(c.addable)} aria-label={`Add this project: ${c.name}`}>
                 Add this project
               </a>
             )}
@@ -850,7 +869,23 @@ function DisputedNote({ m }: { m: RecordModel }) {
   );
 }
 
-export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false, unreadable = 0 }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean; unreadable?: number }) {
+/** "The page could not be loaded. Try again." for a subject whose finished page job could not be read. */
+export function PageRetry({ onRetry, retrying = false }: { onRetry?: () => void; retrying?: boolean }) {
+  return (
+    <p className="why" role="status">
+      The page could not be loaded.{" "}
+      {onRetry ? (
+        <button type="button" className="linklike" onClick={onRetry} disabled={retrying}>
+          {retrying ? "Trying again…" : "Try again."}
+        </button>
+      ) : (
+        "Try again."
+      )}
+    </p>
+  );
+}
+
+export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false, unreadable = 0, onRetry }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean; unreadable?: number; onRetry?: () => void }) {
   const { page, latest, error } = m;
   const name = page?.name || m.subject.id;
   // The same first-page status Home shows for this subject: in progress, refused, failed or no project found.
@@ -895,6 +930,13 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
               <p className="why">
                 {unreadableText(unreadable)} See <a href={to("activity")}>Activity</a>.
               </p>
+              <PageRetry onRetry={onRetry} retrying={retrying} />
+            </>
+          ) : latest && error ? (
+            // A finished page job whose file failed to load: never "No page yet" or "Create the page".
+            <>
+              <h2>Page not loaded</h2>
+              <PageRetry onRetry={onRetry} retrying={retrying} />
             </>
           ) : latest && !error ? (
             <>
@@ -920,7 +962,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
               <p>Run a rebuild to publish the first record of {m.subject.id}.</p>
             </>
           )}
-          {error && <p className="error">Unable to read the page: {error}</p>}
+          {error && !latest && <p className="error">Unable to read the page: {error}</p>}
         </div>
       )}
       {(page || m.summary.length > 0) && (
@@ -940,24 +982,20 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
 
       {page ? (
         <div className="ov-foot" id="suggest">
-          <p>Something wrong or missing? Hover any row or click a sentence to suggest a change.</p>
-          <AddButtons where="overview" variant="links" routeTarget={ui.target} routeN={ui.routeN}>
-            <a href={to("confirm")}>Ask a panel to check a fact</a>
-            <a href={to("rebuild")}>Rebuild the page</a>
-          </AddButtons>
+          <p>
+            Something wrong or missing? Use the pencil on any row or sentence, or <a href={to("suggest-changes")}>say it in your own words</a>.
+          </p>
         </div>
-      ) : unreadable > 0 && items !== null && !latest ? (
-        // Finished page jobs exist but none could be read: Activity says why; creating the page again is not offered.
+      ) : items !== null && (unreadable > 0 || latest) ? (
+        // Finished page jobs exist but the page could not be read: Activity says why; creating the page is never offered.
         <div className="ov-foot">
           <p className="foot-links">
             <a href={to("activity")}>See why in Activity</a>
-            <a href={to("confirm")}>Ask a panel to check a fact</a>
           </p>
         </div>
       ) : (
         <div className="ov-foot">
           <p className="foot-links">
-            <a href={to("confirm")}>Ask a panel to check a fact</a>
             <a href={to("rebuild")}>Create the page</a>
           </p>
         </div>
@@ -1883,9 +1921,9 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
             </div>
           ))}
           {counts.all > 0 && shown.length === 0 && <p className="small">{narrowing ? "No lines match." : `No ${FILTER_WORDS[filter].toLowerCase()} lines.`}</p>}
-          <div className="add-row">
-            <AddButtons where="record" />
-          </div>
+          <p className="add-row small">
+            Something missing? <a href={to("suggest-changes")}>Say it in your own words</a>.
+          </p>
           <OtherChannels m={m} />
           {page && page.openQuestions.length > 0 && (
             <div className="card">

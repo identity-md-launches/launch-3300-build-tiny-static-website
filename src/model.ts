@@ -1157,6 +1157,14 @@ export function outdatedText(o: NonNullable<Outdated>): string {
   return o.format ? `Out of date: ${results}; built with an older format` : `Out of date: ${results}`;
 }
 
+/** The upkeep line above Rebuild (Contribute's Page upkeep and the Record's): what a rebuild would change. */
+export const OLDER_RULES = "Built with older instructions. A rebuild applies the current rules.";
+export function upkeepText(o: NonNullable<Outdated>): string {
+  if (o.kind === "format") return OLDER_RULES;
+  const results = `${o.n.toLocaleString("en-US")} result${o.n === 1 ? "" : "s"} not folded in.`;
+  return o.format ? `${results} ${OLDER_RULES}` : `${results} A rebuild folds ${o.n === 1 ? "it" : "them"} in.`;
+}
+
 /**
  * The <PRIOR> a rebuild of this subject is given, outside the hook (the home form uses it). ok is false while a
  * result it would list could not be read.

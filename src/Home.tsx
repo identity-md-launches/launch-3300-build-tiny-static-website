@@ -5,7 +5,7 @@
  */
 import { GROUP_TONE, GROUP_WORDS, homeGroups } from "./settle";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { outdatedText, readerNoteText, statusText, subjectSummaries, unreadableSummary, unreadableText, type Digest, type SubjectSummary } from "./model";
+import { readerNoteText, upkeepText, statusText, subjectSummaries, unreadableSummary, unreadableText, type Digest, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
@@ -37,7 +37,7 @@ export function ReaderNote({ o, href }: { o: SubjectSummary["outdated"]; href: s
 export function OutdatedNote({ o, href }: { o: NonNullable<SubjectSummary["outdated"]>; href: string }) {
   return (
     <p className="outdated small">
-      <span>{outdatedText(o)}.</span> <a href={href}>Rebuild</a>
+      <span>{upkeepText(o)}</span> <a href={href}>Rebuild</a>
     </p>
   );
 }

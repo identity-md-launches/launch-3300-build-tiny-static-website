@@ -56,7 +56,8 @@ describe("the panel", () => {
   it("lists what a sentence rests on first, at most 4, then and N more, with no run-on Rests on sentence", () => {
     const html = render(createElement(ChangePanel, { target: sentenceTarget("It is run by a team."), mode: "sentence", evidence: evidenceOf(lines) }));
     expect(html.indexOf("This rests on")).toBeGreaterThan(-1);
-    expect(html.indexOf("This rests on")).toBeLessThan(html.indexOf("<fieldset"));
+    // The quick choices (revision 21: optional toggle buttons) come after the evidence.
+    expect(html.indexOf("This rests on")).toBeLessThan(html.indexOf('class="quick"'));
     expect(html).not.toContain("Rests on:");
     expect(html.match(/class="ev-row"/g)).toHaveLength(EVIDENCE_MAX);
     expect(html).toContain("and 2 more");
@@ -191,10 +192,11 @@ describe("layout rules", () => {
     expect(css).not.toContain(".more-links");
     expect(css).toMatch(/\.ov-foot \{[^}]*font-size: var\(--text-small\)/);
     const rec = readFileSync("src/Record.tsx", "utf8");
-    expect(rec).toContain("Something wrong or missing? Hover any row or click a sentence to suggest a change.");
-    for (const w of ["Ask a panel to check a fact", "Rebuild the page"]) expect(rec).toContain(`>${w}</a>`);
+    // Revision 21: one line pointing at the pencil and the open form; panel checks and Rebuild moved off the footer.
+    expect(rec).toContain("Something wrong or missing? Use the pencil on any row or sentence, or <a href={to(\"suggest-changes\")}>say it in your own words</a>.");
+    for (const w of ["Ask a panel to check a fact", "Rebuild the page"]) expect(rec).not.toContain(`>${w}</a>`);
     const sg = readFileSync("src/Suggest.tsx", "utf8");
-    expect(sg).toContain("Add a missing line");
+    expect(sg).not.toContain("Add a missing line");
   });
   it("shows Disconnect only in the account menu", () => {
     const w = readFileSync("src/wallet.tsx", "utf8");

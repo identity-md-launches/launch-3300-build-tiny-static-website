@@ -99,7 +99,8 @@ describe("one change", () => {
     expect(validateChange("reword", " ", [])).toEqual({ note: "Write the new sentence, at least 10 characters." });
     expect(validateChange("backing", "", [])).toEqual({ links: "Back this up needs a link." });
     expect(validateChange("backing", "", ["https://a.com"])).toEqual({});
-    expect(validateChange("context", "x".repeat(301), [])).toEqual({ note: "Keep it to 300 characters." });
+    // Notes are up to 1,000 characters since the open field (revision 21).
+    expect(validateChange("context", "x".repeat(1001), [])).toEqual({ note: "Keep it to 1000 characters." });
     expect(validateChange("links", "", [])).toEqual({ links: "Paste at least one https link." });
   });
   it("takes up to 3 https links (20 for links to read)", () => {

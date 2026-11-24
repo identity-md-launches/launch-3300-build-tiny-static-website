@@ -158,11 +158,11 @@ describe("the panel and Review markup", () => {
     expect(css).toMatch(/\.ev-quote-full \{ display: block; overflow-wrap: anywhere;/);
     expect(css).not.toMatch(/\.ev-quote-full \{[^}]*line-clamp/);
   });
-  it("0951e1d5: Ask a panel to check it is a separate button, not one of the radios", () => {
+  it("0951e1d5 (revision 21): the quick choices are optional toggles and Ask a panel to check it is hidden", () => {
     const html = render(createElement(ChangePanel, { target: keyFactTarget("Token", "IMD", ["L2"]), mode: "line", evidence: evidenceOf(lines) }));
-    expect(html.match(/type="radio"/g)).toHaveLength(3);
-    expect(html).not.toContain('value="panel"');
-    expect(html).toMatch(/<button type="button" class="opt opt-action"><span class="opt-word">Ask a panel to check it/);
+    expect(html.match(/type="radio"/g)).toBeNull();
+    expect(html.match(/class="qchip" aria-pressed="false"/g)).toHaveLength(3);
+    expect(html).not.toContain("Ask a panel to check it");
   });
   it("3f52e4db: an opened panel scrolls below the sticky header, heading first when it is taller than the room", () => {
     const src = readFileSync("src/Suggest.tsx", "utf8");
@@ -188,14 +188,17 @@ describe("the panel and Review markup", () => {
 });
 
 describe("df2f0beb: the Overview footer is four links with destinations", () => {
-  it("routes add-line and add-links to Overview", () => {
-    expect(routeOf("#/s/imd.fun/add-line")).toMatchObject({ subject: "imd.fun", tab: "overview", target: "add-line" });
-    expect(routeOf("#/s/imd.fun/add-links")).toMatchObject({ subject: "imd.fun", tab: "overview", target: "add-links" });
+  it("routes the old add-line and add-links addresses to the open form on Contribute (revision 21)", () => {
+    expect(routeOf("#/s/imd.fun/add-line")).toMatchObject({ subject: "imd.fun", tab: "contribute", target: "suggest-changes" });
+    expect(routeOf("#/s/imd.fun/add-links")).toMatchObject({ subject: "imd.fun", tab: "contribute", target: "suggest-changes" });
   });
-  it("renders the first two as links", () => {
-    const src = readFileSync("src/Suggest.tsx", "utf8");
-    expect(src).toMatch(/<a href=\{to\(ADD_LINE\)\}[^>]*>\s*Add a missing line/);
-    expect(src).toMatch(/<a href=\{to\(ADD_LINKS\)\}[^>]*>\s*Add links to read/);
+  it("no longer renders Add a missing line or Add links to read anywhere", () => {
+    for (const f of ["src/Suggest.tsx", "src/Record.tsx", "src/App.tsx"]) {
+      const src = readFileSync(f, "utf8");
+      expect(src).not.toMatch(/>\s*Add a missing line/);
+      expect(src).not.toMatch(/>\s*Add links to read/);
+      expect(src).not.toMatch(/>\s*Add a line that is missing/);
+    }
   });
 });
 

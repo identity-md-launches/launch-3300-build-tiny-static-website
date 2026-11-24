@@ -199,7 +199,8 @@ describe("E8 / E9. upkeep places and Superseded", () => {
     const app = readFileSync("src/App.tsx", "utf8");
     const rec = readFileSync("src/Record.tsx", "utf8");
     const home = readFileSync("src/Home.tsx", "utf8");
-    expect(app).toContain("{rec.page && rec.outdated && <OutdatedNote o={rec.outdated} href={to(\"rebuild\")} />}");
+    // Revision 21: on Contribute the note is the line above Rebuild inside Page upkeep, and its link opens the dialog.
+    expect(app).toContain("const note = rec.page && rec.outdated ? upkeepText(rec.outdated) : \"\";");
     expect(rec.slice(rec.indexOf("function PageUpkeep"))).toContain("<OutdatedNote o={m.outdated}");
     expect(rec.slice(rec.indexOf("export function OverviewTab"), rec.indexOf("/* ---------- Record ---------- */"))).not.toContain("<OutdatedNote");
     expect(home).toContain('<ReaderNote o={s.outdated} href={subjectHref(s.id, "rebuild")} />');

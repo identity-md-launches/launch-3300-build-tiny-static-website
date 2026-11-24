@@ -721,10 +721,10 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreifwje56pejsh46gz3sgfiuw7nxnnwshiais6emv6xwi3p6m5papzy?filename=rebuild-b6493be79132.txt`,
-  sha256 `b6493be791323f3c6cee462a296fb6ed6da4740112f1195f5ec8dbfccebc0fce`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreiglwez6i6okxkupjk2ayc6drnxbrfso4c5pa53pmv77hg4fqxu6gy?filename=changes-cbb133e479ca.txt`,
-  sha256 `cbb133e479cabaa8f4ab40c0bc38b6e18964ee0baf0776f657ff39b8585e9e36`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreifid4x6cw47aq4yjjbyntou4kbsoztkpai7425sv2odscerw6o2yy?filename=rebuild-a81f2fe15b9f.txt`,
+  sha256 `a81f2fe15b9f043984a4386cdd4e28327666a7811fe6bb2ae9c390891b79dac6`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreiew42x5r4anjoxxdc7did7hmhe7sbodadp6b27lwmwnwnglrq2k5m?filename=changes-96e6afd8f00d.txt`,
+  sha256 `96e6afd8f00d4baf718be340fe761c9f905c300dfe0ebebb32cdb34cb8c34aeb`
 <!-- instructions:end -->
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,

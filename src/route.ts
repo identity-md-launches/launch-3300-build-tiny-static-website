@@ -34,9 +34,11 @@ function inSubject(h: string): { tab: Tab; target: string | null } {
   if (h === "actions") return { tab: "contribute", target: null };
   // The old Add sources and Suggest an edit cards are now one "Suggest changes" card.
   if (h === "add-sources" || h === "suggest-edit" || h === "suggest-changes") return { tab: "contribute", target: "suggest-changes" };
-  if (h === "rebuild" || h === "confirm") return { tab: "contribute", target: h };
-  // The Overview footer's "Add a missing line" and "Add links to read": the form opens under the footer.
-  if (h === "add-line" || h === "add-links") return { tab: "overview", target: h };
+  if (h === "rebuild") return { tab: "contribute", target: h };
+  // Panel checks are hidden for now: an old "confirm" address lands on the open form.
+  if (h === "confirm") return { tab: "contribute", target: "suggest-changes" };
+  // The old "Add a missing line" and "Add links to read" addresses: both are now the open form on Contribute.
+  if (h === "add-line" || h === "add-links") return { tab: "contribute", target: "suggest-changes" };
   if (h.startsWith("line-") || h === "dropped" || h === "unaccounted" || h.startsWith("panel-") || h === "panel-answers" || h === "other-channels")
     return { tab: "record", target: h };
   if (h.startsWith("source-")) return { tab: "sources", target: h };

@@ -1,5 +1,5 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
-import { takeAddress } from "./addrDisplay";
+import { chainTag, otherAddresses, takeAddress, type OtherAddr } from "./addrDisplay";
 import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem } from "./page";
 import { chainIdOf, chainLabel, chainName, explorerAddressUrl } from "./subject";
 import { proofIdsOf, settleOf } from "./settle";
@@ -73,6 +73,25 @@ export interface TokenItem {
   chain: string;
   /** A safe explorer link for this token, when the row's url clearly points at it. */
   url: string;
+  /**
+   * Its other chains, after the home address: each with its own address, chain ("" when not written; never the home
+   * chain by default) and a short note. Shown as "also on".
+   */
+  also?: OtherAddr[];
+}
+
+/** The other chains of a token: those listed under also, then those written in its text, never its home address. */
+function withAlso(t: TokenItem, listed: { chain: string; address: string }[] = []): TokenItem {
+  const fromText = otherAddresses(t.purpose);
+  const home = t.address.toLowerCase();
+  const seen = new Set<string>();
+  const also = [...listed.map((x) => ({ address: x.address, chain: x.chain ? chainTag(x.chain) : "", note: "" })), ...fromText.also].filter((x) => {
+    const k = `${x.address.toLowerCase()}@${x.chain.toLowerCase()}`;
+    if ((x.address.toLowerCase() === home && (!x.chain || x.chain === t.chain)) || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return { ...t, purpose: fromText.rest, ...(also.length ? { also } : {}) };
 }
 
 /** A values entry as Overview shows it: name in bold, then text, then the link or the shortened address. */
@@ -100,8 +119,8 @@ export function tokenOfItem(e: ValueItem): TokenItem {
   if (!e.shaped) return tokensOf(e.text, "", [e.text])[0] ?? { symbol: "", purpose: e.text, address: "", chain: "", url: "" };
   // A partly structured entry ("imdUSD", "Borrowing dollar; 0x… on Ethereum") keeps its address in the text.
   const took = !s.address ? takeAddress(s.text) : null;
-  if (took) return { symbol: s.name, purpose: took.rest, address: took.address, chain: s.chain || took.chain, url: s.url && s.url.toLowerCase().includes(took.address.toLowerCase()) ? s.url : "" };
-  return { symbol: s.name, purpose: s.text, address: s.address, chain: s.chain, url: s.explorer || s.url };
+  if (took) return withAlso({ symbol: s.name, purpose: took.rest, address: took.address, chain: s.chain || took.chain, url: s.url && s.url.toLowerCase().includes(took.address.toLowerCase()) ? s.url : "" }, e.also);
+  return withAlso({ symbol: s.name, purpose: s.text, address: s.address, chain: s.chain, url: s.explorer || s.url }, e.also);
 }
 
 /**
@@ -153,7 +172,7 @@ export function tokensOf(value: string, rowUrl = "", values: string[] = []): Tok
       .replace(/^[\s:,(–—-]+|[\s:,(–—-]+$/g, "")
       .replace(/^\((.*)\)$/, "$1")
       .trim();
-    return { symbol, purpose, address, chain, url: "" };
+    return withAlso({ symbol, purpose, address, chain, url: "" });
   });
   if (rowUrl) {
     const lower = rowUrl.toLowerCase();

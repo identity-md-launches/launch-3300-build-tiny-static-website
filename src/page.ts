@@ -109,6 +109,8 @@ export interface ValueItem {
   chain: string;
   /** True when the entry was an object (any shape), false for a plain string. */
   shaped: boolean;
+  /** A token's other chains: each {chain, address} the entry lists under "also" (its home chain is chain/address). */
+  also?: { chain: string; address: string }[];
 }
 
 const ENTRY_KEYS = new Set(["name", "text", "url", "address", "chain"]);
@@ -116,6 +118,25 @@ const ENTRY_KEYS = new Set(["name", "text", "url", "address", "chain"]);
 const NAME_KEYS = ["name", "symbol", "label", "title", "token", "ticker"];
 const ADDRESS_KEYS = ["address", "contract", "contract_address", "token_address"];
 const CHAIN_KEYS = ["chain", "network", "chain_id", "chainId"];
+/** Where a token's other chains are listed: "also" as the instructions ask, or a name results have used for it. */
+const ALSO_KEYS = ["also", "also_on", "other_chains", "bridged", "deployments"];
+
+/** A token entry's other chains, each {chain, address} with a valid 0x address; [] when none are given. */
+export function alsoOf(o: Record<string, unknown>): { key: string; list: { chain: string; address: string }[] } | null {
+  for (const k of ALSO_KEYS) {
+    const v = o[k];
+    if (!Array.isArray(v)) continue;
+    const list = v.slice(0, 20).flatMap((x) => {
+      if (!x || typeof x !== "object" || Array.isArray(x)) return [];
+      const e = x as Record<string, unknown>;
+      const address = str(e.address ?? e.contract, 80).trim();
+      const chain = str(e.chain ?? e.network ?? e.chain_id ?? e.chainId, 60).trim();
+      return /^0x[0-9a-fA-F]{40}$/.test(address) ? [{ chain, address }] : [];
+    });
+    if (list.length) return { key: k, list };
+  }
+  return null;
+}
 
 /** The readable strings of a value: a string, number or true/false as one, a list of them in its order; else none. */
 function readable(v: unknown): string[] {
@@ -146,7 +167,8 @@ export function valueItemOf(x: unknown): ValueItem | null {
   const ch = pick(CHAIN_KEYS, 60);
   const url = str(o.url, 400).trim();
   const address = ad && /^0x[0-9a-fA-F]{40}$/.test(ad.v) ? ad.v : "";
-  const used = new Set([nm?.key, address ? ad?.key : "", ch?.key, "url"].filter(Boolean) as string[]);
+  const also = alsoOf(o);
+  const used = new Set([nm?.key, address ? ad?.key : "", ch?.key, "url", also?.key].filter(Boolean) as string[]);
   // text as given (a list of strings under text is joined in its order); then every other readable part of an entry
   // of another shape, in order, so nothing it says is lost.
   const extra = Object.entries(o)
@@ -158,7 +180,7 @@ export function valueItemOf(x: unknown): ValueItem | null {
   const text = [own, ...extra, ...badAddr].filter(Boolean).join(", ").slice(0, 300);
   const name = nm?.v ?? "";
   if (!name && !text && !url && !address) return null;
-  return { name, text, url, address, chain: ch?.v ?? "", shaped: true };
+  return { name, text, url, address, chain: ch?.v ?? "", shaped: true, ...(also ? { also: also.list } : {}) };
 }
 
 /** An entry as one line of text: "UNI: governance token, 0x1f98… on Ethereum", "UNI: 1 billion". */

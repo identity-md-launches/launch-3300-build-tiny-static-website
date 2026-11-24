@@ -10,11 +10,17 @@ import { canonicalId, describeSubject, type SubjectRef } from "./subject";
 
 export const CHANGES_TEMPLATE = changesTemplate.trim();
 
-export type ChangeType = "wrong" | "context" | "backing" | "reword" | "new_line" | "links";
-export const CHANGE_TYPES: ChangeType[] = ["wrong", "context", "backing", "reword", "new_line", "links"];
+/**
+ * "note" is the open field: the visitor's own words and any sources, about a target or about nothing in particular.
+ * "new_line" and "links" are no longer offered (they are cases of a note); they stay readable in jobs and trays
+ * saved before.
+ */
+export type ChangeType = "note" | "wrong" | "context" | "backing" | "reword" | "new_line" | "links";
+export const CHANGE_TYPES: ChangeType[] = ["note", "wrong", "context", "backing", "reword", "new_line", "links"];
 
 /** The choice words a visitor sees, and the one short line under each. */
 export const CHANGE_WORDS: Record<ChangeType, string> = {
+  note: "Note",
   wrong: "This is wrong",
   context: "Add context",
   backing: "Back this up",
@@ -32,10 +38,24 @@ export const PANEL_WORDS = "Ask a panel to check it";
 export const PANEL_HINT = "Let independent agents decide.";
 export const NO_SOURCE =
   "No source yet. Without a link, this only reaches the page if the swarm finds a source for it. With one, it is far more likely to be kept.";
+/** The open form, word for word. */
+export const NOTE_HEADING = "What's wrong or missing?";
+export const NOTE_PLACEHOLDER = "Say it in your own words. For example: the team changed in September, or the fee is 0.3% not 1%.";
+export const SOURCES_LABEL = "Sources";
+export const SOURCES_HINT = "Add a link if you have one. Without one the swarm has to find a source, and may not.";
+export const NOTE_STEPS = [
+  "The swarm reads your note and its sources.",
+  "What holds up is added or corrected, with the source shown.",
+  "You can follow the job on the IMD explorer.",
+] as const;
+/** The quick choices the pencil's form offers, none of them required. */
+export const QUICK_LINE: ChangeType[] = ["wrong", "context", "backing"];
+export const QUICK_SENTENCE: ChangeType[] = ["wrong", "reword", "context"];
 export const KEPT_RULE = "Your wording is kept if those lines, or a link you add, support it.";
 
-export const NOTE_MAX = 300;
-export const CHANGE_MAX_LINKS = 3;
+export const NOTE_MAX = 1000;
+/** Links one change may carry: as many as fit in the objective; this is only a ceiling. */
+export const CHANGE_MAX_LINKS = 40;
 export const READ_MAX_LINKS = 20;
 
 /** What a change is about. A record line (by its id in the record shown), a key facts row, a summary sentence, or nothing. */
@@ -115,7 +135,7 @@ export function planLinks(text: string, max: number): { links: string[]; rejecte
 /** The shortest note a change takes, except Back this up and Add links to read, which need a link instead. */
 export const NOTE_MIN = 10;
 /** Whether this type is held back until its note is long enough. */
-export const needsNote = (type: ChangeType) => type !== "backing" && type !== "links";
+export const needsNote = (type: ChangeType) => type !== "backing" && type !== "links" && type !== "note";
 
 /**
  * One message per field that needs a fix before the change can join the tray. `current` is the sentence a
@@ -138,6 +158,11 @@ export function validateChange(type: ChangeType, note: string, links: string[], 
   else if (needsNote(type) && n.length < NOTE_MIN) out.note = type === "reword" ? `Write the new sentence, at least ${NOTE_MIN} characters.` : `Write at least ${NOTE_MIN} characters.`;
   else if (type === "reword" && sameSentence(n, current)) out.note = "Change the sentence first: it is the same as the current one.";
   if ((type === "backing" || type === "links") && links.length === 0) out.links = type === "links" ? "Paste at least one https link." : "Back this up needs a link.";
+  // A note: a few words, or only links. Text alone must say something; links alone are allowed.
+  if (type === "note" && !out.note) {
+    if (!n && links.length === 0) out.note = "Write what is wrong or missing, or add a link.";
+    else if (n && n.length < NOTE_MIN && links.length === 0) out.note = `Write at least ${NOTE_MIN} characters, or add a link.`;
+  }
   return out;
 }
 
@@ -306,7 +331,7 @@ export interface SentItem {
 
 const JSTR = String.raw`"(?:[^"\\]|\\.)*"`;
 const ITEM = new RegExp(
-  String.raw`\((\d+)\) type: (wrong|context|backing|reword|new_line|links); target: (none|summary sentence (${JSTR})|(?:(F\d+:\S+) )?(key fact |line )?(${JSTR})); note: (none|${JSTR}); links: (none|https:\/\/\S+?(?: https:\/\/\S+?)*)(?:; suggested final_text: (${JSTR}))?(?= \(\d+\) type: |$)`,
+  String.raw`\((\d+)\) type: (note|wrong|context|backing|reword|new_line|links); target: (none|summary sentence (${JSTR})|(?:(F\d+:\S+) )?(key fact |line )?(${JSTR})); note: (none|${JSTR}); links: (none|https:\/\/\S+?(?: https:\/\/\S+?)*)(?:; suggested final_text: (${JSTR}))?(?= \(\d+\) type: |$)`,
   "g",
 );
 const unq = (s: string) => {
