@@ -189,8 +189,9 @@ describe("A / C6 / E8. the Overview a reader sees", () => {
   it("the reader's note is only for results not folded in", () => {
     expect(readerNoteText({ kind: "format" })).toBeNull();
     expect(readerNoteText(null)).toBeNull();
-    expect(readerNoteText({ kind: "results", n: 1 })).toBe("1 addition not yet merged");
-    expect(readerNoteText({ kind: "results", n: 3, format: true })).toBe("3 additions not yet merged");
+    // Revision 24: added lines show as applied; readers never see "not yet merged".
+    expect(readerNoteText({ kind: "results", n: 1 })).toBeNull();
+    expect(readerNoteText({ kind: "results", n: 3, format: true })).toBeNull();
   });
 });
 

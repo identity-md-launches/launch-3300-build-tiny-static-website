@@ -74,7 +74,8 @@ describe("payment waits for its receipt and runs once (d21492e7, 1c4d99d2)", () 
     expect(src).toContain("holdFocus(ref.current, () => closeRef.current())");
     expect(src).toMatch(/const close = \(\) => \{\s*if \(!payment\.current\.busy && !busy\) onClose\(\);/);
     // The tray is cleared and the pending state starts only after a sent outcome.
-    expect(src.indexOf("ask.afterSent?.()")).toBeGreaterThan(src.indexOf('if (out.kind === "error")'));
+    // Revision 24: the dialog closes at signing; the tray is cleared once Ethereum included the request.
+    expect(src.indexOf("note.afterSent?.()")).toBeGreaterThan(src.indexOf('if (st === "reverted")'));
   });
   it("receipts: status parsing and polling over several sources", async () => {
     expect([receiptStatus({ status: "0x1" }), receiptStatus({ status: "0x0" }), receiptStatus(null)]).toEqual(["success", "reverted", null]);

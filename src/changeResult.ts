@@ -209,7 +209,9 @@ export function disputesOf(scope: LineScope, has: (id: string) => boolean): Disp
       }
       any = true;
     }
-    if (any && a.changes.items.some((v) => v.kept)) out.fromKept = true;
+    // The page banner counts only disputes no applied fix covers: a job whose own fixes are applied (it gave patches)
+    // shows its result on the page, so it raises no "A newer source disputes" banner; its dots stay on the parts.
+    if (any && a.changes.items.some((v) => v.kept) && patchesOf(a.changes).length === 0) out.fromKept = true;
   }
   return out;
 }

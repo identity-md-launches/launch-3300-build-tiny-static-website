@@ -156,7 +156,9 @@ describe("D. small fixes", () => {
     const app = read("src/App.tsx");
     expect(app).toMatch(/onSent=\{\(note\) => \{\s*setAsk\(null\);/);
     // Revision 23: the IMD explorer label only with the job's own link; Etherscan is "View the Ethereum transaction".
-    expect(app).toMatch(/Sent\.\{" "\}\s*<a href=\{link\.href\}[^>]*>\s*\{link\.text\}/);
+    // Revision 24: the bar says "Sent. Waiting for Ethereum…", then "… are with the swarm. Follow the job".
+    expect(app).toContain("Sent. Waiting for Ethereum…");
+    expect(app).toContain("Follow the job");
     expect(app).toContain('"Follow it on the IMD explorer"');
   });
 });

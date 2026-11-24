@@ -166,7 +166,7 @@ describe("CSS and copy findings", () => {
   });
   it("fe85fe21: Home's first step leads to suggesting changes", () => {
     const home = readFileSync("src/Home.tsx", "utf8");
-    expect(home).toContain('text: "add a project or suggest changes to its record."');
+    expect(home).toContain('text: "add a project or suggest changes to its record. Adding costs what the swarm charges, shown before you pay."');
     expect(home).not.toContain("a batch of links, or an edit to a summary");
   });
 });

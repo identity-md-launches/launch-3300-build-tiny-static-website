@@ -30,9 +30,9 @@ const example = {
   files: ["https://api.imd.fun/artifacts/<PAGE HASH>", "https://api.imd.fun/artifacts/<SOURCES HASH>"],
   answers: [{ title: "imd.fun/docs says that a job costs 0.5 IMD", answer: "true", agreed: 5, size: 5, url: "https://explorer.imd.fun/jobs/<JOB ID>" }],
 };
-const md = `# On the record (test): for agents
+const md = `# Swarmpedia: for agents
 
-This site keeps a public record page for any project. Anyone can pay the IMD swarm from their own wallet, on
+Swarmpedia (https://swarmpedia.imd.site) keeps a public page for any project or protocol. Anyone can pay the IMD swarm from their own wallet, on
 Ethereum mainnet (chain 1), to create or rebuild a project's page, to send a batch of suggested changes to it
 (most of them notes in the visitor's own words, with or without sources; also what is wrong, context, a source that
 backs a line up, or a reworded summary sentence). Panel checks of one fact are hidden on the site for now; the

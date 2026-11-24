@@ -20,8 +20,9 @@
  * Everything here is pure. `shapeOf` needs only the request, so the site checks it before reading any result bytes
  * (src/useActivity.ts); `countedOf` needs the result hashes and pages of the jobs that passed.
  */
-import { EDIT_TEMPLATE, fillTemplate, priorText, REBUILD_TEMPLATE, RESEARCH_OBJECTIVE, sourceObjective, RECONSIDER_MARK, type ChannelTie, type Prior } from "./bodies";
-import { CHANGES_TEMPLATE, itemsText, parseItemsText, type Change } from "./changes";
+import { EDIT_TEMPLATE, fillTemplate, leadsText, priorText, readLeads, REBUILD_TEMPLATE, REBUILD_TEMPLATE_V1, RESEARCH_OBJECTIVE, sourceObjective, RECONSIDER_MARK, type ChannelTie, type Prior } from "./bodies";
+import { hasV1Opening } from "./openings";
+import { CHANGES_TEMPLATE, CHANGES_TEMPLATE_V1, itemsText, parseItemsText, type Change } from "./changes";
 import { INSTRUCTIONS_FALLBACK_GATEWAY, INSTRUCTIONS_GATEWAY } from "./config";
 import published from "./instructions.published.json";
 import { fetchUrlOf, instructionsOf } from "./instructions";
@@ -83,9 +84,12 @@ export function templateFor(kind: "add" | "changes", sha256: string): string | n
 export function templatesFor(kind: "add" | "changes", sha256: string): string[] {
   const p = publishedFile(sha256);
   if (!p || !p.file.startsWith(kind === "add" ? "rebuild-" : "changes-")) return [];
-  const base = kind === "add" ? REBUILD_TEMPLATE : CHANGES_TEMPLATE;
-  const era = ERAS[p.file] ?? "two";
   const filebase = fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_GATEWAY);
+  const fallback = fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_FALLBACK_GATEWAY);
+  // A file published since the Swarmpedia name: the current openings, named at filebase "or, if that fails," pinata.
+  if (!hasV1Opening(p.sha256)) return [fillTemplate(kind === "add" ? REBUILD_TEMPLATE : CHANGES_TEMPLATE, { URL: filebase, FALLBACK: fallback, HASH: p.sha256 })];
+  const base = kind === "add" ? REBUILD_TEMPLATE_V1 : CHANGES_TEMPLATE_V1;
+  const era = ERAS[p.file] ?? "two";
   const forms: [Era, string][] = [["site", SITE_ADDR + p.file], ["dweb", DWEB_ADDR + p.file], ["filebase", filebase], ["two", filebase]];
   forms.sort((a, b) => Number(b[0] === era) - Number(a[0] === era));
   const out = forms.map(([e, url]) => fillTemplate(e === "two" ? base : base.replace(FALLBACK_CLAUSE, ""), { URL: url, FALLBACK: fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_FALLBACK_GATEWAY), HASH: p.sha256 }));
@@ -229,13 +233,14 @@ export function shapeOf(req: { subject: string; kind: string; bodyJson: Record<s
     if (!named) return o === RESEARCH_OBJECTIVE || o.startsWith(kind === "add" ? "Write the record page for one subject: " : "A visitor proposes changes to the record of ") ? LEGACY : NO;
     const ts = templatesFor(kind, named.sha256);
     if (!ts.length) return NO;
+    if (!hasV1Opening(named.sha256)) return shapeOfCurrent(req, kind, o, ts[0]!);
     const lead = kind === "add" ? "Write the record page for one subject: " : "Judge a visitor's proposed changes to the record of one subject: ";
     const after = ". Your full instructions are the file at ";
     if (!o.startsWith(lead)) return NO;
     const subject = o.slice(lead.length, o.indexOf(after));
     if (!subjectOk(subject, req)) return BADSUBJECT;
     for (const t of ts) {
-      const r = shapeWith(t, o, kind, subject);
+      const r = shapeWith(t, o, kind, { SUBJECT: subject });
       if (r) return r;
     }
     return NO;
@@ -243,17 +248,51 @@ export function shapeOf(req: { subject: string; kind: string; bodyJson: Record<s
   return shapeOfOther(req, kind, o);
 }
 
+/** "<Write|Rebuild> the Swarmpedia page for <id>. " or "Check changes to the Swarmpedia page for <id>. ", then the main contract when known. */
+const CURRENT_LEAD = {
+  add: /^(Write|Rebuild) the Swarmpedia page for (\S+?)\. (Its main contract is 0x[0-9a-fA-F]{40} on chain \d{1,12}\. )?Your full instructions are the file at /,
+  changes: /^(Check changes to) the Swarmpedia page for (\S+?)\. (Its main contract is 0x[0-9a-fA-F]{40} on chain \d{1,12}\. )?Your full instructions are the file at /,
+} as const;
+
+/**
+ * An objective naming an instruction file published since the Swarmpedia name: its opening, the subject id (exactly
+ * the tag's subject as it was sent) and an optional main contract sentence (only for a domain subject), then the
+ * whole text compared as for the older files.
+ */
+function shapeOfCurrent(req: { subject: string; bodyJson: Record<string, unknown> | null }, kind: "add" | "changes", o: string, t: string): Shape {
+  const m = CURRENT_LEAD[kind].exec(o);
+  if (!m) return NO;
+  const id = m[2]!;
+  if (!tagSubjectsOf(req).includes(id)) return BADSUBJECT;
+  if (m[3] && !refFromId(id).domain) return NO;
+  return shapeWith(t, o, kind, { ...(kind === "add" ? { ACTION: m[1]! } : {}), SUBJECT: id, MAIN: m[3] ?? "" }) ?? NO;
+}
+
 /** A named objective compared with one template form: the parts read back, written again and the whole text compared. */
-function shapeWith(t: string, o: string, kind: "add" | "changes", subject: string): Shape | null {
+function shapeWith(t: string, o: string, kind: "add" | "changes", fills: Record<string, string>): Shape | null {
   {
-    const t1 = fillTemplate(t, { SUBJECT: subject });
+    const t1 = fillTemplate(t, fills);
+    // Only the current page template has a leads slot: "Earlier results: <PRIOR>. Leads to read first: <links>."
+    const hasLeads = t1.includes("<LEADS>");
     const head = t1.slice(0, t1.indexOf("<PRIOR>"));
     if (!o.startsWith(head)) return null;
     const rest = o.slice(head.length);
     const CH = ". Channels already known: ";
     const IT = ". The changes: ";
+    const LE = ". Leads to read first: ";
     for (const p of indexes(rest, CH)) {
-      const prior = readPrior(rest.slice(0, p));
+      let priorPart = rest.slice(0, p);
+      let leads = "";
+      if (hasLeads) {
+        const l = priorPart.indexOf(LE);
+        if (l >= 0) {
+          const list = readLeads(priorPart.slice(l + LE.length));
+          if (!list) continue;
+          leads = leadsText(list);
+          priorPart = priorPart.slice(0, l);
+        }
+      }
+      const prior = readPrior(priorPart);
       if (!prior) continue;
       if (kind === "changes" && prior.reconsider?.length) continue;
       const tail = rest.slice(p + CH.length);
@@ -261,7 +300,7 @@ function shapeWith(t: string, o: string, kind: "add" | "changes", subject: strin
       for (const [chText, itText] of splits) {
         const channels = parseChannels(chText);
         if (!channels) continue;
-        const values: Record<string, string> = { PRIOR: priorText(prior), CHANNELS: channelText(channels) };
+        const values: Record<string, string> = { PRIOR: priorText(prior), CHANNELS: channelText(channels), ...(hasLeads ? { LEADS: leads } : {}) };
         if (kind === "changes") {
           if (!itText.endsWith(".") || !readItems(itText.slice(0, -1), prior.files.length)) continue;
           values.ITEMS = itText.slice(0, -1);

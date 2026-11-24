@@ -82,9 +82,9 @@ function ChangeItems({ a, shown }: { a: Activity; shown: Shown }) {
             {item.note && <span className="small">{item.type === "reword" ? "New sentence: " : "Note: "}{item.note}</span>}
             {v ? (
               v.kept ? (
-                <span className="verdict verdict-supported">Kept{v.type === "reword" && v.finalText ? `: “${v.finalText}”` : ""}</span>
+                <span className="verdict verdict-supported">Added{v.type === "reword" && v.finalText ? `: “${v.finalText}”` : ""}</span>
               ) : (
-                <span className="verdict verdict-unsupported">Not kept: {v.why || "no reason given"}</span>
+                <span className="verdict verdict-unsupported">Not added: {v.why || "no reason given"}</span>
               )
             ) : a.state === "completed" && a.changes ? (
               <span className="small">No verdict given</span>

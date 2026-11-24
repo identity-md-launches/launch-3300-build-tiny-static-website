@@ -1,15 +1,15 @@
 /** Every address, chain id, route, ABI and RPC the site uses, in one place. */
 import { mainnet } from "viem/chains";
 
-export const SITE_NAME = "On the record (test)";
+export const SITE_NAME = "Swarmpedia";
 export const SITE_DESCRIPTION =
-  "Public record pages for crypto projects. Every line shows who said it, its source and how it was checked.";
+  "Crowdsourced research on any project or protocol. Every line shows who said it, its source and how it was checked.";
 
 /**
- * Where this site is served by its ENS name (record-test-1.identitymd.eth, through the eth.limo gateway). The
- * instruction files a job must fetch are named under it, so they are served with the site.
+ * Where this site is served: https://swarmpedia.imd.site. Older addresses that past objectives named (this site's
+ * earlier ENS name and gateways) stay in src/counts.ts exactly as they were sent, so those jobs keep matching.
  */
-export const SITE_URL = "https://record-test-1.identitymd.eth.limo/";
+export const SITE_URL = "https://swarmpedia.imd.site/";
 
 /**
  * The HTTPS gateway a job fetches an instruction file from, by the file's own content address (see

@@ -436,16 +436,13 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
             <label htmlFor={`${id}-note`}>The new sentence</label>
             <p className="small">{evidence.length ? KEPT_RULE : KEPT_RULE.replace("those lines, or a link you add, support it", "a link you add supports it")}</p>
           </>
-        ) : (
-          <label htmlFor={`${id}-note`} className="sr-only">
-            {NOTE_HEADING}
-          </label>
-        )}
+        ) : null}
         <textarea
           id={`${id}-note`}
           rows={inline ? 4 : 5}
           value={note}
           placeholder={type === "reword" ? undefined : NOTE_PLACEHOLDER}
+          aria-labelledby={type === "reword" ? undefined : `${id}-h`}
           onChange={(e) => setNote(e.target.value)}
           aria-invalid={!!errs.note}
           aria-describedby={`${id}-count${errs.note ? ` ${id}-note-err` : ""}`}
@@ -765,7 +762,7 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
                 </p>
               )}
               {plan.unplaced.has(c.id) && <p className="warn">The file this row comes from does not fit in one request with the others. Remove some changes and send this one on its own.</p>}
-              {c.retry && <p className="small">Not kept last time: {c.retry}</p>}
+              {c.retry && <p className="small">Not added last time: {c.retry}</p>}
               {c.note && <ReviewNote change={c} />}
               {c.links.length > 0 && (
                 <ul className="review-links small">

@@ -49,7 +49,7 @@ describe("the changes body", () => {
     expect(encodeBody({ ...b, objective: "<CHANGES_OBJECTIVE>" })).toBe(
       '{"tag":{"app":"rec-test-1","kind":"changes","subject":"imd.fun"},"skill":"research-report","outputs":[{"name":"changes","path":"artifacts/changes.json","mediaType":"application/json"}],"objective":"<CHANGES_OBJECTIVE>"}',
     );
-    expect(b.objective.startsWith("Judge a visitor's proposed changes to the record of one subject: the project at imd.fun. Your full instructions are the file at https://ipfs.filebase.io/ipfs/b")).toBe(true);
+    expect(b.objective.startsWith("Check changes to the Swarmpedia page for imd.fun. Your full instructions are the file at https://ipfs.filebase.io/ipfs/b")).toBe(true);
     expect(b.objective).toContain(`?filename=${INSTRUCTIONS.changes.file} or, if that fails, at ${INSTRUCTIONS.changes.fallbackUrl}, sha256 ${INSTRUCTIONS.changes.sha256}. `);
     expect(b.objective).toContain(". Earlier results: [F1] https://api.imd.fun/artifacts/");
     expect(b.objective).toContain("Channels already known: https://imd.fun/ (tie: weak). The changes: (1) type: wrong; target: F1:L3 ");

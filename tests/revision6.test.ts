@@ -102,13 +102,14 @@ describe("the older-format note is independent of waiting results (21b7076f40)",
     const s1 = act("source", { block: 20, hash: hashOf(2) });
     const s2 = act("source", { block: 30, hash: hashOf(3) });
     const o = outdatedOf(coreOf([legacy, s1, s2]));
-    expect(o).toEqual({ kind: "results", n: 2, format: true });
-    expect(outdatedText(o!)).toBe("Out of date: 2 results not folded in; built with an older format");
+    // Revision 24: only the older instructions flag the page.
+    expect(o).toEqual({ kind: "format" });
+    expect(outdatedText(o!)).toBe("Out of date: built with an older format");
     const d = digestOf("imd.fun", [legacy, s1, s2])!;
-    expect(digestOutdated(d, [legacy, s1, s2])).toEqual({ kind: "results", n: 2, format: true });
+    expect(digestOutdated(d, [legacy, s1, s2])).toEqual({ kind: "format" });
     expect(outdatedOf(coreOf([legacy]))).toEqual({ kind: "format" });
     const current = act("add", { block: 10, hash: hashOf(9), objective: objectiveOf([]), page: PAGE() });
-    expect(outdatedText(outdatedOf(coreOf([current, s1]))!)).toBe("Out of date: 1 result not folded in");
+    expect(outdatedOf(coreOf([current, s1]))).toBeNull();
   });
 });
 

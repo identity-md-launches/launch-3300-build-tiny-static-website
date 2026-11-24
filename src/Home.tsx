@@ -10,6 +10,8 @@ import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
 import { SubjectLogo } from "./Logo";
+import { fetchArtifact } from "./api";
+import { LEADS_MAX, planLeads } from "./bodies";
 import type { Activity } from "./useActivity";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
@@ -133,28 +135,30 @@ function ListFilter({ all, needs, only, set, checking }: { all: number; needs: n
 const listNote = (shown: number, all: number, q: string, only: boolean) =>
   q ? `${plural(shown, "project")} ${only ? "that need a rebuild " : ""}match “${q}”.` : only ? `${plural(shown, "project")} need${shown === 1 ? "s" : ""} a rebuild.` : `${plural(all, "project")} on the record, newest change first.`;
 
-export type AddInput = { domain: string; address: string; chain: string };
+export type AddInput = { domain: string; address: string; chain: string; leads?: string[] };
 
 /** "No page yet for <input>": the price, a chain picker for an address, and "Add this project". */
 function AddOffer({ q, shown, price, onAdd }: { q: Extract<Lookup, { kind: "domain" | "address" }>; shown: string; price: string; onAdd: (i: AddInput) => string | null }) {
   const [chain, setChain] = useState(q.kind === "address" && q.chainId !== null ? (CHAIN_CHOICES.some((c) => c.id === q.chainId) ? String(q.chainId) : OTHER_CHAIN) : "1");
   const [other, setOther] = useState(q.kind === "address" && q.chainId !== null ? String(q.chainId) : "");
   const [msg, setMsg] = useState("");
-  const cost = /IMD$/.test(price) ? price : "the research price";
+  const [leadsRaw, setLeadsRaw] = useState("");
+  const leads = planLeads(leadsRaw);
+  const cost = /IMD$/.test(price) ? price : "what the swarm charges";
   const add = () => {
-    if (q.kind === "domain") return setMsg(onAdd({ domain: q.domain, address: "", chain: "" }) ?? "");
+    if (q.kind === "domain") return setMsg(onAdd({ domain: q.domain, address: "", chain: "", leads: leads.links }) ?? "");
     const id = chain === OTHER_CHAIN ? other.trim() : chain;
     if (!/^\d{1,12}$/.test(id) || Number(id) < 1) {
       setMsg("Write the chain ID as a number, such as 137.");
       document.getElementById("offer-chain-other")?.focus();
       return;
     }
-    setMsg(onAdd({ domain: "", address: q.address, chain: id }) ?? "");
+    setMsg(onAdd({ domain: "", address: q.address, chain: id, leads: leads.links }) ?? "");
   };
   return (
     <div className="offer" role="status" aria-live="polite">
       <p>
-        No page yet for <strong className="break">{shown}</strong>. Adding one costs <span className="mono nowrap">{cost}</span> and starts one research job.
+        No page yet for <strong className="break">{shown}</strong>. Adding one starts one research job and costs <span className="mono nowrap">{cost}</span>; the price is read again before you pay.
       </p>
       {q.kind === "address" && (
         <div className="offer-chain">
@@ -174,6 +178,18 @@ function AddOffer({ q, shown, price, onAdd }: { q: Extract<Lookup, { kind: "doma
           <p className="small">Its page will be filed under {chain === OTHER_CHAIN ? (other.trim() ? `chain ${other.trim()}` : "the chain you write") : chainName(chain)}.</p>
         </div>
       )}
+      <div className="field leads-field">
+        <label htmlFor="offer-leads">Research to start from <span className="small">(optional)</span></label>
+        <textarea id="offer-leads" rows={2} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/research" value={leadsRaw} onChange={(e) => setLeadsRaw(e.target.value)} aria-describedby="offer-leads-hint" />
+        <p id="offer-leads-hint" className="small">Up to {LEADS_MAX} https links, one per line. The swarm reads them first and follows their sources.</p>
+        {leads.rejected.length > 0 && (
+          <ul className="plain small error">
+            {leads.rejected.map((r) => (
+              <li key={r.line} className="break">Not used: {r.line} ({r.why})</li>
+            ))}
+          </ul>
+        )}
+      </div>
       {msg && <p className="error" role="alert">{msg}</p>}
       <div className="row-actions">
         <button type="button" className="btn btn-primary" onClick={add}>Add this project</button>
@@ -182,14 +198,67 @@ function AddOffer({ q, shown, price, onAdd }: { q: Extract<Lookup, { kind: "doma
   );
 }
 
-const LABELS = [
-  { kind: "proof", word: "Proof", text: "anyone can re-run the check and get the same answer." },
-  { kind: "statement", word: "Statement", text: "the project said it, on its own channels." },
-  { kind: "claim", word: "Claim", text: "someone else said it; their name is on it." },
+/** One fact shown three ways. Fixed text, used until (or unless) the live example loads from a page. */
+export const EXAMPLE_FALLBACK = {
+  claim: "A news site reports that ZORA has a supply of ten billion.",
+  statement: "zora.co states a total supply of 10,000,000,000 ZORA.",
+  proof: "The token contract reports a total supply of ten billion. Anyone can re-run it.",
+} as const;
+type Example = { claim: string; statement: string; proof: string; from: string | null };
+const EXAMPLE_ORDER = [
+  { kind: "claim", word: "Claim" },
+  { kind: "statement", word: "Statement" },
+  { kind: "proof", word: "Proof" },
 ] as const;
 
+/**
+ * The live example: from the newest read page of zora.co, one claim, one statement and one proof about its supply.
+ * Null when any of the three is missing; the fixed text is shown then.
+ */
+export function exampleFromPage(page: unknown, from: string): Example | null {
+  const lines = (page as { lines?: unknown })?.lines;
+  if (!Array.isArray(lines)) return null;
+  const pick = (kind: string) => {
+    const l = lines.find((x) => x && typeof x === "object" && (x as { kind?: unknown }).kind === kind && /supply/i.test(String((x as { text?: unknown }).text ?? "")));
+    const t = l ? String((l as { text: unknown }).text).trim() : "";
+    return t && t.length <= 220 ? t : "";
+  };
+  const claim = pick("claim");
+  const statement = pick("statement");
+  const proof = pick("proof");
+  return claim && statement && proof ? { claim, statement, proof, from } : null;
+}
+
+function useExample(items: Activity[] | null): Example {
+  const [ex, setEx] = useState<Example>({ ...EXAMPLE_FALLBACK, from: null });
+  const hash = useMemo(() => {
+    const pages = (items ?? []).filter((a) => a.req.subject === "zora.co" && a.req.kind === "add" && a.fileHash && a.page);
+    return pages.length ? pages[pages.length - 1]!.fileHash : null;
+  }, [items]);
+  useEffect(() => {
+    if (!hash) return;
+    let live = true;
+    fetchArtifact(hash)
+      .then((t) => {
+        const e = exampleFromPage(JSON.parse(t), "zora.co");
+        if (e && live) setEx(e);
+      })
+      .catch(() => undefined);
+    return () => void (live = false);
+  }, [hash]);
+  return ex;
+}
+
+/** "5 projects, 812 lines, 64 of them proofs anyone can re-run." from the rows' counts. */
+export function totalsText(rows: { counts: { all: number; checks: number } | null }[]): string {
+  const lines = rows.reduce((n, r) => n + (r.counts?.all ?? 0), 0);
+  const proofs = rows.reduce((n, r) => n + (r.counts?.checks ?? 0), 0);
+  const f = (n: number) => n.toLocaleString("en-US");
+  return `${f(rows.length)} ${rows.length === 1 ? "project" : "projects"}, ${f(lines)} ${lines === 1 ? "line" : "lines"}, ${f(proofs)} of them ${proofs === 1 ? "a proof" : "proofs"} anyone can re-run.`;
+}
+
 const STEPS = [
-  { word: "Contribute", text: "add a project or suggest changes to its record." },
+  { word: "Contribute", text: "add a project or suggest changes to its record. Adding costs what the swarm charges, shown before you pay." },
   { word: "The swarm checks", text: "a research job reads the sources; a panel of agents answers single yes or no questions." },
   { word: "Everyone reads", text: "a short summary on top, every line and its source underneath." },
 ];
@@ -248,6 +317,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
     const marked = listed.map((s) => (!s.hasPage && unreadable.get(s.id) ? { ...s, unread: false, status: null, unreadable: unreadable.get(s.id) } : s));
     return [...marked, ...[...unreadable].filter(([id]) => !have.has(id)).map(([id, n]) => unreadableSummary(id, n))];
   }, [items, digests, logos, unreadable]);
+  const example = useExample(items);
   const [onlyStale, setOnlyStale] = useState(false);
   const needs = all.filter((s) => s.outdated).length;
   const shown = all.filter((s) => matchesQuery(s, q) && (!onlyStale || !!s.outdated));
@@ -346,9 +416,11 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   return (
     <section className="tab home" aria-labelledby="home-title">
       <div className="hero">
-        <h1 id="home-title" tabIndex={-1}>Look up any crypto project.</h1>
+        <h1 id="home-title" tabIndex={-1}>Crowdsourced research on any project or protocol.</h1>
         <p className="lead">
-          See what a project says, what can be proven, and where they differ.
+          See what a project says, what can be proven, and what others claim about it. Add anything that's missing. Every addition is checked by a{" "}
+          <a href="https://imd.fun" target="_blank" rel="noopener noreferrer">distributed swarm</a> of AI agents.{" "}
+          <a className="on-imd" href="https://imd.fun" target="_blank" rel="noopener noreferrer">on IMD</a>
         </p>
         <form
           className="lookup"
@@ -359,7 +431,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             look(q);
           }}
         >
-          <label htmlFor="lookup" className="sr-only">A domain or a 0x address</label>
+          <label htmlFor="lookup" className="sr-only">A project's website or a contract address</label>
           <input
             id="lookup"
             ref={input}
@@ -369,7 +441,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
-            placeholder="A domain or a 0x address"
+            placeholder="A project's website or a contract address"
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
@@ -382,6 +454,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
           />
           <button type="submit" className="btn btn-primary btn-lookup">Look it up</button>
         </form>
+        <a className="example-link small" href={subjectHref("imdusd.com")}>or see an example</a>
         {err && <p id="lookup-err" className="error lookup-msg" role="alert">{err}</p>}
         {checking !== null && (
           <p className="small lookup-msg" role="status">
@@ -392,18 +465,24 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
         <p id="lookup-note" className="small lookup-note">People and agents can both add. Nothing is edited by hand.</p>
       </div>
 
-      <ul className="label-cards" aria-label="The three labels">
-        {LABELS.map((l) => (
-          <li key={l.kind} className={`label-card label-${l.kind}`}>
-            <span className={`kind kind-${l.kind}`}><span className="dot" aria-hidden="true" />{l.word}<span className="label-colon">:</span></span> {l.text}
-          </li>
-        ))}
-      </ul>
+      <section className="example" aria-labelledby="example-title">
+        <h2 id="example-title" className="sr-only">One fact, three ways</h2>
+        <ul className="label-cards">
+          {EXAMPLE_ORDER.map((l) => (
+            <li key={l.kind} className={`label-card label-${l.kind}`}>
+              <span className={`kind kind-${l.kind}`}><span className="dot" aria-hidden="true" />{l.word}</span>
+              <span className="example-text">{example[l.kind]}</span>
+            </li>
+          ))}
+        </ul>
+        {example.from && <p className="small example-from">From the page of <a href={subjectHref(example.from)}>{example.from}</a>.</p>}
+      </section>
 
       {bad && <p className="warn" role="status">“{bad}” is not a project id. Ids are a domain, such as imd.fun, or chain and contract, such as 1:0x….</p>}
 
       <div className="home-list">
         <h2 className="list-title">Projects</h2>
+        {items !== null && all.length > 0 && <p className="totals num" aria-live="polite">{totalsText(all)}</p>}
         {error && items !== null && (
           <p className="error">
             Unable to read the chain: {error}.{" "}

@@ -116,7 +116,7 @@ describe("a failed supporting result does not blank a readable page (440cb977)",
     // The unread result is not folded in: the row also says the page is out of date.
     expect(d.unfolded).toBe(1);
     const [row] = subjectSummaries([{ ...page, filesRead: false }, { ...lines, filesRead: false }], new Map([["example.com", d]]));
-    expect(row).toMatchObject({ name: "Readable", incomplete: 1, outdated: { kind: "results", n: 1 } });
+    expect(row).toMatchObject({ name: "Readable", incomplete: 1, outdated: { kind: "results", n: 1 } }); // revision 24: applied results do not flag a page
     const broken = act("add", { block: 30, sourcesError: "artifact answered 503" });
     expect(digestOf("example.com", [page, broken])).toBeNull();
   });
@@ -152,8 +152,9 @@ describe("out of date (90eee5ec)", () => {
     expect(core.unfolded).toEqual([]);
     expect(unfoldedAnswersOf(items, shown)).toEqual([answered]);
     const o = outdatedOf(core);
-    expect(o).toEqual({ kind: "results", n: 1 });
-    expect(outdatedText(o!)).toBe("Out of date: 1 result not folded in");
+    // Revision 24: results not folded in no longer flag a page built with the current instructions.
+    expect(o).toBeNull();
+    expect(outdatedText({ kind: "results", n: 1 })).toBe("Out of date: 1 result not folded in");
     expect(digestOf("example.com", items)!.unfolded).toBe(1);
     // A panel answer counts in the digest's signature: a new answer makes Home read the subject again.
     expect(resultSig(items)).toContain(answered.req.requestId.toLowerCase());

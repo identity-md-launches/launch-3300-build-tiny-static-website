@@ -2,6 +2,7 @@
 import objective from "../templates/research.txt?raw";
 import sourceTemplate from "../templates/source.txt?raw";
 import rebuildTemplate from "../templates/rebuild.txt?raw";
+import rebuildTemplateV1 from "../templates/rebuild-v1.txt?raw";
 import editTemplate from "../templates/edit.txt?raw";
 import { APP_TAG } from "./config";
 import { DEFAULT_SUBJECT, describeSubject, type SubjectRef } from "./subject";
@@ -12,7 +13,10 @@ export const jobTag = (kind: string, subject: string) => ({ app: APP_TAG, kind, 
 
 export const RESEARCH_OBJECTIVE = objective.trim();
 export const SOURCE_TEMPLATE = sourceTemplate.trim();
+/** The page objective sent now: "<Write|Rebuild> the Swarmpedia page for <subject id>. [Its main contract is …] …". */
 export const REBUILD_TEMPLATE = rebuildTemplate.trim();
+/** The page objective as sent with every instruction file published before the Swarmpedia name (see src/openings.ts). */
+export const REBUILD_TEMPLATE_V1 = rebuildTemplateV1.trim();
 export const EDIT_TEMPLATE = editTemplate.trim();
 
 export type Kind = "proof" | "statement" | "claim";
@@ -244,9 +248,9 @@ export function sourceBody(urls: string[], channels: ChannelTie[], main: string,
   };
 }
 
-/** Why one pasted line is not used, or null when it is a usable link. */
-export function linkProblem(line: string): string | null {
-  if (line.length > SOURCE_MAX_URL) return `longer than ${SOURCE_MAX_URL} characters`;
+/** Why one pasted line is not used, or null when it is a usable link. `max` is the longest link allowed (0: any). */
+export function linkProblem(line: string, max = SOURCE_MAX_URL): string | null {
+  if (max > 0 && line.length > max) return `longer than ${max} characters`;
   if (/["'`\s]/.test(line)) return "has a quote or a space";
   if (!line.startsWith("https://")) return "not an https link";
   try {
@@ -354,7 +358,7 @@ export function parsePrior(objective: unknown): { files: { n: number; url: strin
   // the subject come before it; the visitor's changes come after).
   const named = instructionsOf(objective) !== null;
   const at = named ? objective.indexOf("Earlier results: ") : Math.max(...["Start from the earlier results: ", "The record so far: "].map((k) => objective.lastIndexOf(k)));
-  const m = at < 0 ? null : /^(?:Start from the earlier results: |The record so far: |Earlier results: )([\s\S]*?)\. (?:Fetch each file\.|Extra sources from the visitor:|The subject's channels:|Channels already known:)/.exec(objective.slice(at));
+  const m = at < 0 ? null : /^(?:Start from the earlier results: |The record so far: |Earlier results: )([\s\S]*?)\. (?:Fetch each file\.|Extra sources from the visitor:|The subject's channels:|Channels already known:|Leads to read first:)/.exec(objective.slice(at));
   if (!m || m[1] === "none") return out;
   const re = /\[(F|A)(\d+)\] ([\s\S]*?)(?=; \[[FA]\d+\] |$)/g;
   for (const x of m[1]!.matchAll(re)) {
@@ -401,15 +405,60 @@ export function fitChannels(ties: ChannelTie[], measure: (list: ChannelTie[], mo
  * The rebuild objective: short and fixed, with only what varies. Its standing instructions are the file it names
  * (INSTRUCTIONS.rebuild), fetched by the job and checked against the sha256 given here.
  */
-export const rebuildObjective = (p: Prior, subject: SubjectRef, channels: ChannelTie[] = [], moreChannels = 0) =>
+export const rebuildObjective = (p: Prior, subject: SubjectRef, channels: ChannelTie[] = [], moreChannels = 0, opts: PageOptions = {}) =>
   fillTemplate(REBUILD_TEMPLATE, {
-    SUBJECT: describeSubject(subject),
+    ACTION: (opts.first ?? !p.files.length) ? "Write" : "Rebuild",
+    SUBJECT: subject.id,
+    MAIN: mainSentence(subject),
+    LEADS: leadsText(opts.leads ?? []),
     URL: INSTRUCTIONS.rebuild.url,
     FALLBACK: INSTRUCTIONS.rebuild.fallbackUrl,
     HASH: INSTRUCTIONS.rebuild.sha256,
     PRIOR: priorText(p),
     CHANNELS: channelList(channels, moreChannels),
   });
+
+/** What varies in a page objective besides the earlier results and channels. */
+export interface PageOptions {
+  /** A first page ("Write the Swarmpedia page for …") rather than a rebuild ("Rebuild …"). Default: no earlier files. */
+  first?: boolean;
+  /** "Research to start from": up to LEADS_MAX https links, listed after the earlier results. */
+  leads?: string[];
+}
+
+/** "Its main contract is 0x… on chain 1. ", for a domain subject whose main contract is known; else "". */
+export const mainSentence = (s: SubjectRef) => (s.domain && s.address && s.chainId !== null ? `Its main contract is ${s.address} on chain ${s.chainId}. ` : "");
+
+export const LEADS_MAX = 10;
+/** The leads slot: " Leads to read first: <link>, <link>." after "Earlier results: <PRIOR>.", or "" with none. */
+export const leadsText = (links: string[]) => (links.length ? ` Leads to read first: ${links.join(", ")}.` : "");
+/** A lead is any https link with no space, quote or comma-space (the slot's separator), of any length that fits. */
+export const leadProblem = (line: string): string | null => linkProblem(line, 0) ?? (/,$/.test(line) ? "ends with a comma" : null);
+/** Reads a leads slot back ("<link>, <link>"); null when anything in it is not an https link. */
+export function readLeads(text: string): string[] | null {
+  const parts = text.split(", ");
+  return parts.length && parts.every((u) => u && leadProblem(u) === null && !u.endsWith(".")) ? parts : null;
+}
+
+/** "Research to start from", one link per line: the usable links in order (at most 10) and why others are not used. */
+export function planLeads(text: string): { links: string[]; rejected: { line: string; why: string }[] } {
+  const links: string[] = [];
+  const seen = new Set<string>();
+  const rejected: { line: string; why: string }[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const why = leadProblem(line) ?? (line.endsWith(".") ? "ends with a full stop" : null);
+    if (why) rejected.push({ line, why });
+    else if (seen.has(new URL(line).href)) rejected.push({ line, why: "already listed" });
+    else if (links.length >= LEADS_MAX) rejected.push({ line, why: `past the limit of ${LEADS_MAX} links` });
+    else {
+      seen.add(new URL(line).href);
+      links.push(line);
+    }
+  }
+  return { links, rejected };
+}
 
 /**
  * True when an objective was built with the current rebuild instructions: the instruction file it names has the
@@ -432,12 +481,12 @@ export const REBUILD_OUTPUTS = [
 ];
 
 /** "Rebuild the page": the research action and tag, with the earlier results filled in. */
-export function rebuildBody(p: Prior, subject: SubjectRef, channels: ChannelTie[] = [], moreChannels = 0) {
+export function rebuildBody(p: Prior, subject: SubjectRef, channels: ChannelTie[] = [], moreChannels = 0, opts: PageOptions = {}) {
   return {
     tag: jobTag("add", subject.id),
     skill: "research-report",
     outputs: REBUILD_OUTPUTS,
-    objective: rebuildObjective(p, subject, channels, moreChannels),
+    objective: rebuildObjective(p, subject, channels, moreChannels, opts),
   };
 }
 

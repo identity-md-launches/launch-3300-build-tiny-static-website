@@ -747,7 +747,8 @@ function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSu
 export function digestOutdated(d: Digest, list: Activity[]): Outdated {
   if (!d.hasPage || !d.pageReq) return null;
   const req = list.find((a) => a.req.requestId === d.pageReq);
-  return outdated(d.unfolded, !!req && !matchesTemplate(req.req.bodyJson?.objective));
+  // Revision 24: only older instructions flag a page (Page upkeep and the home filter); applied results never do.
+  return outdated(0, !!req && !matchesTemplate(req.req.bodyJson?.objective));
 }
 
 /**
@@ -1137,7 +1138,9 @@ const outdated = (n: number, format: boolean): Outdated => (n > 0 ? { kind: "res
 
 export function outdatedOf(core: Pick<Core, "latest" | "page" | "unfolded" | "unfoldedAnswers">): Outdated {
   if (!core.latest || !core.page) return null;
-  return outdated(unfoldedCount(core), !matchesTemplate(core.latest.req.bodyJson?.objective));
+  // Added lines and key-fact fixes already show on the page, so results not folded in never flag it: only a page
+  // built with older instructions than the current ones needs a rebuild (Page upkeep and the home filter).
+  return matchesTemplate(core.latest.req.bodyJson?.objective) ? null : outdated(0, true);
 }
 
 /**
@@ -1145,9 +1148,9 @@ export function outdatedOf(core: Pick<Core, "latest" | "page" | "unfolded" | "un
  * "2 additions not yet merged". Which instruction format built a page is for upkeep only (the "Needs a rebuild"
  * filter, Contribute and Page upkeep, through outdatedText), so an older format alone gives readers no note.
  */
-export function readerNoteText(o: Outdated): string | null {
-  if (!o || o.kind !== "results") return null;
-  return `${o.n.toLocaleString("en-US")} ${o.n === 1 ? "addition" : "additions"} not yet merged`;
+export function readerNoteText(_o: Outdated): string | null {
+  // An edit's added lines and fixes show on the page as applied: readers get no "not yet merged" note.
+  return null;
 }
 
 /** For upkeep: "Out of date: 2 results not folded in", "Out of date: built with an older format", or both. */

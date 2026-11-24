@@ -132,7 +132,8 @@ describe("561b1b5f: the sent confirmation names Etherscan until IMD names the jo
   });
   it("the toast stays until admission resolves, then hides after 8 seconds", () => {
     const src = readFileSync("src/App.tsx", "utf8");
-    expect(src).toMatch(/if \(!link\.job\) return;\s*const t = window\.setTimeout\(onDone, 8000\);/);
+    // Revision 24: the bar stays until dismissed.
+    expect(src).toContain('aria-label="Dismiss" onClick={onDone}');
   });
 });
 

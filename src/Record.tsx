@@ -884,6 +884,8 @@ function Related({ m, subjects }: { m: RecordModel; subjects: Findable[] }) {
 /** "A newer source disputes N parts of this page.", when a kept change left anything in its affects list. */
 function DisputedNote({ m }: { m: RecordModel }) {
   const { rows } = useKeyFacts(m);
+  // disputesOf already drops every row or sentence an applied fix covers (a patch of the same or a later job), so
+  // what is counted here is only what no applied fix covers; a job whose own fixes cover all it disputes adds none.
   if (!m.page || !m.disputes.fromKept) return null;
   const n = disputedCount(m.disputes, rows.map((r) => r.label), m.summary);
   if (!n) return null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { artifactUrl, rebuildBody, researchBody, sourceBody, REBUILD_TEMPLATE, fillTemplate, priorText } from "../src/bodies";
+import { artifactUrl, rebuildBody, researchBody, sourceBody, REBUILD_TEMPLATE_V1, fillTemplate, priorText } from "../src/bodies";
 import { changesBody, lineTarget, type Change } from "../src/changes";
 import { countedOf, NOT_READ, shapeOf, type Countable } from "../src/counts";
 import { refFromId } from "../src/subject";
@@ -70,7 +70,7 @@ describe("which jobs count", () => {
   });
   it("replays an older file named by one address", () => {
     const f = published.find((p) => p.file === "rebuild-aede2eb36737.txt")!;
-    const objective = fillTemplate(REBUILD_TEMPLATE.replace(" or, if that fails, at <FALLBACK>", ""), {
+    const objective = fillTemplate(REBUILD_TEMPLATE_V1.replace(" or, if that fails, at <FALLBACK>", ""), {
       SUBJECT: "the project at uniswap.org",
       URL: `https://record--test--1-identitymd-eth.ipns.dweb.link/instructions/${f.file}`,
       HASH: f.sha256,

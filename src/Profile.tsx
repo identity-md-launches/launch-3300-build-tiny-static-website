@@ -24,12 +24,12 @@ export function profileKind(a: Activity): string {
   return a.req.kind || "request";
 }
 
-/** "3 kept, 1 not kept" for a completed changes job whose file was read. */
+/** "Updated the page: 3 added, 1 not added" for a completed changes job whose file was read. */
 export function changesOutcome(a: Activity): string {
   const items = a.changes?.items ?? [];
   if (!items.length) return "";
   const kept = items.filter((i) => i.kept).length;
-  return `${kept} kept, ${items.length - kept} not kept`;
+  return `Updated the page: ${kept} added, ${items.length - kept} not added`;
 }
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -88,7 +88,7 @@ export function Profile({ address, activity }: { address: string; activity: Acti
   const started = rows.filter((a) => profileKind(a) === "new page" && counted.has(a.req.requestId) && !a.notRead).length;
 
   useEffect(() => {
-    document.title = `${ens ?? short(addr)} · On the record (test)`;
+    document.title = `${ens ?? short(addr)} · Swarmpedia`;
   }, [ens, addr]);
 
   return (

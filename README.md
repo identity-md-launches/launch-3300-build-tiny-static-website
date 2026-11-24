@@ -1,6 +1,7 @@
-# On the record (test)
+# Swarmpedia
 
-A static public record of crypto **projects**. Each project (a *subject*) has a page where every line shows
+Swarmpedia (https://swarmpedia.imd.site, beta) is crowdsourced research on any project or protocol: a static public
+record of **projects**. Each project (a *subject*) has a page where every line shows
 who said it, its source and how it was checked. Visitors pay the IMD swarm from their own wallet, on Ethereum
 mainnet (chain 1), to build a project's page, add sources, suggest an edit or confirm a single fact. The site
 shows what comes back. Any project can be added; people are not subjects.
@@ -705,13 +706,41 @@ A kept change now repairs the parts it disputes in the same job; it no longer as
   each patch into the infobox row or summary sentence it names, resting on the lines it gives, unless newer evidence
   says otherwise."
 
+## Adding a request kind
+
+Every request the site sells is one module under `src/requests/` (`firstPage.ts`, `rebuild.ts`, `changes.ts`),
+each a `RequestKind` (`src/requests/kind.ts`). A new kind is one new module, listed in `src/requests/index.ts`; no
+other kind changes. It must supply:
+
+- `id` and `label`: a stable id and what the pay dialog calls it;
+- `action`: the Intake action it is sent to (today every kind uses `job.open@job-1`);
+- `tagKind`: the tag kind the job check groups it under (`{"app":"rec-test-1","kind":…,"subject":…}`; the
+  `rec-test-1` tag never changes, so every existing page and edit is still found);
+- `body(input)`: the exact body sent, and `instructions` when its objective names an instruction file;
+- `price(read, body)`: how its price is read for that exact request. Never a fixed number: today the Intake's
+  `priceOf(action, IMD)`; a kind that IMD quotes per request reads that quote here;
+- `results`: the result files the site reads from the finished job (name, path, media type).
+
+The job check (`src/counts.ts`) must also learn the kind's objective shape before its results are read. IMD plans to
+sell many-agent goals through the Intake; that will be the next kind. None is added now.
+
+## Objective openings (revision 24)
+
+Jobs sent now open with the action and the subject id, no colon: "Write the Swarmpedia page for <id>. ",
+"Rebuild the Swarmpedia page for <id>. ", "Check changes to the Swarmpedia page for <id>. ". When the main contract
+is known it is its own sentence: "Its main contract is 0x… on chain N. ". "Research to start from" (up to 10 https
+links) is listed after the earlier results as "Leads to read first: <link>, <link>.". The opening is tied to the
+instruction file's sha256 (`src/openings.ts`): every file published before this revision is checked with the older
+openings (`templates/rebuild-v1.txt`, `templates/changes-v1.txt`); every later file with the new ones. The check
+accepts any https links in the leads slot and nothing else there.
+
 ## Instruction files
 
 Everything in the rebuild and changes templates that does not change from request to request is a static text
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-153b2cd5869b.txt` and `changes-e469ba6f33e4.txt`; still served: `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-034069da4891.txt` and `changes-2ba6312f6e71.txt`; still served: `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
@@ -743,10 +772,10 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreiavhmwnlbu33nufgca46tznx7yc7ezsqtj4yrtqr5gj7tgsrim75a?filename=rebuild-153b2cd5869b.txt`,
-  sha256 `153b2cd5869bdb6853081cf4f2dbff02f933284d3cc46708f4c9fccd28a19fe8`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreiheng5g6m7e2ky5y4eoyc7qdnvkg44533ixcakc3qapt7exwkpsvy?filename=changes-e469ba6f33e4.txt`,
-  sha256 `e469ba6f33e4d2b1dc708ec0bf01b6aa3739dded1710142dc00f9fc97b29f2ae`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreiadibu5usercqctrcofxs5qf7asffbpmo5njr5aa5mci6wzat4ybq?filename=rebuild-034069da4891.txt`,
+  sha256 `034069da489114053889c5bcbb02fc122942f63bad4c7a00758247ad904f980c`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreibluyys63trqhw3izc7ducvbzembpm5agv5yqxmrvzcl24vpgrwgq?filename=changes-2ba6312f6e71.txt`,
+  sha256 `2ba6312f6e7181edb4645f1d0550e48c0bd9d01abdc42ec8d7225eb9579a3634`
 <!-- instructions:end -->
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,

@@ -47,7 +47,9 @@ describe("rebuild", () => {
   it("is the research text with the earlier jobs' rules, the brief's Tokens and Supply rows, and the JSON keys", () => {
     // The standing rules now live in the instruction file; the objective names it.
     const t = readFileSync("templates/instructions/rebuild.txt", "utf8").trim().replace(/\s*\n\s*/g, " ");
-    expect(t).toContain(`${VISITOR} Output artifacts/page.json and artifacts/logo.png.`);
+    // Revision 24 put the leads paragraph between them.
+    expect(t).toContain(`${VISITOR} Leads are research someone else did.`);
+    expect(t).toContain("yourself. Output artifacts/page.json and artifacts/logo.png.");
     for (const s of [INFOBOX, SUMMARY, AMOUNTS]) expect(t).toContain(s);
     expect(t).not.toContain("imd.fun");
     // Tokens replaces Token; one Supply value per token; the Tokens value has its own 30-word limit.

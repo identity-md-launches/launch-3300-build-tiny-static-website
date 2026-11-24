@@ -42,7 +42,7 @@ const Addr = ({ a, name }: { a: string; name: string }) => (
 
 export function Docs({ quote }: { quote: Quote }) {
   useEffect(() => {
-    document.title = "How it works · On the record (test)";
+    document.title = "How it works · Swarmpedia";
   }, []);
   return (
     <article className="tab docs" aria-labelledby="docs-title">

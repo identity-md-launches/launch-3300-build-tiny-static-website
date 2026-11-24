@@ -4,11 +4,14 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import changesTemplate from "../templates/changes.txt?raw";
-import { channelList, fillTemplate, fitsObjective, jobTag, linkProblem, MAX_OBJECTIVE, priorText, type ChannelTie, type Prior } from "./bodies";
+import changesTemplateV1 from "../templates/changes-v1.txt?raw";
+import { channelList, fillTemplate, fitsObjective, jobTag, linkProblem, mainSentence, MAX_OBJECTIVE, priorText, type ChannelTie, type Prior } from "./bodies";
 import { INSTRUCTIONS } from "./instructions";
 import { canonicalId, describeSubject, type SubjectRef } from "./subject";
 
 export const CHANGES_TEMPLATE = changesTemplate.trim();
+/** The changes objective as sent with every instruction file published before the Swarmpedia name (src/openings.ts). */
+export const CHANGES_TEMPLATE_V1 = changesTemplateV1.trim();
 
 /**
  * "note" is the open field: the visitor's own words and any sources, about a target or about nothing in particular.
@@ -132,7 +135,8 @@ export function planLinks(text: string, max: number = CHANGE_MAX_LINKS): { links
   for (const raw of text.split(/\s+/)) {
     const line = raw.trim();
     if (!line) continue;
-    const why = linkProblem(line);
+    // Any https link that fits in the request, long ones too: the objective's own limit decides what fits.
+    const why = linkProblem(line, 0);
     if (why) rejected.push({ line, why });
     else if (seen.has(new URL(line).href)) rejected.push({ line, why: "already listed" });
     else if (links.length >= max) rejected.push({ line, why: `past the limit of ${max} links` });
@@ -252,7 +256,8 @@ export const itemsText = (changes: Change[], refOf: RefOf) => changes.map((c, i)
 
 export function changesObjective(changes: Change[], prior: Prior, channels: ChannelTie[], subject: SubjectRef, refOf: RefOf, moreChannels = 0): string {
   return fillTemplate(CHANGES_TEMPLATE, {
-    SUBJECT: describeSubject(subject),
+    SUBJECT: subject.id,
+    MAIN: mainSentence(subject),
     URL: INSTRUCTIONS.changes.url,
     FALLBACK: INSTRUCTIONS.changes.fallbackUrl,
     HASH: INSTRUCTIONS.changes.sha256,

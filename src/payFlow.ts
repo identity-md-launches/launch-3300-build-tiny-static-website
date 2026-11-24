@@ -18,6 +18,11 @@ export interface PayDeps {
   receipt: (hash: Hex) => Promise<ReceiptStatus | null>;
   /** True when a rebuild of the same subject is now running: nothing is sent. */
   running: () => boolean;
+  /**
+   * When given, called as soon as the wallet has signed the request: the caller takes over waiting for Ethereum (the
+   * dialog closes at once and the page's bar shows "Sent. Waiting for Ethereum…"), and pay() returns "sent".
+   */
+  handoff?: (hash: Hex) => void;
 }
 
 export type PayOutcome =
@@ -68,6 +73,10 @@ export class Payment {
       } else onStep("sending");
       if (deps.running()) return { kind: "blocked" };
       const h = await deps.request(p);
+      if (deps.handoff) {
+        deps.handoff(h);
+        return { kind: "sent", hash: h, amount: p };
+      }
       // Only an included, successful receipt means the Intake received the request.
       onStep("confirming");
       const got = await deps.receipt(h);

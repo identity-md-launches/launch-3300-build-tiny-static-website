@@ -49,7 +49,7 @@ describe("tags and templates", () => {
     expect(o).toContain(`report what it says about the project at example.com, whose main contract is ${A} on chain 8453.`);
     expect(o).toContain(`The subject is the project at example.com, whose main contract is ${A} on chain 8453. Its main contract on the record is not known.`);
     expect(o).not.toContain("<SUBJECT>");
-    expect(rebuildObjective({ files: [], answers: [] }, ref)).toContain("Write the record page for one subject: the project at example.com, whose main contract is");
+    expect(rebuildObjective({ files: [], answers: [] }, ref)).toContain("Write the Swarmpedia page for example.com. Its main contract is");
   });
   it("reads a tag's subject as a string or as an object holding one; no subject is imd.fun", () => {
     expect(subjectOfTag("example.com")).toBe("example.com");

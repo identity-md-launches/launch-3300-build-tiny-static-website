@@ -13,7 +13,8 @@ import {
   questionContract,
   questionPage,
   questionPost,
-  rebuildBody,
+  LEADS_MAX,
+  planLeads,
   templateBody,
   contractDefinitions,
   validateContract,
@@ -30,7 +31,7 @@ import { publicClient } from "./reads";
 import { isChangesJob, readable, rememberSent, sentTxs, useActivity } from "./useActivity";
 import { holdFocus } from "./modal";
 import { followAdmission, rpcReceipt, waitForReceipt, type ReceiptRead } from "./receipt";
-import { Payment, type PayStep } from "./payFlow";
+import { Payment, REVERTED, type PayStep } from "./payFlow";
 import { isInstructionsUnavailable, leftOutText, pageJobsOf, pendingRebuildOf, readSettled, upkeepText, type PageJobs, planRebuild, subjectRefFor, subjectSummaries, unreadableBySubject, unreadableCount, useRecordModel, type RecordModel } from "./model";
 import { InstructionsBlock } from "./Instructions";
 import { INSTRUCTIONS_UNREACHABLE, instructionsOf, instructionsReachable, type InstructionName } from "./instructions";
@@ -47,6 +48,7 @@ import { useDigests } from "./digest";
 import type { Activity } from "./useActivity";
 import { NoteForm, SuggestProvider, TrayBar, type Quote } from "./Suggest";
 import { parseItems, takeConfirmSeed, type ConfirmSeed } from "./changes";
+import { FIRST_PAGE, REBUILD, type RequestKind } from "./requests";
 
 type RecordState = RecordModel;
 const actionId = (a: string) => pad(stringToHex(a), { dir: "right", size: 32 });
@@ -56,6 +58,14 @@ async function readPrice(action: string): Promise<bigint> {
   return publicClient.readContract({ address: INTAKE, abi: INTAKE_ABI, functionName: "priceOf", args: [actionId(action), IMD] });
 }
 
+/**
+ * The price the page showed for each action, from its last read. A pay dialog reads the price again for its exact
+ * request; when that differs from what the page showed, it says so before the wallet is asked.
+ */
+const shownPrices = new Map<string, bigint>();
+/** What IMD charges for this exact request: the kind's own price reading, else the Intake's price for its action. */
+export const priceOfAsk = (a: Pick<Ask, "action" | "price">) => (a.price ? a.price() : readPrice(a.action));
+
 /** The price of an action, read once on load; refresh reads it again (the tray does, so its price stays live). */
 function usePrice(action: string): Quote {
   const [price, setPrice] = useState<bigint | null>(null);
@@ -63,6 +73,7 @@ function usePrice(action: string): Quote {
   const refresh = useCallback(() => {
     readPrice(action).then(
       (p) => {
+        shownPrices.set(action, p);
         setPrice(p);
         setFailed(false);
       },
@@ -88,6 +99,14 @@ export interface Ask {
   rebuild?: boolean;
   /** Runs once the request is paid and mined: the tray of changes is emptied. */
   afterSent?: () => void;
+  /** Reads what IMD charges for this exact request (its kind's price, src/requests/). */
+  price?: () => Promise<bigint>;
+}
+
+/** An Ask for a request kind (src/requests/): its action, tag kind, body, instructions and price reading. */
+export function askFor<I>(kind: RequestKind<I>, input: I, extra: Pick<Ask, "title"> & Partial<Ask>): Ask {
+  const body = kind.body(input);
+  return { action: kind.action, kind: kind.tagKind, body, instructions: kind.instructions, price: () => kind.price(readPrice, body), ...extra };
 }
 
 
@@ -111,15 +130,13 @@ export async function askInstructionsReachable(a: Pick<Ask, "instructions" | "ki
 /* ---------- Actions ---------- */
 
 /** "Rebuild the page": the research action, starting from the page shown now and everything completed after it. */
-export function rebuildAsk(prior: Prior, subject: SubjectRef, hasPage: boolean, channels: ChannelTie[] = [], moreChannels = 0): Ask {
-  const body = rebuildBody(prior, subject, channels, moreChannels);
+export function rebuildAsk(prior: Prior, subject: SubjectRef, hasPage: boolean, channels: ChannelTie[] = [], moreChannels = 0, leads: string[] = []): Ask {
+  const kind = hasPage ? REBUILD : FIRST_PAGE;
+  const a = askFor(kind, { prior, subject, channels, moreChannels, leads }, { title: hasPage ? `Rebuild the page of ${subject.id}` : `Create the page of ${subject.id}` });
+  const body = a.body as { objective: string };
   return {
-    title: hasPage ? `Rebuild the page of ${subject.id}` : `Create the page of ${subject.id}`,
+    ...a,
     subject: subject.id,
-    action: ACTIONS.research,
-    kind: "add",
-    body,
-    instructions: "rebuild",
     rebuild: true,
     warning: fitsObjective(body.objective.length) ? undefined : `The objective is ${body.objective.length.toLocaleString("en-US")} characters, over the ${MAX_OBJECTIVE.toLocaleString("en-US")} this site allows (IMD refuses more than 8,000). It would be refused.`,
   };
@@ -174,7 +191,9 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing, known = true, u
   // "Create the page" only for a subject with no finished page job; after one (also one that found no project) the
   // permitted retry is "Rebuild the page".
   const rebuild = !!rec.page || jobs.finished;
-  const ask = rebuildAsk(rec.prior, rec.subject, rebuild, rec.promptChannels.list, rec.promptChannels.more);
+  const [leadsRaw, setLeadsRaw] = useState("");
+  const leads = planLeads(leadsRaw);
+  const ask = rebuildAsk(rec.prior, rec.subject, rebuild, rec.promptChannels.list, rec.promptChannels.more, leads.links);
   const prior = priorText(rec.prior);
   // Never opened for payment over the limit: the objective must fit in 7,900 characters.
   // One rebuild at a time: while one for this subject is pending, its button is replaced by where to follow it.
@@ -247,6 +266,7 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing, known = true, u
       ) : (
         <SnapshotNote rec={rec} onRefresh={onRefresh} refreshing={refreshing} />
       )}
+      {rec.snapshot.ok && !running && <LeadsField id="rebuild-leads" value={leadsRaw} onChange={setLeadsRaw} plan={leads} />}
       {rec.snapshot.ok && ask.warning && <p className="warn">{ask.warning}</p>}
       {running ? (
         <p className="running" role="status">
@@ -260,6 +280,24 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing, known = true, u
         </button>
         <span className="price mono">{price}</span>
       </div>
+      )}
+    </div>
+  );
+}
+
+/** "Research to start from": optional, up to 10 https links, one per line. Listed in the objective as leads. */
+export function LeadsField({ id, value, onChange, plan }: { id: string; value: string; onChange: (v: string) => void; plan: ReturnType<typeof planLeads> }) {
+  return (
+    <div className="field leads-field">
+      <label htmlFor={id}>Research to start from <span className="small">(optional)</span></label>
+      <textarea id={id} rows={3} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/research" value={value} onChange={(e) => onChange(e.target.value)} aria-describedby={`${id}-hint`} />
+      <p id={`${id}-hint`} className="small">Up to {LEADS_MAX} https links, one per line. The swarm reads them first and follows their sources; a line still needs a primary source.</p>
+      {plan.rejected.length > 0 && (
+        <ul className="plain small error" aria-live="polite">
+          {plan.rejected.map((r) => (
+            <li key={r.line} className="break">Not used: {r.line} ({r.why})</li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -409,7 +447,7 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
         {tpl !== "contract" && (
           <>
             <label htmlFor="q-text">{tpl === "post" ? "What the post says" : "What the page says"}</label>
-            <input {...field("q-text", errs.text)} name="text" type="text" autoComplete="off" placeholder="a job costs 0.5 IMD" value={f.text} onChange={set("text")} />
+            <input {...field("q-text", errs.text)} name="text" type="text" autoComplete="off" placeholder="the swap fee is 0.3%" value={f.text} onChange={set("text")} />
             <Err id="q-text" msg={errs.text} />
           </>
         )}
@@ -510,6 +548,8 @@ export interface SentNote {
   n: number;
   rebuild: boolean;
   at: number;
+  /** Runs once Ethereum included the request (the tray is emptied). */
+  afterSent?: () => void;
 }
 
 function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () => void; onSent: (sent: SentNote) => void; running?: Activity | null }) {
@@ -531,7 +571,11 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
   runningRef.current = running ?? null;
 
   const refresh = async () => {
-    const p = await readPrice(ask.action);
+    // The price for this exact request, read before the dialog offers to pay; if the page showed another, say so.
+    const p = await priceOfAsk(ask);
+    const shown = shownPrices.get(ask.action);
+    if (shown !== undefined && shown !== p) setMsg(`The price changed since the page loaded: it is now ${imd(p)} (the page showed ${imd(shown)}). You pay ${imd(p)}.`);
+    shownPrices.set(ask.action, p);
     setPrice(p);
     if (address) {
       const [a, b] = await Promise.all([
@@ -594,7 +638,7 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
     const out = await payment.current.pay(
       price,
       {
-        readPrice: () => readPrice(ask.action),
+        readPrice: () => priceOfAsk(ask),
         allowance: () => publicClient.readContract({ address: IMD, abi: ERC20_ABI, functionName: "allowance", args: [from, INTAKE] }),
         approve: async (p) => (await loadWallet()).write({ address: IMD, abi: ERC20_ABI, functionName: "approve", args: [INTAKE, p], chainId: CHAIN_ID }),
         request: async (p) =>
@@ -607,6 +651,19 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
           }),
         receipt,
         running: () => !!runningRef.current,
+        // Signed: the dialog closes at once; the page's bar waits for Ethereum (App, SendBar).
+        handoff: (hash) => {
+          rememberSent({ hash, kind: ask.kind, action: ask.action, at: Date.now() });
+          onSent({
+            hash,
+            subject: ask.subject ?? null,
+            kind: ask.kind,
+            n: ask.kind === "changes" ? parseItems((ask.body as { objective?: unknown }).objective).length : 0,
+            rebuild: !!ask.rebuild,
+            at: Date.now(),
+            afterSent: ask.afterSent,
+          });
+        },
       },
       (s) => {
         if (s === "approved" && price !== null) setAllowance(price);
@@ -616,10 +673,12 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
     if (!out || out.kind === "gone" || !alive.current) return;
     if (out.kind === "price") {
       setPrice(out.price);
+      shownPrices.set(ask.action, out.price);
       setStep("review");
       setMsg(`The price changed to ${imd(out.price)}. Review it and pay again.`);
       return;
     }
+    if (out.kind === "sent") return; // handed off at signing: the dialog is already closed
     if (out.kind === "blocked") {
       setStep("review");
       return;
@@ -630,17 +689,6 @@ function PayDialog({ ask, onClose, onSent, running }: { ask: Ask; onClose: () =>
       setMsg(out.message);
       return;
     }
-    rememberSent({ hash: out.hash, kind: ask.kind, action: ask.action, at: Date.now() });
-    // Received: the dialog closes and the page follows the request; the tray is cleared (afterSent).
-    ask.afterSent?.();
-    onSent({
-      hash: out.hash,
-      subject: ask.subject ?? null,
-      kind: ask.kind,
-      n: ask.kind === "changes" ? parseItems((ask.body as { objective?: unknown }).objective).length : 0,
-      rebuild: !!ask.rebuild,
-      at: Date.now(),
-    });
   };
 
   const short = balance !== null && price !== null && balance < price;
@@ -754,32 +802,41 @@ export function sentLink(hash: string, items: Activity[] | null, jobs: SentJobs 
   return id ? { href: jobLink(id, hash), text: "Follow it on the IMD explorer", job: true } : { href: jobLink(null, hash), text: "View the Ethereum transaction", job: false };
 }
 
+/** What the bottom bar says once Ethereum included a request. */
+export function sentDoneText(note: Pick<SentNote, "kind" | "n" | "rebuild">): string {
+  if (note.kind === "changes") return note.n === 1 ? "Your change is with the swarm." : `Your ${note.n} changes are with the swarm.`;
+  return note.rebuild ? "Your page request is with the swarm." : "Your request is with the swarm.";
+}
+
+export type SendState = "waiting" | "done" | "reverted";
+
 /**
- * The small confirmation at the bottom of the page after a request is sent. It stays while IMD assigns the job, then
- * for about 8 seconds with the IMD explorer link.
+ * The bar at the bottom of the page after the wallet signed: "Sent. Waiting for Ethereum…", then "Your N changes are
+ * with the swarm. Follow the job" with the explorer link, until dismissed.
  */
-function SentToast({ sent, items, jobs, onDone }: { sent: SentNote; items: Activity[] | null; jobs: SentJobs; onDone: () => void }) {
+function SendBar({ sent, state, items, jobs, onDone }: { sent: SentNote; state: SendState; items: Activity[] | null; jobs: SentJobs; onDone: () => void }) {
   const link = sentLink(sent.hash, items, jobs);
-  useEffect(() => {
-    if (!link.job) return;
-    const t = window.setTimeout(onDone, 8000);
-    return () => window.clearTimeout(t);
-  }, [sent.hash, onDone, link.job]);
   return (
-    <p className="toast toast-sent" role="status">
-      <span>
-        Sent.{" "}
-        <a href={link.href} target="_blank" rel="noopener noreferrer">
-          {link.text}
-        </a>
-        {link.job ? "" : " IMD is assigning the job…"}
-      </span>
-      {!link.job && (
-        <button type="button" className="x" aria-label="Dismiss" onClick={onDone}>
-          ×
-        </button>
-      )}
-    </p>
+    <div className={`send-bar${state === "reverted" ? " send-bar-error" : ""}`} role={state === "reverted" ? "alert" : "status"}>
+      <p>
+        {state === "waiting" ? (
+          <>
+            <span className="pending-dot" aria-hidden="true" />
+            Sent. Waiting for Ethereum…{" "}
+            <a href={jobLink(null, sent.hash)} target="_blank" rel="noopener noreferrer">View the transaction</a>
+          </>
+        ) : state === "reverted" ? (
+          <>{REVERTED}</>
+        ) : (
+          <>
+            {sentDoneText(sent)}{" "}
+            <a href={link.job ? link.href : sentHref(sent.hash, items, jobs)} target="_blank" rel="noopener noreferrer">Follow the job</a>
+            {link.job ? "" : <span className="small"> (IMD is assigning it; the link shows the transaction until then)</span>}
+          </>
+        )}
+      </p>
+      <button type="button" className="x" aria-label="Dismiss" onClick={onDone}>×</button>
+    </div>
   );
 }
 
@@ -930,7 +987,7 @@ function SubjectView({ subject, items, allItems, activity, route, onAsk, researc
 
   const name = rec.page?.name || subject;
   useEffect(() => {
-    document.title = `${name} · On the record (test)`;
+    document.title = `${name} · Swarmpedia`;
   }, [name]);
 
   const refresh = () => void activity.reload();
@@ -964,6 +1021,7 @@ export default function App() {
   const [ask, setAsk] = useState<Ask | null>(null);
   const [sent, setSent] = useState<SentNote[]>([]);
   const [toast, setToast] = useState<SentNote | null>(null);
+  const [sendState, setSendState] = useState<SendState>("waiting");
   const hideToast = useCallback(() => setToast(null), []);
   // While a sent request's job id is not known, read again so the toast and the pending line switch to the job link.
   const [jobs, setJobs] = useState<SentJobs>({});
@@ -1024,11 +1082,11 @@ export default function App() {
   const readingFiles = !!subject && activity.items !== null && items === null;
   const subjects = useMemo<Findable[]>(() => subjectSummaries(counted ?? [], digests, logos).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts, ranked: s.ranked })), [activity.items, digests, logos]);
   useEffect(() => {
-    if (!subject && !route.docs && !route.wallet) document.title = "On the record (test)";
+    if (!subject && !route.docs && !route.wallet) document.title = "Swarmpedia";
   }, [subject, route.docs, route.wallet]);
 
   /** The home form: the Rebuild dialog for that subject, starting from its record when it already has one. */
-  const addProject = (input: { domain: string; address: string; chain: string }): string | null => {
+  const addProject = (input: { domain: string; address: string; chain: string; leads?: string[] }): string | null => {
     if (Object.keys(validateSubject(input)).length) return "Fix the fields above.";
     if (activity.items === null) return "Wait until the list has loaded from Ethereum.";
     // A failed read leaves no earlier files to start from; never offer a paid rebuild on an unknown record.
@@ -1042,7 +1100,7 @@ export default function App() {
     const plan = planRebuild(mine, ref);
     if (plan.needsReads) return `The page of ${ref.id} dropped lines whose files must be read first. Open its page and rebuild it from Contribute.`;
     if (!plan.ok) return `An earlier result of ${ref.id} could not be read yet. Open its page and use Refresh.`;
-    const a = rebuildAsk(plan.prior, ref, plan.hasPage, plan.channels, plan.moreChannels);
+    const a = rebuildAsk(plan.prior, ref, plan.hasPage, plan.channels, plan.moreChannels, input.leads ?? []);
     if (a.warning) return a.warning;
     openAsk(a);
     return null;
@@ -1053,7 +1111,7 @@ export default function App() {
       <a className="skip" href="#root-main" onClick={(e) => { e.preventDefault(); document.getElementById("root-main")?.focus(); }}>Skip to content</a>
       <header className="top">
         <div className="top-row">
-          <a className="brand" href="#/">On the record <span className="brand-test">(test)</span></a>
+          <a className="brand" href="#/">Swarmpedia <span className="brand-beta">beta</span></a>
           <a className="top-link" href={DOCS_HREF} aria-current={route.docs ? "page" : undefined}>How it works</a>
           <Connect />
         </div>
@@ -1069,7 +1127,7 @@ export default function App() {
           <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} unreadable={unreadable} />
         )}
         <footer className="about">
-          <p>About: a test. Payments go to IMD and are not refunded. Every line comes from a paid job or panel answer on Ethereum.</p>
+          <p>Beta. Payments go to IMD and are not refunded. Every line comes from a paid job on Ethereum.</p>
           <p>
             For agents: <a href="./agents.md">agents.md</a> lists the Intake call, the exact bodies and the read routes.
           </p>
@@ -1097,13 +1155,26 @@ export default function App() {
             setAsk(null);
             setSent((xs) => [note, ...xs]);
             setToast(note);
+            setSendState("waiting");
+            // The wallet signed: wait for Ethereum here, not in the closed dialog.
+            void loadWallet()
+              .then((w) => waitForReceipt(note.hash, [(x) => w.walletReceipt(x), rpcReceipt]))
+              .catch(() => waitForReceipt(note.hash, [rpcReceipt]))
+              .then((st) => {
+                if (st === "reverted") return setSendState("reverted");
+                if (st === "success") {
+                  note.afterSent?.();
+                  setSendState("done");
+                  void activity.reload();
+                }
+              });
             void activity.reload();
             // From Home (a new project), the visitor is taken to that project's page, where its pending state shows.
             if (ask.subject && route.subject !== ask.subject) location.hash = subjectHref(ask.subject, "overview");
           }}
         />
       )}
-      {toast && <SentToast sent={toast} items={activity.items} jobs={jobs} onDone={hideToast} />}
+      {toast && <SendBar sent={toast} state={sendState} items={activity.items} jobs={jobs} onDone={hideToast} />}
     </>
   );
 }
