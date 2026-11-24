@@ -194,8 +194,9 @@ describe("Home's example (573a1aef)", () => {
     expect(exampleOf([p, s, l("C", "claim", "X says the supply is 2 billion INFER.")])).toBeNull();
   });
   it("falls back to the fixed text", () => {
-    expect(pickExample(new Map())).toEqual({ ...EXAMPLE_FALLBACK, from: null });
-    expect(pickExample(new Map([["a.com", { id: "a.com", hasPage: true, example: { claim: "c", statement: "s", proof: "p" } }]]))).toEqual({ claim: "c", statement: "s", proof: "p", from: "a.com" });
+    // Revision 26: only uniswap.org, then zora.co; any other record leaves the fixed text.
+    expect(pickExample(new Map())).toEqual({ ...EXAMPLE_FALLBACK, from: null, name: null, logoHash: null });
+    expect(pickExample(new Map([["a.com", { id: "a.com", hasPage: true, example: { claim: "c", statement: "s", proof: "p" } }]]))).toEqual({ ...EXAMPLE_FALLBACK, from: null, name: null, logoHash: null });
   });
 });
 

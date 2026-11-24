@@ -2,8 +2,10 @@
 import { mainnet } from "viem/chains";
 
 export const SITE_NAME = "Swarmpedia";
-export const SITE_DESCRIPTION =
-  "Crowdsourced research on any project or protocol. Every line shows who said it, its source and how it was checked.";
+/** The home heading; the same sentence is the page title, the share image, /agents.md and the README. */
+export const HOME_HEADING = "A crowdsourced record of any project or protocol.";
+export const HOME_TITLE = `${SITE_NAME}: ${HOME_HEADING}`;
+export const SITE_DESCRIPTION = `${HOME_HEADING} Everything is checked by IMD, a distributed swarm of AI agents.`;
 
 /**
  * Where this site is served: https://swarmpedia.imd.site. Older addresses that past objectives named (this site's

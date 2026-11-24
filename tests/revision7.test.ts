@@ -115,11 +115,11 @@ describe("1357d217 and 1ab459c0: Activity", () => {
   });
 });
 
-describe("f08e8842: a small logo at its real size", () => {
-  it("sizes the tile to the image and draws the image at its natural size", () => {
+describe("f08e8842: a small logo at its real size (revision 26: a fixed tile instead)", () => {
+  it("never grows the tile to the image", () => {
     const src = readFileSync("src/Logo.tsx", "utf8");
-    expect(src).toContain("Math.max(size, small.w)");
-    expect(src).toContain("width: small.w, height: small.h");
+    expect(src).not.toContain("Math.max(size, small.w)");
+    expect(src).toContain("maxWidth: size, maxHeight: size");
     expect(readFileSync("src/styles.css", "utf8")).not.toContain("scale-down");
   });
 });

@@ -164,9 +164,9 @@ describe("CSS and copy findings", () => {
     expect(css).toMatch(/@media \(max-width: 40rem\) \{\s*\.lookup \{ flex-wrap: wrap;[\s\S]*?\.lookup input \{ flex: 1 1 100%;[\s\S]*?placeholder \{ font-size: var\(--text-nav\); \}/);
     expect(css).toMatch(/@media \(max-width: 22\.99rem\) \{\s*\.lookup input \{ padding: 0 var\(--space-2\); \}\s*\.lookup input::placeholder \{ font-size: var\(--text-small\); \}/);
   });
-  it("fe85fe21: Home's first step leads to suggesting changes", () => {
+  it("fe85fe21: Home's first step leads to suggesting changes (revision 26: How it works left Home)", () => {
     const home = readFileSync("src/Home.tsx", "utf8");
-    expect(home).toContain('text: "add a project or suggest changes to its record. Adding costs what the swarm charges, shown before you pay."');
+    expect(home).not.toContain('className="how"');
     expect(home).not.toContain("a batch of links, or an edit to a summary");
   });
 });

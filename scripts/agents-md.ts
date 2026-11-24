@@ -7,6 +7,7 @@ import { writeFileSync } from "node:fs";
 import { INSTRUCTIONS } from "../src/instructions";
 import { MAX_OBJECTIVE } from "../src/bodies";
 import { describeSubject, refFromId, refFromInput } from "../src/subject";
+import { HOME_HEADING } from "../src/config";
 import { ACTIONS, API, IMD, INTAKE, INSTRUCTIONS_GATEWAY, TOPIC_COMPLETED, TOPIC_REQUESTED, APP_TAG, LAUNCH_BLOCK } from "../src/config";
 import { CHANGES_TEMPLATE, CHANGE_MAX_LINKS, NOTE_MAX, READ_MAX_LINKS, changesBody, itemsText, lineTarget, noTarget, sentenceTarget, type Change } from "../src/changes";
 import { LEGACY_PRESETS, filedUnder, questionContract, questionPage, questionPost, templateBody, SOURCE_TEMPLATE, EDIT_TEMPLATE, REBUILD_TEMPLATE, EDIT_MAX_LINKS, EDIT_MAX_TEXT, editBody, encodeBody, LEADS_MAX, oracleBody, priorText, questionP4, contractDefinitions, rebuildBody, sourceBody, SOURCE_MAX_LINKS, SOURCE_MAX_URL, SOURCE_MAX_OBJECTIVE } from "../src/bodies";
@@ -35,7 +36,7 @@ const exampleBody = rebuildBody(none, EXAMPLE_REF, [], 0, { first: true }).objec
 const currentOpening = exampleBody.slice(0, exampleBody.indexOf("Your full instructions"));
 const md = `# Swarmpedia: for agents
 
-Swarmpedia (https://swarmpedia.imd.site) keeps a public page for any project or protocol. Anyone can pay the IMD swarm from their own wallet, on
+${HOME_HEADING} Swarmpedia (https://swarmpedia.imd.site) keeps a public page for any project or protocol. Anyone can pay the IMD swarm from their own wallet, on
 Ethereum mainnet (chain 1), to create or rebuild a project's page, to send a batch of suggested changes to it
 (most of them notes in the visitor's own words, with or without sources; also what is wrong, context, a source that
 backs a line up, or a reworded summary sentence). Panel checks of one fact are hidden on the site for now; the

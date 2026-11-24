@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, stringToHex, type Hex } from "viem";
-import { ACTIONS, CHAIN_ID, EMPTY_SELECTOR, ERC20_ABI, ETHERSCAN, IMD, INTAKE, INTAKE_ABI, ZERO_ADDRESS } from "./config";
+import { ACTIONS, CHAIN_ID, EMPTY_SELECTOR, ERC20_ABI, ETHERSCAN, IMD, INTAKE, INTAKE_ABI, ZERO_ADDRESS, HOME_TITLE } from "./config";
 import {
   MAX_OBJECTIVE,
   fitsObjective,
@@ -1083,7 +1083,7 @@ export default function App() {
   const readingFiles = !!subject && activity.items !== null && items === null;
   const subjects = useMemo<Findable[]>(() => subjectSummaries(counted ?? [], digests, logos).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts, ranked: s.ranked })), [activity.items, digests, logos]);
   useEffect(() => {
-    if (!subject && !route.docs && !route.wallet) document.title = "Swarmpedia";
+    if (!subject && !route.docs && !route.wallet) document.title = HOME_TITLE;
   }, [subject, route.docs, route.wallet]);
 
   /** The home form: the Rebuild dialog for that subject, starting from its record when it already has one. */

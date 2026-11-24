@@ -31,7 +31,7 @@ describe("A3: objective openings", () => {
     for (const b of [rebuildBody({ files: [], answers: [] }, ref), rebuildBody({ files: [], answers: [] }, { ...ref, address: "0x" + "cd".repeat(20), chainId: 8453 })]) expect(shapeOf(req("add", b)).ok).toBe(true);
     expect(hasV1Opening(INSTRUCTIONS.rebuild.sha256)).toBe(false);
     expect(V1_OPENING_HASHES.size).toBe(24);
-    expect(PUBLISHED_INSTRUCTIONS.length).toBe(26);
+    expect(PUBLISHED_INSTRUCTIONS.length).toBe(28);
   });
   it("an older file sent with the new opening, or a new file with the old opening, does not count", () => {
     const old = PUBLISHED_INSTRUCTIONS.find((p) => p.file === "rebuild-153b2cd5869b.txt")!;
@@ -130,7 +130,8 @@ describe("B5, F14, H25-26", () => {
 describe("A1: the name", () => {
   it("index.html, agents.md and the README use Swarmpedia and its address", () => {
     const html = readFileSync("index.html", "utf8");
-    expect(html).toContain("<title>Swarmpedia</title>");
+    // Revision 26: the title carries the home heading after the name.
+    expect(html).toContain("<title>Swarmpedia: A crowdsourced record of any project or protocol.</title>");
     expect(html).not.toMatch(/\(test\)/);
     expect(readFileSync("public/agents.md", "utf8")).toContain("https://swarmpedia.imd.site");
     expect(readFileSync("README.md", "utf8")).toContain("## Adding a request kind");

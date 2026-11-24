@@ -1,6 +1,6 @@
 /**
- * Home: the headline, one bar that both searches and adds, the three labels, the subjects found on chain, and
- * how it works. Submitting the bar opens a subject that exists, or offers "Add this project", which opens the
+ * Home: the headline, one bar that both searches and adds, the three kinds shown as one fact, and the subjects found
+ * on chain. Submitting the bar opens a subject that exists, or offers "Add this project", which opens the
  * first-rebuild dialog.
  */
 import { GROUP_TONE, GROUP_WORDS, homeGroups } from "./settle";
@@ -10,6 +10,9 @@ import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
 import { SubjectLogo } from "./Logo";
+import { KindIcon, ToneMark } from "./KindIcon";
+import imdLogo from "./assets/imd-logo.png";
+import { HOME_HEADING } from "./config";
 import { LEADS_MAX, planLeads } from "./bodies";
 import type { Activity } from "./useActivity";
 import type { Example as Lines3 } from "./example";
@@ -58,10 +61,10 @@ function RetryButton({ id, retry }: { id: string; retry?: (id: string) => void }
 function PlaceholderItem({ s, failed, retry }: { s: SubjectSummary; failed: string; retry?: (id: string) => void }) {
   return (
     <li className={`subject${failed ? "" : " subject-loading"}`} aria-busy={!failed}>
-      <SubjectLogo name={s.name} logo={null} size={28} />
+      <SubjectLogo name={s.name} logo={null} size={44} />
       <div className="subject-body">
-        <a className="subject-link" href={subjectHref(s.id)}>
-          <span className="subject-name">{s.id}</span>
+        <a className="subject-link subject-link-id" href={subjectHref(s.id)}>
+          <span className="subject-id">{s.id}</span>
         </a>
         {failed ? (
           <p className="subject-line">
@@ -70,7 +73,6 @@ function PlaceholderItem({ s, failed, retry }: { s: SubjectSummary; failed: stri
         ) : (
           <>
             <p className="subject-line"><span className="sr-only">Reading its record…</span><span className="bar" aria-hidden="true" /></p>
-            <p className="subject-meta small" aria-hidden="true"><span className="bar bar-short" /></p>
           </>
         )}
       </div>
@@ -83,11 +85,11 @@ function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading
   const status = s.status ? statusText(s.status) : "";
   return (
     <li className="subject">
-      <SubjectLogo name={s.name} logo={s.logo} size={28} />
+      <SubjectLogo name={s.name} logo={s.logo} size={44} />
       <div className="subject-body">
         <a className="subject-link" href={subjectHref(s.id)}>
           <span className="subject-name">{s.name}</span>
-          {s.name !== s.id && <span className="subject-id mono">{s.id}</span>}
+          {s.name !== s.id && <span className="subject-id">{s.id}</span>}
         </a>
         <p className={`subject-line${s.status && s.status.kind !== "pending" && s.status.kind !== "none" ? " subject-status" : ""}`}>
           {s.hasPage ? s.oneLine || "No one-line description yet." : s.unreadable ? <>{unreadableText(s.unreadable)} See <a href={subjectHref(s.id, "activity")}>Activity</a>.</> : status}
@@ -97,7 +99,7 @@ function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading
             <>
               {homeGroups(s.counts).map((g) => (
                 <span key={g} className={`count-kind kind-${GROUP_TONE[g]}`}>
-                  <span className="dot" aria-hidden="true" />
+                  <ToneMark tone={GROUP_TONE[g]} />
                   {s.counts![g].toLocaleString("en-US")} {GROUP_WORDS[g].toLowerCase()}
                 </span>
               ))}
@@ -198,27 +200,33 @@ function AddOffer({ q, shown, price, onAdd }: { q: Extract<Lookup, { kind: "doma
   );
 }
 
-/** One fact shown three ways. Fixed text, used until (or unless) the live example loads from a page. */
+/** One fact shown three ways. Fixed text, used when neither uniswap.org nor zora.co has a live example. */
 export const EXAMPLE_FALLBACK = {
-  claim: "A news site reports that ZORA has a supply of ten billion.",
-  statement: "zora.co states a total supply of 10,000,000,000 ZORA.",
   proof: "The token contract reports a total supply of ten billion. Anyone can re-run it.",
+  statement: "zora.co states a total supply of 10,000,000,000 ZORA.",
+  claim: "A news site reports that ZORA has a supply of ten billion.",
 } as const;
-type Example = Lines3 & { from: string | null };
-const EXAMPLE_ORDER = [
-  { kind: "claim", word: "Claim" },
-  { kind: "statement", word: "Statement" },
-  { kind: "proof", word: "Proof" },
+/** The record the example comes from: its id, its name and its logo's hash; null for the fixed text. */
+type Example = Lines3 & { from: string | null; name: string | null; logoHash: string | null };
+/** The three cards, in this order: the icon, the name and what the kind means. */
+export const EXAMPLE_ORDER = [
+  { kind: "proof", word: "Proof", note: "anyone can re-run it" },
+  { kind: "statement", word: "Statement", note: "the project says" },
+  { kind: "claim", word: "Claim", note: "others say" },
 ] as const;
+/** Where the live example is looked for, in order; the fixed text when neither page has one fact present as all three kinds. */
+export const EXAMPLE_FROM = ["uniswap.org", "zora.co"] as const;
 
 /**
  * The live example: three lines of one record that state the same fact (example.ts), kept with that record's digest
- * when its page was read. zora.co's when it has one, else the first record that does; the fixed text when none has.
+ * when its page was read. uniswap.org's when it has one, else zora.co's; the fixed text when neither has.
  */
-export function pickExample(digests: Map<string, Pick<Digest, "id" | "example" | "hasPage">> | undefined): Example {
-  const having = [...(digests ?? new Map<string, Pick<Digest, "id" | "example" | "hasPage">>()).values()].filter((d) => d.hasPage && d.example);
-  const d = having.find((x) => x.id === "zora.co") ?? having.sort((x, y) => x.id.localeCompare(y.id))[0];
-  return d ? { ...d.example!, from: d.id } : { ...EXAMPLE_FALLBACK, from: null };
+export function pickExample(digests: Map<string, Pick<Digest, "id" | "example" | "hasPage"> & Partial<Pick<Digest, "name" | "logoHash">>> | undefined): Example {
+  for (const id of EXAMPLE_FROM) {
+    const d = digests?.get(id);
+    if (d && d.hasPage && d.example) return { ...d.example, from: d.id, name: d.name || d.id, logoHash: d.logoHash ?? null };
+  }
+  return { ...EXAMPLE_FALLBACK, from: null, name: null, logoHash: null };
 }
 
 /** "5 projects, 812 lines, 64 of them proofs anyone can re-run." from the rows' counts. */
@@ -228,12 +236,6 @@ export function totalsText(rows: { counts: { all: number; checks: number } | nul
   const f = (n: number) => n.toLocaleString("en-US");
   return `${f(rows.length)} ${rows.length === 1 ? "project" : "projects"}, ${f(lines)} ${lines === 1 ? "line" : "lines"}, ${f(proofs)} of them ${proofs === 1 ? "a proof" : "proofs"} anyone can re-run.`;
 }
-
-const STEPS = [
-  { word: "Contribute", text: "add a project or suggest changes to its record. Adding costs what the swarm charges, shown before you pay." },
-  { word: "The swarm checks", text: "a research job reads the sources; a panel of agents answers single yes or no questions." },
-  { word: "Everyone reads", text: "a short summary on top, every line and its source underneath." },
-];
 
 /** Shown instead of an empty list while nothing has been read: never "No projects" before the chain answered. */
 export function StillReading({ error, retrying }: { error: string | null; retrying: boolean }) {
@@ -400,11 +402,14 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   return (
     <section className="tab home" aria-labelledby="home-title">
       <div className="hero">
-        <h1 id="home-title" tabIndex={-1}>Crowdsourced research on any project or protocol.</h1>
+        <h1 id="home-title" tabIndex={-1}>{HOME_HEADING}</h1>
         <p className="lead">
-          See what a project says, what can be proven, and what others claim about it. Add anything that's missing. Every addition is checked by a{" "}
-          <a href="https://imd.fun" target="_blank" rel="noopener noreferrer">distributed swarm</a> of AI agents.{" "}
-          <a className="on-imd" href="https://imd.fun" target="_blank" rel="noopener noreferrer">on IMD</a>
+          Everything is checked by{" "}
+          <a className="imd-link" href="https://imd.fun" target="_blank" rel="noopener noreferrer">
+            <img className="imd-logo" src={imdLogo} width={18} height={18} alt="" decoding="async" />
+            IMD, a distributed swarm of AI agents
+          </a>
+          .
         </p>
         <form
           className="lookup"
@@ -434,7 +439,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
               if (submitted && e.target.value.trim() !== submitted.raw) setSubmitted(null);
             }}
             aria-invalid={!!err}
-            aria-describedby={err ? "lookup-err" : "lookup-note"}
+            aria-describedby={err ? "lookup-err" : undefined}
           />
           <button type="submit" className="btn btn-primary btn-lookup">Look it up</button>
           <a className="example-link small" href={subjectHref("imdusd.com")}>or see an example</a>
@@ -446,20 +451,36 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
           </p>
         )}
         {offer && <AddOffer key={`${offer.kind}:${offerName}`} q={offer} shown={submitted!.raw} price={price} onAdd={add} />}
-        <p id="lookup-note" className="small lookup-note">People and agents can both add. Nothing is edited by hand.</p>
       </div>
 
       <section className="example" aria-labelledby="example-title">
-        <h2 id="example-title" className="sr-only">One fact, three ways</h2>
+        <h2 id="example-title" className="sr-only">The three kinds of line</h2>
         <ul className="label-cards">
           {EXAMPLE_ORDER.map((l) => (
             <li key={l.kind} className={`label-card label-${l.kind}`}>
-              <span className={`kind kind-${l.kind}`}><span className="dot" aria-hidden="true" />{l.word}</span>
+              <span className="card-head">
+                <span className={`card-icon kind-${l.kind}`}><KindIcon kind={l.kind} size={20} /></span>
+                <span className="card-title">
+                  <span className={`card-name kind-${l.kind}`}>{l.word}</span>
+                  <span className="card-note">{l.note}</span>
+                </span>
+              </span>
               <span className="example-text">{example[l.kind]}</span>
             </li>
           ))}
         </ul>
-        {example.from && <p className="small example-from">From the page of <a href={subjectHref(example.from)}>{example.from}</a>.</p>}
+        <p className="small example-from">
+          One fact, three ways.
+          {example.from && (
+            <>
+              {" "}From the page of{" "}
+              <a className="example-src" href={subjectHref(example.from)}>
+                <SubjectLogo name={example.name ?? example.from} logo={example.logoHash ? logos?.get(example.logoHash) : null} size={20} />
+                {example.name ?? example.from}
+              </a>
+            </>
+          )}
+        </p>
       </section>
 
       {bad && <p className="warn" role="status">“{bad}” is not a project id. Ids are a domain, such as imd.fun, or chain and contract, such as 1:0x….</p>}
@@ -498,18 +519,6 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
         )}
       </div>
 
-      <section className="how" aria-labelledby="how-title">
-        <h2 id="how-title" className="list-title">How it works</h2>
-        <p className="small"><a href="#/docs">Read how it works in full</a>: the three kinds of line, the cost, how to cite a line and which jobs count.</p>
-        <ol className="steps">
-          {STEPS.map((s, i) => (
-            <li key={s.word} className="step">
-              <span className="step-n num" aria-hidden="true">{i + 1}.</span>
-              <p><strong>{s.word}:</strong> {s.text}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
     </section>
   );
 }

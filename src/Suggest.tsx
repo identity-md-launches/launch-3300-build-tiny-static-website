@@ -1,4 +1,5 @@
 /** Suggest changes where you read: the pencil, the inline panel, the tray bar at the bottom and its review. */
+import { ToneMark } from "./KindIcon";
 import { createContext, Fragment, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { CHANGES } from "./requests";
 import { askOf, type Ask } from "./requests/ask";
@@ -215,7 +216,7 @@ export function revealPanel(el: HTMLElement) {
 function EvidenceMark({ e }: { e: Evidence }) {
   return (
     <span className={`kind kind-${e.tone}`}>
-      <span className="dot" aria-hidden="true" />
+      <ToneMark tone={e.tone} />
       {e.mark}
     </span>
   );

@@ -90,7 +90,9 @@ describe("rebuild", () => {
       "Each sentence lists the line ids it rests on, says nothing no line supports, stands alone for a newcomer, and has at most 25 words and no internal terms.",
       "Start each claim's text with who said it, by name, such as 'DefiLlama says'.",
       "Write related: projects this one depends on or is built on, each with name, domain or chain and contract, relation in a few words, and line ids.",
-      "If the subject's own domain serves an icon or share image (apple-touch-icon, favicon or og:image), save the best square one as a PNG at most 256 by 256 pixels at artifacts/logo.png, never from a search or a third party, and set logo to its URL and the time; else write logo.png as a 1 by 1 transparent PNG and leave logo out.",
+      // Revision 26: the logo is the project's square icon, never a wordmark or a banner.
+      "The logo is the project's square icon: its site icon, app icon or the avatar of its official account. Never a wordmark or a banner. If no square icon is found, return no logo.",
+      "else write logo.png as a 1 by 1 transparent PNG and leave logo out.",
     ])
       expect(t).toContain(s);
     // The old rules that merging replaces are gone.

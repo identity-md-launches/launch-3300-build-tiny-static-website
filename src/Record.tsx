@@ -10,6 +10,7 @@ import { decimalsOf, exactAmount, wholeFact } from "./amounts";
 import { itemEntries, keyFacts, sharedChain, splitAddresses, valueEntries, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
 import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
+import { ToneMark } from "./KindIcon";
 import { findSubject, parseLookup, relatedSubject, rowMatches, type Findable, type Lookup } from "./lookup";
 import { countLines, countsWords, FILTER_WORDS, filtersFor, GROUP_TONE, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
 import {
@@ -60,7 +61,7 @@ export interface Ui {
 export function KindMark({ kind }: { kind: string }) {
   return (
     <span className={`kind kind-${kind}`}>
-      <span className="dot" aria-hidden="true" />
+      <ToneMark tone={kind} />
       {kindName(kind)}
     </span>
   );
@@ -1514,7 +1515,7 @@ export function SettleMark({ s, ctx }: { s: Settle; ctx: Ctx }) {
   const word = !panelOnly ? "Proven" : a ? `Confirmed by a panel, ${a.agreed ?? "?"} of ${a.panelSize ?? "?"}` : "Confirmed by a panel";
   return (
     <span className="kind kind-proven">
-      <span className="dot" aria-hidden="true" />
+      <ToneMark tone="proven" />
       {word}
     </span>
   );
@@ -2022,7 +2023,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
                 <button key={f} type="button" className="btn btn-filter" aria-pressed={filter === f} onClick={() => ui.setFilter(f)}>
                   {f === "all" ? FILTER_WORDS[f] : (
                     <span className={`kind kind-${GROUP_TONE[f]}`}>
-                      <span className="dot" aria-hidden="true" />
+                      <ToneMark tone={GROUP_TONE[f]} />
                       {FILTER_WORDS[f]}
                     </span>
                   )}
