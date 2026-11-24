@@ -5,10 +5,11 @@ import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { addressText, historicFor, shortJobId } from "./addresses";
 import { explorerAddressUrl } from "./subject";
+import { addressRuns, chainEntries, chainTag, chainText } from "./addrDisplay";
 import { keyFacts, splitAddresses, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
 import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
-import { findSubject, parseLookup, rowMatches, type Findable } from "./lookup";
+import { findSubject, parseLookup, relatedSubject, rowMatches, type Findable, type Lookup } from "./lookup";
 import { countLines, countsWords, FILTER_WORDS, filtersFor, GROUP_TONE, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
 import {
   blockNumber,
@@ -131,14 +132,59 @@ export function Copy({ value, label }: { value: string; label?: string }) {
   );
 }
 
-/** A value with every 0x address shortened in monospace, each with a copy button; linked when it has a url. */
-function KeyValue({ row }: { row: KeyRow }) {
+/** One address as Key facts shows every address: shortened and linked to its explorer, a copy icon, a chain tag. */
+export function Addr({ address, chain, url = "" }: { address: string; chain: string; url?: string }) {
+  const href = safeHref(url) && url.toLowerCase().includes(address.toLowerCase()) ? url : explorerAddressUrl(address, chain);
+  return (
+    <span className="addr">
+      <a className="addr-link" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${shortHex(address)}${chain ? ` on ${chain}` : ""}, open in the block explorer`}>
+        <span className="mono">{shortHex(address)}</span>
+      </a>
+      <CopyIcon value={address} />
+      {chain && <span className="tok-chain">{chain}</span>}
+    </span>
+  );
+}
+
+/** Text with each address shown as Addr, the chain written after it moved into its tag. */
+function Runs({ text, chain = "" }: { text: string; chain?: string }) {
+  return (
+    <>
+      {addressRuns(text, chain).map((r, i) => (r.kind === "address" ? <Addr key={i} address={r.address} chain={r.chain} /> : <Fragment key={i}>{formatNumbers(r.text)}</Fragment>))}
+    </>
+  );
+}
+
+/** A token's purpose up to the first further address it names, and from there on (with that address). */
+const firstAddr = (t: string) => t.search(/0x[0-9a-fA-F]{40}/);
+const purposeLead = (t: string) => (firstAddr(t) < 0 ? t : t.slice(0, firstAddr(t)).replace(/[\s,;]+$/, ""));
+const purposeTail = (t: string) => (firstAddr(t) < 0 ? "" : t.slice(firstAddr(t)));
+
+/** A link shown after a value, its label with any long hex shortened ("etherscan.io/tx/0x0d45…d5d"). */
+const shortLink = (url: string) => linkText(url).replace(/0x[0-9a-fA-F]{12,}/g, (h) => shortHex(h));
+
+/** A value: its text with every address as Addr (or an Account list, tokens, entries, chains). */
+export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
+  if (/^chains?$/i.test(row.label.trim())) {
+    const entries = row.items?.length
+      ? row.items.map((v) => ({ text: [v.name, v.text].filter(Boolean).join(" "), chain: v.chain || null }))
+      : (row.values.length ? row.values : row.value.split(/;|\n/)).map((t) => ({ text: t }));
+    const list = chainEntries(entries);
+    if (list.length)
+      return (
+        <ul className="kf-values">
+          {list.map((c, i) => (
+            <li key={i}>{chainText(c)}</li>
+          ))}
+        </ul>
+      );
+  }
   if (row.items?.length)
     return (
       <ul className="kf-values kf-items">
         {row.items.map((v, i) => (
           <li key={i}>
-            <ItemValue v={v} />
+            <ItemValue v={v} chain={chain} />
           </li>
         ))}
       </ul>
@@ -148,7 +194,7 @@ function KeyValue({ row }: { row: KeyRow }) {
       <ul className="kf-values">
         {row.values.map((v, i) => (
           <li key={i}>
-            <ValueText text={v} />
+            <Runs text={v} chain={chain} />
           </li>
         ))}
       </ul>
@@ -159,123 +205,81 @@ function KeyValue({ row }: { row: KeyRow }) {
         {row.accounts.map((a, i) => (
           <li key={i}>
             {/* The shared values layout (name in bold, text, link), with the account's own badge on the same item. */}
-            <ItemValue v={{ name: a.name, text: a.text, url: safeHref(a.url) ? a.url : "", address: "", chain: "", explorer: "" }} />
+            <ItemValue v={{ name: a.name, text: a.text, url: safeHref(a.url) ? a.url : "", address: "", chain: "", explorer: "" }} chain="" />
             {row.perAccount && a.status && <AccountBadge b={a.status} />}
           </li>
         ))}
       </ul>
     );
   if (row.tokens.length) {
-    // One line per token that never wraps oddly: symbol, purpose, the address as a link with its copy icon, chain.
-    // A chain every token shares is shown once, after the list, instead of once per line.
-    const chains = [...new Set(row.tokens.map((t) => t.chain).filter(Boolean))];
-    const shared = chains.length === 1 ? chains[0]! : "";
+    // One entry per token: symbol, purpose, then each address it names as Addr with its chain tag.
     return (
-      <>
-        <ul className="kf-tokens">
-          {row.tokens.map((t, i) => (
-            <li key={i} className="tok-line">
-              {t.symbol && <strong className="tok-symbol">{t.symbol}</strong>}
-              {t.purpose && <span className="tok-purpose">{formatNumbers(t.purpose)}</span>}
-              {t.address && (
-                <span className="tok-addr">
-                  <a
-                    className="tok-addr-link"
-                    href={safeHref(t.url) ? t.url : explorerAddressUrl(t.address, t.chain)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={t.address}
-                    aria-label={`${t.address} on the block explorer`}
-                  >
-                    <span className="mono">{shortHex(t.address)}</span>
-                  </a>
-                  <CopyIcon value={t.address} />
-                </span>
-              )}
-              {!t.address && t.url && <span className="tok-addr"><ExtLink url={t.url} className="break item-link">{linkText(t.url)}</ExtLink></span>}
-              {t.chain && !shared && <span className="tok-chain">{t.chain}</span>}
-            </li>
-          ))}
-        </ul>
-        {shared && <p className="tok-chain-row"><span className="tok-chain">{shared}</span></p>}
-      </>
+      <ul className="kf-tokens">
+        {row.tokens.map((t, i) => (
+          <li key={i} className="tok-line">
+            {t.symbol && <strong className="tok-symbol">{t.symbol}</strong>}
+            {/* A purpose naming more addresses keeps its own words first, then this token's address, then the others. */}
+            {t.purpose && <span className="tok-purpose"><Runs text={purposeLead(t.purpose)} chain={t.chain || chain} /></span>}
+            {t.address && <Addr address={t.address} chain={chainTag(t.chain || chain)} url={t.url} />}
+            {purposeTail(t.purpose) && <span className="tok-purpose"><Runs text={purposeTail(t.purpose)} chain={t.chain || chain} /></span>}
+            {!t.address && t.url && <span className="tok-addr"><ExtLink url={t.url} className="break item-link">{shortLink(t.url)}</ExtLink></span>}
+          </li>
+        ))}
+      </ul>
     );
   }
   return (
     <>
-      <ValueText text={row.value} url={row.url} />
+      <ValueText text={row.value} url={row.url} chain={chain} />
       {row.note && <span className="small"> {row.note}</span>}
     </>
-  );
-}
-
-/** A shortened address in monospace, its copy button and its block explorer link, kept together. */
-function AddressParts({ address, explorer }: { address: string; explorer: string }) {
-  return (
-    <span className="tok-addr">
-      <span className="mono" title={address}>{shortHex(address)}</span>
-      <Copy value={address} />
-      {safeHref(explorer) && (
-        <ExtLink url={explorer} className="explorer-link">
-          Explorer<span className="sr-only"> page of {address}</span>
-        </ExtLink>
-      )}
-    </span>
   );
 }
 
 /** "example.com/docs" for a link shown after an entry's text. */
 const linkText = (url: string) => url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "");
 
-/** One values entry: its name in bold, then its text, then its link or its shortened address with copy and explorer. */
-function ItemValue({ v }: { v: ShownItem }) {
+/** One values entry: its name in bold, then its text, then its link or its address as Addr. */
+function ItemValue({ v, chain }: { v: ShownItem; chain: string }) {
   return (
     <>
       <span className="tok-name">
         {v.name && <strong>{v.name}</strong>}
         {v.name && v.text ? ": " : ""}
-        {v.text && <ValueText text={v.text} />}
+        {v.text && <Runs text={v.text} chain={v.chain || chain} />}
       </span>
       {v.address ? (
-        <AddressParts address={v.address} explorer={v.explorer} />
+        <>
+          {" "}
+          <Addr address={v.address} chain={chainTag(v.chain || chain)} url={v.explorer} />
+        </>
       ) : (
         v.url && (
           <>
             {" "}
-            <ExtLink url={v.url} className="break item-link">{linkText(v.url)}</ExtLink>
+            <ExtLink url={v.url} className="break item-link">{shortLink(v.url)}</ExtLink>
           </>
         )
       )}
-      {v.chain && <span className="small"> on {v.chain}</span>}
     </>
   );
 }
 
-/** A text value: every 0x address shortened in monospace with its copy button; linked when it has a url. */
-function ValueText({ text, url = "" }: { text: string; url?: string }) {
-  const parts = splitAddresses(text);
-  const body = parts.map((p, i) => (p.address ? <span key={i} className="mono">{shortHex(p.text)}</span> : <Fragment key={i}>{formatNumbers(p.text)}</Fragment>));
-  if (safeHref(url))
-    return (
-      <>
-        <ExtLink url={url} className="break">{body}</ExtLink>
-        {parts.filter((p) => p.address).map((p, i) => (
-          <Copy key={i} value={p.text} />
-        ))}
-      </>
-    );
-  // Unlinked: each shortened address is followed by its own copy button, kept together on narrow screens.
+/** A text value: every address as Addr; linked when it has a url and names no address, else the url follows. */
+function ValueText({ text, url = "", chain = "" }: { text: string; url?: string; chain?: string }) {
+  const runs = addressRuns(text, chain);
+  const hasAddr = runs.some((r) => r.kind === "address");
+  if (safeHref(url) && !hasAddr) return <ExtLink url={url} className="break">{formatNumbers(text)}</ExtLink>;
+  // A url that only opens an address the text names adds nothing; another (a deploy transaction) follows the text.
+  const extra = safeHref(url) && !runs.some((r) => r.kind === "address" && url.toLowerCase().includes(r.address.toLowerCase())) ? url : "";
   return (
     <span className="break">
-      {parts.map((p, i) =>
-        p.address ? (
-          <span key={i} className="tok-addr">
-            <span className="mono">{shortHex(p.text)}</span>
-            <Copy value={p.text} />
-          </span>
-        ) : (
-          <Fragment key={i}>{formatNumbers(p.text)}</Fragment>
-        ),
+      <Runs text={text} chain={chain} />
+      {extra && (
+        <>
+          {" "}
+          <ExtLink url={extra} className="item-link small">{shortLink(extra)}</ExtLink>
+        </>
       )}
     </span>
   );
@@ -323,7 +327,15 @@ function ChangeHistory({ items }: { items: Array<RowChange | (SentenceChange & {
 }
 
 /** Every full address a key facts row names, for its details: the table itself shows them shortened. */
-const rowAddresses = (r: KeyRow) => [...new Set([r.value, ...r.values, ...r.tokens.map((t) => t.address), ...(r.items ?? []).map((t) => t.address)].flatMap((v) => splitAddresses(v).filter((p) => p.address).map((p) => p.text)))];
+const rowAddresses = (r: KeyRow, chain = ""): { address: string; chain: string }[] => {
+  const seen = new Set<string>();
+  const out: { address: string; chain: string }[] = [];
+  const add = (address: string, c: string) => { const k = address.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push({ address, chain: chainTag(c) }); } };
+  for (const t of r.tokens) { if (t.address) add(t.address, t.chain || chain); for (const x of addressRuns(t.purpose, t.chain || chain)) if (x.kind === "address") add(x.address, x.chain); }
+  for (const t of r.items ?? []) { if (t.address) add(t.address, t.chain || chain); for (const x of addressRuns(t.text, t.chain || chain)) if (x.kind === "address") add(x.address, x.chain); }
+  for (const v of [r.value, ...r.values]) for (const x of addressRuns(v, chain)) if (x.kind === "address") add(x.address, x.chain);
+  return out;
+};
 /** Every name, in full: "A", "A and B", "A, B and C". */
 const allNames = (n: string[]) => (n.length < 2 ? n[0] ?? "" : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`);
 /** A row opens details when it has full addresses, more speakers than its badge names, or a patch from a change. */
@@ -337,6 +349,9 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [all, setAll] = useState(false);
   if (!rows.length) return null;
+  // An address with no chain written beside it is on the main contract's chain.
+  const mainC = m.page?.contracts.find((c) => c.main) ?? m.page?.contracts[0];
+  const mainChain = mainC?.chain ? chainTag(String(mainC.chain)) : "";
   // A row opened by a link or a suggestion stays visible even while the list is folded.
   const shown = all || rows.length <= KEY_FACTS_SHOWN ? rows : rows.filter((r, i) => i < KEY_FACTS_SHOWN || r.label === openRow);
   return (
@@ -362,7 +377,7 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                     )}
                   </th>
                   <td className="kf-value">
-                    <KeyValue row={r} />
+                    <KeyValue row={r} chain={mainChain} />
                     <PendingTag targetKey={target.key} />
                   </td>
                   <td className="kf-badge">
@@ -396,14 +411,20 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                             <dd className="break">{allNames(r.speakers)}</dd>
                           </>
                         )}
-                        {rowAddresses(r).map((a) => (
-                          <Fragment key={a}>
-                            <dt>Full address</dt>
-                            <dd className="mono break">
-                              {a} <Copy value={a} />
+                        {rowAddresses(r, mainChain).length > 0 && (
+                          <>
+                            <dt>{rowAddresses(r, mainChain).length > 1 ? "Addresses" : "Address"}</dt>
+                            <dd>
+                              <ul className="plain">
+                                {rowAddresses(r, mainChain).map((a) => (
+                                  <li key={a.address}>
+                                    <Addr address={a.address} chain={a.chain} />
+                                  </li>
+                                ))}
+                              </ul>
                             </dd>
-                          </Fragment>
-                        ))}
+                          </>
+                        )}
                       </dl>
                     </td>
                   </tr>
@@ -741,8 +762,10 @@ export function relatedCards(related: { name: string; id: string; relation: stri
   const by = new Map<string, RelatedCard>();
   for (const [i, r] of related.entries()) {
     const q = parseLookup(r.id);
-    const found = q.kind === "domain" || q.kind === "address" ? findSubject(q, subjects) : null;
-    if (found === self) continue;
+    // The page's own subject is never a candidate: an entry naming its own contract is left out, one naming another
+    // project's contract resolves to the subject whose record ties it closest.
+    if ((q.kind === "domain" && q.domain === self) || (q.kind === "address" && findSubject(q, subjects.filter((x) => x.id === self)) === self && isOwn(q, subjects.find((x) => x.id === self)))) continue;
+    const found = relatedSubject(q, subjects, self);
     const addable = q.kind === "domain" || (q.kind === "address" && q.chainId !== null) ? r.id : q.kind === "address" ? q.address : "";
     const rel = { name: r.name || r.id, relation: r.relation || "related" };
     const key = found ?? `entry-${i}`;
@@ -757,6 +780,14 @@ export function relatedCards(related: { name: string; id: string; relation: stri
     cards.push(card);
   }
   return cards;
+}
+
+/** True when the address is one of the subject's own contracts (rank 3 or listed), not one its proofs mention. */
+function isOwn(q: Lookup, s: Findable | undefined): boolean {
+  if (!s || q.kind !== "address") return false;
+  const a = q.address.toLowerCase();
+  if (s.ranked) return s.ranked.some((c) => c.address === a && c.tier === 3 && (q.chainId === null || c.chainId === null || c.chainId === q.chainId));
+  return false;
 }
 
 const RELATED_SHOWN = 6;
@@ -914,6 +945,14 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
             <a href={to("confirm")}>Ask a panel to check a fact</a>
             <a href={to("rebuild")}>Rebuild the page</a>
           </AddButtons>
+        </div>
+      ) : unreadable > 0 && items !== null && !latest ? (
+        // Finished page jobs exist but none could be read: Activity says why; creating the page again is not offered.
+        <div className="ov-foot">
+          <p className="foot-links">
+            <a href={to("activity")}>See why in Activity</a>
+            <a href={to("confirm")}>Ask a panel to check a fact</a>
+          </p>
         </div>
       ) : (
         <div className="ov-foot">

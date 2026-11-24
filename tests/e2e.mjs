@@ -532,6 +532,21 @@ try {
     await page.waitForTimeout(1000);
     check("390: no wallet flag: no wallet code is loaded on page load", chunks.length === 0 && (await page.locator("header .btn-primary", { hasText: "Connect" }).count()) === 1, JSON.stringify(chunks));
     check("390: no wallet flag: no Coinbase or other wallet host is contacted", ![...hosts].some((h) => /coinbase|walletconnect|cca-lite/.test(h)), JSON.stringify([...hosts]));
+    // E14: after Home settles with no wallet, the only storage is this site's own cache: the IndexedDB database
+    // "imd-record" and localStorage keys under "imd-record:". No keyval-store / analytics-db, no cookies, nothing in
+    // sessionStorage.
+    const store = await page.evaluate(async () => ({
+      dbs: (await indexedDB.databases()).map((d) => d.name),
+      local: Object.keys(localStorage),
+      session: Object.keys(sessionStorage),
+      cookie: document.cookie,
+    }));
+    const cookies = await ctx.cookies();
+    check(
+      "390: no wallet flag: page load creates no storage except the site's own cache (no keyval-store, analytics-db, cookies or sessionStorage)",
+      store.dbs.every((n) => n === "imd-record") && store.local.every((k) => k.startsWith("imd-record:")) && store.session.length === 0 && store.cookie === "" && cookies.length === 0,
+      JSON.stringify({ ...store, cookies: cookies.map((c) => c.name) }),
+    );
     await ctx.close();
   }
   {

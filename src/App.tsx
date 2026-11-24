@@ -943,7 +943,7 @@ export default function App() {
   const items = useMemo(() => (allItems ? readable(allItems) : allItems), [allItems]);
   const unreadable = useMemo(() => unreadableBySubject(activity.items ?? []), [activity.items]);
   const readingFiles = !!subject && activity.items !== null && items === null;
-  const subjects = useMemo<Findable[]>(() => subjectSummaries(counted ?? [], digests, logos).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts })), [activity.items, digests, logos]);
+  const subjects = useMemo<Findable[]>(() => subjectSummaries(counted ?? [], digests, logos).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts, ranked: s.ranked })), [activity.items, digests, logos]);
   useEffect(() => {
     if (!subject && !route.docs && !route.wallet) document.title = "On the record (test)";
   }, [subject, route.docs, route.wallet]);

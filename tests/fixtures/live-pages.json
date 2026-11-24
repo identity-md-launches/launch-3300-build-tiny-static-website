@@ -1,0 +1,2821 @@
+{
+ "source": "Result files of the newest page job of each subject, from https://api.imd.fun/artifacts/<result hash> (2026-11-24): subject, infobox and related as written; ranked is rankedAddresses() of the full file, proof lines included.",
+ "pages": [
+  {
+   "id": "imdusd.com",
+   "job": "e2651b57",
+   "raw": {
+    "found": true,
+    "subject": {
+     "name": "imdUSD / INFER Protocol",
+     "one_line": "An Ethereum borrowing protocol with wallet apps for imdUSD, INFER staking and AI work, whose team names miyagod.eth as founder.",
+     "contracts": [
+      {
+       "address": "0x0b69F8DA8D8cE521d74Ea69a7A3475B77302EF82",
+       "chain": 1,
+       "role": "Main borrowing vault: holds collateral and loan positions and is the imdUSD token’s sole minter and burner; L11, L82–L84, L120.",
+       "main": true
+      },
+      {
+       "address": "0x61aAF8a992A3143e2B0C9cB0030b9fE702854a25",
+       "chain": 1,
+       "role": "imdUSD stablecoin",
+       "main": false
+      },
+      {
+       "address": "0x53d0eA0A685220718Dc6a0a6e4617194C6F37921",
+       "chain": 1,
+       "role": "INFER protocol token",
+       "main": false
+      },
+      {
+       "address": "0x6Ac8fF96Fb8DCF5d79A8eF1E59D9AC23f2BD27Bc",
+       "chain": 1,
+       "role": "Treasury and reserve",
+       "main": false
+      },
+      {
+       "address": "0x3D96A6Ffada9C2E5B8fF8eb3f8AFB360116dA881",
+       "chain": 1,
+       "role": "Governed vault settings",
+       "main": false
+      },
+      {
+       "address": "0x070e0603737242B01aBC1D223f7C92D63E86EC97",
+       "chain": 1,
+       "role": "Main IMD/ETH price feed",
+       "main": false
+      },
+      {
+       "address": "0x77E1684402869Bf2B7c70B8bf21E1C7Ca7104951",
+       "chain": 1,
+       "role": "Spot IMD/ETH comparison feed",
+       "main": false
+      },
+      {
+       "address": "0x014DabF6F940c9C383D9ef48636F70D842F65D7A",
+       "chain": 1,
+       "role": "Network health feed",
+       "main": false
+      },
+      {
+       "address": "0x9AEb55c7A16C11B37DC96BD22a33906D1668e20B",
+       "chain": 1,
+       "role": "SwarmRelay for feed updates",
+       "main": false
+      },
+      {
+       "address": "0x24458aeF6cf074C7FB09B6734b1247508f137409",
+       "chain": 1,
+       "role": "Work oracle factory",
+       "main": false
+      },
+      {
+       "address": "0x00856Bd495941f3b95dA5b7e374c76d822C9059E",
+       "chain": 1,
+       "role": "Oracle update buyer",
+       "main": false
+      },
+      {
+       "address": "0xbF6410aD823F49D24935135EE230db89faBca6B2",
+       "chain": 1,
+       "role": "Treasury factory",
+       "main": false
+      },
+      {
+       "address": "0xC7335a836ad85a6ac0830c6CEf602d735B9d8a8A",
+       "chain": 1,
+       "role": "Work tally oracle",
+       "main": false
+      },
+      {
+       "address": "0x297b85afc6bbF9d9cCa636F7ED74c56DA79287A0",
+       "chain": 1,
+       "role": "IMD/USD price calculation",
+       "main": false
+      },
+      {
+       "address": "0xF065C8b65AA9Ac6fd9cBAd15301738e91389d9e1",
+       "chain": 1,
+       "role": "Staked IMD/USD price calculation",
+       "main": false
+      },
+      {
+       "address": "0x33cA5c16208EC08aC97d4f6315aaFA792A916044",
+       "chain": 1,
+       "role": "Fee hook for the imdUSD/USDC pool",
+       "main": false
+      },
+      {
+       "address": "0xbeFd108085613662356aa26A2466Ad3426DA9C32",
+       "chain": 1,
+       "role": "Governing Safe wallet",
+       "main": false
+      },
+      {
+       "address": "0x08DC1b5789Aa4951daC6022f2141C646c7F6F9f4",
+       "chain": 1,
+       "role": "Season rewards vault",
+       "main": false
+      },
+      {
+       "address": "0x5E11e627d63755Afa4b01D4c1de1E315EeFdb348",
+       "chain": 1,
+       "role": "Legacy token redemption",
+       "main": false
+      },
+      {
+       "address": "0x7328Da4251dd6E1f0AAF64F39c5137cbF160b9b3",
+       "chain": 1,
+       "role": "Founder vesting",
+       "main": false
+      },
+      {
+       "address": "0x0c1CE09ccfe9243c4ad23C3CAEE0C11D4E8340d3",
+       "chain": 1,
+       "role": "INFER reward dripper",
+       "main": false
+      },
+      {
+       "address": "0x5e3b440156ce928fda68b2378578dc9333846ce4",
+       "chain": 1,
+       "role": "sINFER staking vault",
+       "main": false
+      },
+      {
+       "address": "0xb99d305d00201f46e0f48e4e092ed1e95e1fcd76",
+       "chain": 1,
+       "role": "INFER launch rewards distributor",
+       "main": false
+      },
+      {
+       "address": "0x784ff9a3ac5d88a30bfff6f7f2a270161fbe6000",
+       "chain": 1,
+       "role": "Shared INFER launch-pool hook",
+       "main": false
+      },
+      {
+       "address": "0x3021fcb5ed89397527e4872ba9329080208de688",
+       "chain": 1,
+       "role": "INFER BOX payment and escrow contract, linked to imdUSD and its Treasury; L175–L176.",
+       "main": false
+      }
+     ],
+     "channels": []
+    },
+    "infobox": [
+     {
+      "label": "Website",
+      "value": "imdusd.com",
+      "lines": [
+       "L49"
+      ],
+      "url": "https://imdusd.com/"
+     },
+     {
+      "label": "Tokens",
+      "value": "imdUSD: borrowing dollar, 0x61aAF8a992A3143e2B0C9cB0030b9fE702854a25 on Ethereum; INFER: protocol token, 0x53d0eA0A685220718Dc6a0a6e4617194C6F37921 on Ethereum; sINFER: staking shares, 0x5e3b440156ce928fda68b2378578dc9333846ce4 on Ethereum",
+      "lines": [
+       "L1",
+       "L38",
+       "L80",
+       "L83",
+       "L118",
+       "L173"
+      ],
+      "values": [
+       {
+        "name": "imdUSD",
+        "value": "Borrowing dollar; 0x61aAF8a992A3143e2B0C9cB0030b9fE702854a25 on Ethereum"
+       },
+       {
+        "name": "INFER",
+        "value": "Protocol token; 0x53d0eA0A685220718Dc6a0a6e4617194C6F37921 on Ethereum"
+       },
+       {
+        "name": "sINFER",
+        "value": "INFER staking shares; 0x5e3b440156ce928fda68b2378578dc9333846ce4 on Ethereum"
+       }
+      ]
+     },
+     {
+      "label": "Main contract",
+      "value": "Borrowing vault 0x0b69F8DA8D8cE521d74Ea69a7A3475B77302EF82 on Ethereum",
+      "lines": [
+       "L11",
+       "L82",
+       "L83",
+       "L120"
+      ],
+      "url": "https://etherscan.io/address/0x0b69F8DA8D8cE521d74Ea69a7A3475B77302EF82"
+     },
+     {
+      "label": "Chains",
+      "value": "Ethereum mainnet",
+      "lines": [
+       "L2",
+       "L84"
+      ]
+     },
+     {
+      "label": "Supply",
+      "value": "55,041 imdUSD; 1 billion INFER; 174.46 million sINFER shares",
+      "lines": [
+       "L101",
+       "L105",
+       "L160"
+      ],
+      "values": [
+       {
+        "name": "imdUSD",
+        "value": "About 55,041 tokens"
+       },
+       {
+        "name": "INFER",
+        "value": "1 billion tokens"
+       },
+       {
+        "name": "sINFER",
+        "value": "About 174.46 million staking shares"
+       }
+      ]
+     },
+     {
+      "label": "Price",
+      "value": "4.44% yearly borrowing; 0.5–5% redemption; BOX: 5% service fee",
+      "lines": [
+       "L90",
+       "L91",
+       "L92",
+       "L163",
+       "L176"
+      ],
+      "values": [
+       {
+        "name": "Borrowing",
+        "value": "4.44% a year, plus network transaction fees"
+       },
+       {
+        "name": "Redemption",
+        "value": "0.5–5%, plus network transaction fees"
+       },
+       {
+        "name": "BOX service",
+        "value": "Quoted 5% above the swarm fee"
+       }
+      ]
+     },
+     {
+      "label": "Size",
+      "value": "About $219,300 locked; DefiLlama, 2026-11-23",
+      "lines": [
+       "L161"
+      ],
+      "url": "https://defillama.com/protocol/infer"
+     },
+     {
+      "label": "Deployed by",
+      "value": "0x5167D014a056E43883e1BBEa5530c3c0dC993281 (miyagod.eth), through a factory",
+      "lines": [
+       "L85",
+       "L86",
+       "L89"
+      ],
+      "url": "https://etherscan.io/tx/0x0d457379d83f6a32a252b2cad3754a1e36fcf3d432fd441e7fb73a6408bd5d5d"
+     },
+     {
+      "label": "Controlled by",
+      "value": "Safe 0xbeFd108085613662356aa26A2466Ad3426DA9C32; two-of-three signatures; 48-hour settings delay",
+      "lines": [
+       "L97",
+       "L98",
+       "L99",
+       "L100",
+       "L174"
+      ],
+      "url": "https://etherscan.io/address/0xbeFd108085613662356aa26A2466Ad3426DA9C32"
+     },
+     {
+      "label": "Founder or creator",
+      "value": "miyagod.eth, named by the project",
+      "lines": [
+       "L47",
+       "L48"
+      ],
+      "url": "https://app.ens.domains/miyagod.eth"
+     },
+     {
+      "label": "Contributors",
+      "value": "fa11up; @yadfarms; nine agents credited for INFER",
+      "lines": [
+       "L70",
+       "L76",
+       "L126",
+       "L143"
+      ],
+      "values": [
+       {
+        "name": "fa11up on GitHub",
+        "url": "https://github.com/fa11up"
+       },
+       {
+        "name": "@yadfarms on X",
+        "url": "https://x.com/yadfarms"
+       },
+       {
+        "name": "Nine agents credited by IdentityMD Explorer",
+        "url": "https://explorer.imd.fun/token/0x53d0ea0a685220718dc6a0a6e4617194c6f37921"
+       }
+      ]
+     },
+     {
+      "label": "Official accounts",
+      "value": "@imdusd on X; imdusd on GitHub",
+      "lines": [
+       "L50",
+       "L51"
+      ],
+      "values": [
+       {
+        "name": "@imdusd on X",
+        "url": "https://x.com/imdusd"
+       },
+       {
+        "name": "imdusd on GitHub",
+        "url": "https://github.com/imdusd"
+       }
+      ]
+     },
+     {
+      "label": "Launched",
+      "value": "2026-10-11",
+      "lines": [
+       "L58",
+       "L88"
+      ]
+     },
+     {
+      "label": "Collateral",
+      "value": "Staked IMD (sIMD)",
+      "lines": [
+       "L3",
+       "L107",
+       "L183"
+      ]
+     },
+     {
+      "label": "Minimum collateral ratio",
+      "value": "170% when checked",
+      "lines": [
+       "L93"
+      ]
+     }
+    ],
+    "related": [
+     {
+      "name": "IdentityMD",
+      "id": "imd.fun",
+      "relation": "Agent price panels, INFER launchpad and paid BOX work",
+      "lines": [
+       "L30",
+       "L60",
+       "L76",
+       "L46"
+      ]
+     },
+     {
+      "name": "IMD",
+      "id": "Ethereum (chain 1): 0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",
+      "relation": "Underlying asset of collateral and INFER trading pair",
+      "lines": [
+       "L74",
+       "L183"
+      ]
+     },
+     {
+      "name": "Staked IMD (sIMD)",
+      "id": "Ethereum (chain 1): 0x9efa934d9fad4ae28c998a40195646b965a97247",
+      "relation": "Loan collateral; 24-decimal shares",
+      "lines": [
+       "L3",
+       "L107",
+       "L158",
+       "L183"
+      ]
+     },
+     {
+      "name": "Chainlink",
+      "id": "chain.link",
+      "relation": "Dollar price conversion",
+      "lines": [
+       "L33"
+      ]
+     },
+     {
+      "name": "Uniswap v4",
+      "id": "Ethereum (chain 1): 0x000000000004444c5dc75cB358380D2e3dE08A90",
+      "relation": "Hosts imdUSD/USDC and INFER/IMD pools",
+      "lines": [
+       "L26",
+       "L74",
+       "L119"
+      ]
+     },
+     {
+      "name": "USDC",
+      "id": "Ethereum (chain 1): 0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "relation": "imdUSD peg-pool pair",
+      "lines": [
+       "L26",
+       "L119"
+      ]
+     },
+     {
+      "name": "Safe",
+      "id": "Ethereum (chain 1): 0xbeFd108085613662356aa26A2466Ad3426DA9C32",
+      "relation": "Settings governance and authorized Treasury withdrawals",
+      "lines": [
+       "L97",
+       "L98",
+       "L99",
+       "L174"
+      ]
+     }
+    ],
+    "lines": []
+   },
+   "ranked": [
+    {
+     "address": "0x0b69f8da8d8ce521d74ea69a7a3475b77302ef82",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x61aaf8a992a3143e2b0c9cb0030b9fe702854a25",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x53d0ea0a685220718dc6a0a6e4617194c6f37921",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x6ac8ff96fb8dcf5d79a8ef1e59d9ac23f2bd27bc",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x3d96a6ffada9c2e5b8ff8eb3f8afb360116da881",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x070e0603737242b01abc1d223f7c92d63e86ec97",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x77e1684402869bf2b7c70b8bf21e1c7ca7104951",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x014dabf6f940c9c383d9ef48636f70d842f65d7a",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x9aeb55c7a16c11b37dc96bd22a33906d1668e20b",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x24458aef6cf074c7fb09b6734b1247508f137409",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x00856bd495941f3b95da5b7e374c76d822c9059e",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xbf6410ad823f49d24935135ee230db89fabca6b2",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xc7335a836ad85a6ac0830c6cef602d735b9d8a8a",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x297b85afc6bbf9d9cca636f7ed74c56da79287a0",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xf065c8b65aa9ac6fd9cbad15301738e91389d9e1",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x33ca5c16208ec08ac97d4f6315aafa792a916044",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xbefd108085613662356aa26a2466ad3426da9c32",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x08dc1b5789aa4951dac6022f2141c646c7f6f9f4",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x5e11e627d63755afa4b01d4c1de1e315eefdb348",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x7328da4251dd6e1f0aaf64f39c5137cbf160b9b3",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x0c1ce09ccfe9243c4ad23c3caee0c11d4e8340d3",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x5e3b440156ce928fda68b2378578dc9333846ce4",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xb99d305d00201f46e0f48e4e092ed1e95e1fcd76",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x784ff9a3ac5d88a30bfff6f7f2a270161fbe6000",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x3021fcb5ed89397527e4872ba9329080208de688",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x5167d014a056e43883e1bbea5530c3c0dc993281",
+     "chainId": 1,
+     "tier": 2
+    },
+    {
+     "address": "0x000000000004444c5dc75cb358380d2e3de08a90",
+     "chainId": 1,
+     "tier": 1
+    },
+    {
+     "address": "0x9efa934d9fad4ae28c998a40195646b965a97247",
+     "chainId": 1,
+     "tier": 1
+    }
+   ]
+  },
+  {
+   "id": "ens.domains",
+   "job": "a9b77d6d",
+   "raw": {
+    "found": true,
+    "subject": {
+     "name": "Ethereum Name Service (ENS)",
+     "one_line": "ENS is an Ethereum naming protocol with registration and lookup contracts, user apps, and DAO governance supported by ENS Labs.",
+     "contracts": [
+      {
+       "address": "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e",
+       "chain": 1,
+       "role": "Main by the visitor’s specified anchor; ENSv1 core ownership and resolver directory, now supporting unmigrated names.",
+       "main": true
+      },
+      {
+       "address": "0xaB528d626EC275E3faD363fF1393A41F581c5897",
+       "chain": 1,
+       "role": "Owns the legacy registry root",
+       "main": false
+      },
+      {
+       "address": "0xC18360217D8F7Ab5E7c516566761Ea12Ce7F9D72",
+       "chain": 1,
+       "role": "ENS fungible governance token",
+       "main": false
+      },
+      {
+       "address": "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7",
+       "chain": 1,
+       "role": "ENS DAO governance timelock wallet",
+       "main": false
+      },
+      {
+       "address": "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85",
+       "chain": 1,
+       "role": "ENSv1 ERC-721 name ownership",
+       "main": false
+      },
+      {
+       "address": "0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401",
+       "chain": 1,
+       "role": "ENSv1 ERC-1155 wrapped name ownership",
+       "main": false
+      },
+      {
+       "address": "0xd6d8369e55c94ae8afa714e6cf7ab5be54d5cc81",
+       "chain": 1,
+       "role": "ENSv2 paid .eth registration and renewal",
+       "main": false
+      },
+      {
+       "address": "0x56c447F308F463A01121C41E72b0E7e7557fCb68",
+       "chain": 1,
+       "role": "Paid renewal of unmigrated ENSv1 names",
+       "main": false
+      },
+      {
+       "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+       "chain": 1,
+       "role": "ENSv2 .eth name ownership registry",
+       "main": false
+      },
+      {
+       "address": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+       "chain": 1,
+       "role": "ENSv2 top-level name ownership registry",
+       "main": false
+      },
+      {
+       "address": "0x76F29609A363a8A1a2a6abe2e859C0F8916Af469",
+       "chain": 1,
+       "role": "Current v2 price oracle",
+       "main": false
+      },
+      {
+       "address": "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe",
+       "chain": 1,
+       "role": "Public name lookup proxy",
+       "main": false
+      },
+      {
+       "address": "0xcFFd2Ae680CD110D28739a70922636B5937b022B",
+       "chain": 1,
+       "role": "Council-administered intermediate lookup proxy",
+       "main": false
+      },
+      {
+       "address": "0x06Fdd07F007ADaC667177b46aB2EB9A75132Cfd5",
+       "chain": 1,
+       "role": "Current v2 name resolver implementation",
+       "main": false
+      },
+      {
+       "address": "0x5B716D6587d241166bC8914858640F8684F3A2F3",
+       "chain": 1,
+       "role": "One-owner Safe holding the v2 .eth token",
+       "main": false
+      },
+      {
+       "address": "0x7101B78638e34444F0a5AdE9e1149fbEeC029931",
+       "chain": 1,
+       "role": "Five-of-eight Safe administering intermediate resolver",
+       "main": false
+      },
+      {
+       "address": "0x4F2083f5fBede34C2714aFfb3105539775f7FE64",
+       "chain": 1,
+       "role": "Registration and renewal fee recipient",
+       "main": false
+      },
+      {
+       "address": "0x20262e3433306a4FF250a64d20a8E0F09B2C7F68",
+       "chain": 1,
+       "role": "ENSC commemorative NFT collection",
+       "main": false
+      },
+      {
+       "address": "0xDa021A2C1C2F99574D861Ef8c6fA745851BEB7F6",
+       "chain": 1,
+       "role": "Holds migrated legacy name tokens",
+       "main": false
+      },
+      {
+       "address": "0xab821ca676cf2e0790fa273526a165cfa86aeb64",
+       "chain": 1,
+       "role": "Migrates unwrapped and unlocked .eth names",
+       "main": false
+      },
+      {
+       "address": "0x3cea18620883a69ed349b23328a3b6302598e51a",
+       "chain": 1,
+       "role": "Migrates locked .eth names",
+       "main": false
+      },
+      {
+       "address": "0x323A76393544d5ecca80cd6ef2A560C6a395b7E3",
+       "chain": 1,
+       "role": "ENS DAO governor",
+       "main": false
+      }
+     ],
+     "channels": []
+    },
+    "infobox": [
+     {
+      "label": "Website",
+      "value": "ens.domains",
+      "lines": [
+       "A19"
+      ],
+      "url": "https://ens.domains/"
+     },
+     {
+      "label": "Tokens",
+      "value": "Ethereum (1): ENS governance 0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72; ENSC art 0x20262e3433306a4FF250a64d20a8E0F09B2C7F68; .eth legacy 0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85; wrapped names 0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401; .eth v2 0xf60aba43e1f7f3dab1186ff03b561401c9df85e2; v2 root 0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+      "lines": [
+       "L3",
+       "L12",
+       "L20",
+       "L38",
+       "A3",
+       "A25",
+       "A21"
+      ],
+      "values": [
+       {
+        "name": "ENS governance",
+        "address": "0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72",
+        "chain": 1
+       },
+       {
+        "name": "ENSC art",
+        "address": "0x20262e3433306a4FF250a64d20a8E0F09B2C7F68",
+        "chain": 1
+       },
+       {
+        "name": ".eth legacy names",
+        "address": "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85",
+        "chain": 1
+       },
+       {
+        "name": "wrapped names",
+        "address": "0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401",
+        "chain": 1
+       },
+       {
+        "name": ".eth v2 names",
+        "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+        "chain": 1
+       },
+       {
+        "name": "v2 root names",
+        "address": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+        "chain": 1
+       }
+      ]
+     },
+     {
+      "label": "Main contract",
+      "value": "ENS Registry 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e, Ethereum chain 1",
+      "lines": [
+       "L8",
+       "A1",
+       "A9"
+      ],
+      "url": "https://etherscan.io/address/0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
+     },
+     {
+      "label": "Chains",
+      "value": "Ethereum mainnet; Base, Arbitrum and Optimism app payments",
+      "lines": [
+       "L1",
+       "L55",
+       "A21"
+      ],
+      "values": [
+       {
+        "name": "Ethereum mainnet",
+        "chain": 1
+       },
+       {
+        "name": "Base app payment"
+       },
+       {
+        "name": "Arbitrum app payment"
+       },
+       {
+        "name": "Optimism app payment"
+       }
+      ]
+     },
+     {
+      "label": "Supply",
+      "value": "100 million ENS",
+      "lines": [
+       "A3"
+      ]
+     },
+     {
+      "label": "Price: .eth registration",
+      "value": "$8 (5+), $160 (4), $640 (3) yearly, plus gas",
+      "lines": [
+       "L17",
+       "L51",
+       "A38"
+      ],
+      "url": "https://docs.ens.domains/ensv2/eth-registrar/",
+      "values": [
+       {
+        "name": "5+ characters",
+        "value": "$8 yearly"
+       },
+       {
+        "name": "4 characters",
+        "value": "$160 yearly"
+       },
+       {
+        "name": "3 characters",
+        "value": "$640 yearly"
+       }
+      ]
+     },
+     {
+      "label": "Deployed by",
+      "value": "0x4fe4e666be5752f1fdd210f4ab5de2cc26e3e0e8",
+      "lines": [
+       "A9"
+      ]
+     },
+     {
+      "label": "Controlled by",
+      "value": "ENS DAO timelock 0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7",
+      "lines": [
+       "A2",
+       "A10",
+       "A27"
+      ]
+     },
+     {
+      "label": "Founder or creator",
+      "value": "Nick Johnson",
+      "lines": [
+       "L11",
+       "L68"
+      ]
+     },
+     {
+      "label": "Contributors",
+      "value": "ENS Labs; ENS Foundation; KPK",
+      "lines": [
+       "L28",
+       "L29",
+       "L42",
+       "L65"
+      ],
+      "values": [
+       {
+        "name": "ENS Labs"
+       },
+       {
+        "name": "ENS Foundation"
+       },
+       {
+        "name": "KPK"
+       }
+      ]
+     },
+     {
+      "label": "Official accounts",
+      "value": "ENS, DAO and Foundation X; ensdomains GitHub; ENS YouTube",
+      "lines": [
+       "A19",
+       "A20",
+       "L49",
+       "L11"
+      ],
+      "values": [
+       {
+        "name": "@ensdomains on X",
+        "url": "https://x.com/ensdomains"
+       },
+       {
+        "name": "@ENS_DAO on X",
+        "url": "https://x.com/ENS_DAO"
+       },
+       {
+        "name": "@ENSfndn on X",
+        "url": "https://x.com/ENSfndn"
+       },
+       {
+        "name": "ensdomains on GitHub",
+        "url": "https://github.com/ensdomains"
+       },
+       {
+        "name": "ENSdomains on YouTube",
+        "url": "https://www.youtube.com/@ENSdomains"
+       }
+      ]
+     },
+     {
+      "label": "Launched",
+      "value": "27 October 2026",
+      "lines": [
+       "L14"
+      ]
+     },
+     {
+      "label": "Fee recipient",
+      "value": "ENS Endowment 0x4F2083f5fBede34C2714aFfb3105539775f7FE64",
+      "lines": [
+       "A11"
+      ]
+     },
+     {
+      "label": "Resolver council",
+      "value": "5 of 8 signatures, 0x7101B78638e34444F0a5AdE9e1149fbEeC029931",
+      "lines": [
+       "A28"
+      ]
+     },
+     {
+      "label": "Size",
+      "value": "DefiLlama: about $73,000 seven-day revenue, 23 November 2026",
+      "lines": [
+       "L78"
+      ],
+      "url": "https://api.llama.fi/summary/fees/ens?dataType=dailyRevenue"
+     }
+    ],
+    "related": [
+     {
+      "name": "Ethereum",
+      "id": "ethereum.org; chain 1",
+      "relation": "Hosts naming and governance contracts",
+      "lines": [
+       "L1",
+       "A1",
+       "A3"
+      ]
+     },
+     {
+      "name": "DNS",
+      "id": "icann.org",
+      "relation": "DNSSEC names can be imported",
+      "lines": [
+       "L4"
+      ]
+     },
+     {
+      "name": "USDC",
+      "id": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 on Ethereum (1)",
+      "relation": "V2 registration and renewal payment",
+      "lines": [
+       "L7",
+       "A12",
+       "A39",
+       "A40"
+      ]
+     },
+     {
+      "name": "DAI",
+      "id": "0x6B175474E89094C44Da98b954EedeAC495271d0F on Ethereum (1)",
+      "relation": "Accepted by v2 pricing contract",
+      "lines": [
+       "L7",
+       "A12"
+      ]
+     },
+     {
+      "name": "Uniswap",
+      "id": "uniswap.org",
+      "relation": "App swaps ETH into USDC for payments",
+      "lines": [
+       "L54"
+      ]
+     },
+     {
+      "name": "Safe",
+      "id": "safe.global",
+      "relation": "Holds v2 .eth ownership for DAO",
+      "lines": [
+       "A24"
+      ]
+     }
+    ],
+    "lines": []
+   },
+   "ranked": [
+    {
+     "address": "0x00000000000c2e074ec69a0dfb2997ba6c7d2e1e",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xab528d626ec275e3fad363ff1393a41f581c5897",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xd4416b13d2b3a9abae7acd5d6c2bbdbe25686401",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xd6d8369e55c94ae8afa714e6cf7ab5be54d5cc81",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x56c447f308f463a01121c41e72b0e7e7557fcb68",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x76f29609a363a8a1a2a6abe2e859c0f8916af469",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xeeeeeeee14d718c2b47d9923deab1335e144eeee",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xcffd2ae680cd110d28739a70922636b5937b022b",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x5b716d6587d241166bc8914858640f8684f3a2f3",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x7101b78638e34444f0a5ade9e1149fbeec029931",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x4f2083f5fbede34c2714affb3105539775f7fe64",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x20262e3433306a4ff250a64d20a8e0f09b2c7f68",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xda021a2c1c2f99574d861ef8c6fa745851beb7f6",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xab821ca676cf2e0790fa273526a165cfa86aeb64",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x3cea18620883a69ed349b23328a3b6302598e51a",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x323a76393544d5ecca80cd6ef2a560c6a395b7e3",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x4fe4e666be5752f1fdd210f4ab5de2cc26e3e0e8",
+     "chainId": 1,
+     "tier": 2
+    }
+   ]
+  },
+  {
+   "id": "zora.co",
+   "job": "38d71f15",
+   "raw": {
+    "found": true,
+    "subject": {
+     "name": "Zora",
+     "one_line": "Zora Labs runs a social trading app, develops its coin contracts, issues ZORA and lists a separate network for earlier digital collectibles.",
+     "contracts": [
+      {
+       "address": "0x1111111111166b7FE7bd91427724B487980aFc69",
+       "chain": "base (8453)",
+       "role": "Main because Zora identifies it as its Base token and uses it to pair creator coins and pay Base coin rewards",
+       "main": true
+      },
+      {
+       "address": "0x777777751622c0d3258f214F9DF38E35BF45baF3",
+       "chain": "base (8453)",
+       "role": "Coin factory that creates all coins",
+       "main": false
+      },
+      {
+       "address": "0x777777C4c14b133858c3982D41Dbf02509fc18d7",
+       "chain": "base (8453)",
+       "role": "Registry of Uniswap V4 hooks",
+       "main": false
+      },
+      {
+       "address": "0x004d6611884B4A661749B64b2ADc78505c3e1AB3",
+       "chain": "base (8453)",
+       "role": "3-of-6 Safe that owns the coin factory",
+       "main": false
+      },
+      {
+       "address": "soKqZS9pASwBNS46G388nhK7XVtPaTyReffXEd3zora",
+       "chain": "solana",
+       "role": "Official Solana ZORA mint address published by Zora",
+       "main": false
+      },
+      {
+       "address": "0x0000000002ba96c69b95e32caab8fc38bab8b3f8",
+       "chain": "base (8453)",
+       "role": "Community airdrop claim contract",
+       "main": false
+      },
+      {
+       "address": "0x0000000000ffe8b47b3e2130213b802212439497",
+       "chain": "base (8453)",
+       "role": "CREATE2 factory used to deploy the ZORA token",
+       "main": false
+      }
+     ],
+     "channels": []
+    },
+    "infobox": [
+     {
+      "label": "Website",
+      "value": "zora.co",
+      "url": "https://zora.co",
+      "lines": [
+       "L1"
+      ],
+      "values": []
+     },
+     {
+      "label": "Tokens",
+      "value": "ZORA: pairing currency and rewards, 0x1111111111166b7FE7bd91427724B487980aFc69 on Base, soKqZS9pASwBNS46G388nhK7XVtPaTyReffXEd3zora on Solana",
+      "lines": [
+       "L20",
+       "L25",
+       "L50"
+      ],
+      "url": "https://support.zora.co/en/articles/5654721",
+      "values": [
+       "ZORA: pairing currency and rewards, 0x1111111111166b7FE7bd91427724B487980aFc69 on Base, soKqZS9pASwBNS46G388nhK7XVtPaTyReffXEd3zora on Solana"
+      ]
+     },
+     {
+      "label": "Main contract",
+      "value": "ZORA token, 0x1111111111166b7FE7bd91427724B487980aFc69 on Base",
+      "url": "https://basescan.org/token/0x1111111111166b7FE7bd91427724B487980aFc69",
+      "lines": [
+       "L40",
+       "L50"
+      ],
+      "values": []
+     },
+     {
+      "label": "Chains",
+      "value": "Base, Robinhood Chain, Solana and Zora Network",
+      "lines": [
+       "L8",
+       "L39",
+       "L50",
+       "L85"
+      ],
+      "url": null,
+      "values": [
+       "Base",
+       "Robinhood Chain",
+       "Solana",
+       "Zora Network"
+      ]
+     },
+     {
+      "label": "Supply",
+      "value": "10 billion ZORA on Base, about 99.09 million on Solana",
+      "url": null,
+      "lines": [
+       "L41",
+       "L99",
+       "L98"
+      ],
+      "values": [
+       "10 billion ZORA on Base",
+       "about 99.09 million ZORA on Solana"
+      ]
+     },
+     {
+      "label": "Trading fee",
+      "value": "1% creator, post and custom-pair coins, 0.01% trend coins",
+      "lines": [
+       "L4",
+       "L5",
+       "L27"
+      ],
+      "url": null,
+      "values": [
+       "1% creator, post and custom-pair coins",
+       "0.01% trend coins"
+      ]
+     },
+     {
+      "label": "App transaction fee",
+      "value": "$0.50 below $50, 1% from $50",
+      "values": [
+       "$0.50 below $50",
+       "1% from $50"
+      ],
+      "url": "https://support.zora.co/en/articles/2509953",
+      "lines": [
+       "L101",
+       "L102"
+      ]
+     },
+     {
+      "label": "Size",
+      "value": "$85,594 in 30-day Base coin trading (DefiLlama, Nov 23, 2026)",
+      "lines": [
+       "L68"
+      ],
+      "url": "https://defillama.com/protocol/zora-coins",
+      "values": []
+     },
+     {
+      "label": "Deployed by",
+      "value": "CREATE2 factory 0x0000000000ffe8b47b3e2130213b802212439497",
+      "lines": [
+       "L90",
+       "L91"
+      ],
+      "url": "https://basescan.org/tx/0xd0a10c53c9a776cd5fa6d6065a786cda4a9bba88a6262009e39708e0762ebd46",
+      "values": []
+     },
+     {
+      "label": "Controlled by",
+      "value": "Coin factory: 3-of-6 Safe 0x004d6611884B4A661749B64b2ADc78505c3e1AB3",
+      "lines": [
+       "L47",
+       "L63"
+      ],
+      "url": "https://basescan.org/address/0x004d6611884B4A661749B64b2ADc78505c3e1AB3",
+      "values": []
+     },
+     {
+      "label": "Founder or creator",
+      "value": "Jacob Horne, Dee Goens, Tyson Battistella",
+      "lines": [
+       "L83",
+       "L84"
+      ],
+      "url": "https://zine.zora.co/ali-breland-peering-over-the-edge-daos",
+      "values": [
+       "Jacob Horne",
+       "Dee Goens",
+       "Tyson Battistella"
+      ]
+     },
+     {
+      "label": "Contributors",
+      "value": "Dee Goens, CEO",
+      "lines": [
+       "L66"
+      ],
+      "url": "https://x.com/dg_goens/status/2097747517798498642",
+      "values": []
+     },
+     {
+      "label": "Official accounts",
+      "value": "X, Farcaster, Instagram, TikTok, GitHub",
+      "lines": [
+       "L38",
+       "L64",
+       "L19"
+      ],
+      "url": "https://support.zora.co/en/articles/5638529",
+      "values": [
+       {
+        "name": "@zora on X",
+        "url": "https://x.com/zora"
+       },
+       {
+        "name": "@zoradevs on X",
+        "url": "https://x.com/zoradevs"
+       },
+       {
+        "name": "@zorasupport on X",
+        "url": "https://x.com/zorasupport"
+       },
+       {
+        "name": "zora on Farcaster",
+        "url": "https://warpcast.com/zora"
+       },
+       {
+        "name": "zora channel on Farcaster",
+        "url": "https://warpcast.com/~/channel/zora"
+       },
+       {
+        "name": "zora-devs on Farcaster",
+        "url": "https://warpcast.com/~/channel/zora-devs"
+       },
+       {
+        "name": "our.zora on Instagram",
+        "url": "https://www.instagram.com/our.zora/"
+       },
+       {
+        "name": "@zora on TikTok",
+        "url": "https://www.tiktok.com/@zora"
+       },
+       {
+        "name": "ourzora on GitHub",
+        "url": "https://github.com/ourzora"
+       }
+      ]
+     },
+     {
+      "label": "Launched",
+      "value": "April 23, 2025",
+      "lines": [
+       "L80",
+       "L79",
+       "L94"
+      ],
+      "url": "https://claim.zora.co/faq",
+      "values": []
+     },
+     {
+      "label": "Coin factory",
+      "value": "0x777777751622c0d3258f214F9DF38E35BF45baF3 on Base",
+      "url": "https://basescan.org/address/0x777777751622c0d3258f214F9DF38E35BF45baF3",
+      "lines": [
+       "L51",
+       "L45"
+      ],
+      "values": []
+     }
+    ],
+    "related": [
+     {
+      "name": "Base",
+      "id": "chain 8453",
+      "relation": "chain hosting ZORA and coins",
+      "lines": [
+       "L50",
+       "L40"
+      ]
+     },
+     {
+      "name": "Uniswap V4",
+      "id": "uniswap.org",
+      "relation": "pools where coins trade",
+      "lines": [
+       "L11"
+      ]
+     },
+     {
+      "name": "Doppler",
+      "id": "doppler protocol",
+      "relation": "places initial pool liquidity; gets 1% of fees",
+      "lines": [
+       "L17",
+       "L24"
+      ]
+     },
+     {
+      "name": "Robinhood Chain",
+      "id": "Robinhood Chain",
+      "relation": "additional chain for coins",
+      "lines": [
+       "L8"
+      ]
+     },
+     {
+      "name": "Solana",
+      "id": "solana",
+      "relation": "additional chain for coins and ZORA",
+      "lines": [
+       "L8",
+       "L50"
+      ]
+     },
+     {
+      "name": "Zora Network",
+      "id": "zora.energy",
+      "relation": "separate Ethereum network for earlier Zora NFTs",
+      "lines": [
+       "L85",
+       "L39"
+      ]
+     },
+     {
+      "name": "Base–Solana bridge",
+      "id": "base.org",
+      "relation": "Base named Zora in rollout",
+      "lines": [
+       "L86"
+      ]
+     }
+    ],
+    "lines": []
+   },
+   "ranked": [
+    {
+     "address": "0x1111111111166b7fe7bd91427724b487980afc69",
+     "chainId": 8453,
+     "tier": 3
+    },
+    {
+     "address": "0x777777751622c0d3258f214f9df38e35bf45baf3",
+     "chainId": 8453,
+     "tier": 3
+    },
+    {
+     "address": "0x777777c4c14b133858c3982d41dbf02509fc18d7",
+     "chainId": 8453,
+     "tier": 3
+    },
+    {
+     "address": "0x004d6611884b4a661749b64b2adc78505c3e1ab3",
+     "chainId": 8453,
+     "tier": 3
+    },
+    {
+     "address": "0x0000000002ba96c69b95e32caab8fc38bab8b3f8",
+     "chainId": 8453,
+     "tier": 3
+    },
+    {
+     "address": "0x0000000000ffe8b47b3e2130213b802212439497",
+     "chainId": 8453,
+     "tier": 3
+    }
+   ]
+  },
+  {
+   "id": "uniswap.org",
+   "job": "cd234a59",
+   "raw": {
+    "found": true,
+    "subject": {
+     "name": "Uniswap",
+     "one_line": "Uniswap is a blockchain trading protocol governed by UNI holders, with a web app, wallet and developer tools built by Uniswap Labs.",
+     "contracts": [
+      {
+       "address": "0x000000000004444c5dc75cB358380D2e3dE08A90",
+       "chain": 1,
+       "role": "Ethereum v4 PoolManager, selected as main because it holds shared v4 pool state and operations [L13,L14].",
+       "main": true
+      },
+      {
+       "address": "0x23617e59A5925b2A4Bf75d73ff6711cD0b29De85",
+       "chain": 1,
+       "role": "Universal Router 2.1.2; current documented Ethereum swap router [S11,S37]",
+       "main": false
+      },
+      {
+       "address": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+       "chain": 1,
+       "role": "Permit2; token permissions used by routers [S11,L17]",
+       "main": false
+      },
+      {
+       "address": "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e",
+       "chain": 1,
+       "role": "v4 PositionManager; liquidity positions [S11]",
+       "main": false
+      },
+      {
+       "address": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+       "chain": 1,
+       "role": "v3 pool factory [S17]",
+       "main": false
+      },
+      {
+       "address": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+       "chain": 1,
+       "role": "v2 pool factory [S17]",
+       "main": false
+      },
+      {
+       "address": "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
+       "chain": 1,
+       "role": "UNI governance token [S18]",
+       "main": false
+      },
+      {
+       "address": "0x23B608675a2B2fB1890d3ABBd85c5775c51691d5",
+       "chain": 1,
+       "role": "Original SOCKS token; Unisocks Edition 0 [S45]",
+       "main": false
+      },
+      {
+       "address": "0x1a9C8182C09F50C8318d769245beA52c32BE35BC",
+       "chain": 1,
+       "role": "Governance timelock; main pool manager owner and UNI minter [S18,S46]",
+       "main": false
+      },
+      {
+       "address": "0x408ED6354d4973f66138C91495F2f2FCbd8724C3",
+       "chain": 1,
+       "role": "GovernorBravo; timelock administrator [S18,S46]",
+       "main": false
+      },
+      {
+       "address": "0xf38521f130fcCF29dB1961597bc5d2B60F995f85",
+       "chain": 1,
+       "role": "TokenJar; Ethereum protocol-fee collector [S17,S46]",
+       "main": false
+      },
+      {
+       "address": "0x0D5Cd355e2aBEB8fb1552F56c965B867346d6721",
+       "chain": 1,
+       "role": "Firepit; UNI-for-fee-assets releaser [S17,S46]",
+       "main": false
+      },
+      {
+       "address": "0x89A5D5bF00a27D55c02951E49078a5C5771051dB",
+       "chain": 1,
+       "role": "v4 fee adapter; pool manager fee controller [S17,S46]",
+       "main": false
+      },
+      {
+       "address": "0xf2371551Fe3937Db7c750f4DfABe5c2fFFdcBf5A",
+       "chain": 1,
+       "role": "v3 open fee adapter; v3 factory owner [S17,S46]",
+       "main": false
+      },
+      {
+       "address": "0x5B453493D2328E7F747eb2e66446eFe707728be7",
+       "chain": 1,
+       "role": "uniUSDC Earn vault and share token [S59,L106]",
+       "main": false
+      },
+      {
+       "address": "0xb8274eFADB953FE9ae052D481a3FC5B6A3ceD703",
+       "chain": 1,
+       "role": "uniUSDT Earn vault and share token [S59,L107]",
+       "main": false
+      },
+      {
+       "address": "0x98D2b241DA14c5dd848812708Eb8A1F3c5512f9d",
+       "chain": 1,
+       "role": "uniETH Earn vault and share token [S59,L108]",
+       "main": false
+      },
+      {
+       "address": "0x65770b5283117639760beA3F867b69b3697a91dd",
+       "chain": 1,
+       "role": "Digital Unisocks redemption collectible [L115]",
+       "main": false
+      },
+      {
+       "address": "0x05931D644063954f35AFa3dBefA4725b0ad79F85",
+       "chain": 1,
+       "role": "Digital Unisocks redemption controller [L116]",
+       "main": false
+      },
+      {
+       "address": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+       "chain": 5042,
+       "role": "Arc v4 PoolManager [S87]",
+       "main": false
+      }
+     ],
+     "channels": []
+    },
+    "infobox": [
+     {
+      "label": "Website",
+      "value": "uniswap.org",
+      "lines": [
+       "L01",
+       "L70"
+      ],
+      "url": "https://uniswap.org/"
+     },
+     {
+      "label": "Tokens",
+      "value": "UNI: governance, 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984; SOCKS: redemption, 0x23B608675a2B2fB1890d3ABBd85c5775c51691d5; uniUSDC: shares, 0x5B453493D2328E7F747eb2e66446eFe707728be7; uniUSDT: shares, 0xb8274eFADB953FE9ae052D481a3FC5B6A3ceD703; uniETH: shares, 0x98D2b241DA14c5dd848812708Eb8A1F3c5512f9d; S0CKS: collectible, 0x65770b5283117639760beA3F867b69b3697a91dd (all on Ethereum)",
+      "lines": [
+       "L38",
+       "L42",
+       "L30",
+       "L53",
+       "L106",
+       "L107",
+       "L108",
+       "L111",
+       "L115",
+       "L114"
+      ],
+      "values": [
+       {
+        "name": "UNI",
+        "purpose": "governance",
+        "address": "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
+        "chain": 1,
+        "chains": [
+         "Ethereum"
+        ],
+        "bridged_chains": [
+         "Arbitrum One",
+         "OP Mainnet",
+         "Polygon",
+         "Base",
+         "BNB Chain",
+         "Celo",
+         "Unichain",
+         "World Chain",
+         "Soneium",
+         "X Layer",
+         "Zora"
+        ]
+       },
+       {
+        "name": "SOCKS",
+        "purpose": "sock redemption",
+        "address": "0x23B608675a2B2fB1890d3ABBd85c5775c51691d5",
+        "chain": 1,
+        "chains": [
+         "Ethereum"
+        ]
+       },
+       {
+        "name": "uniUSDC",
+        "purpose": "vault shares",
+        "address": "0x5B453493D2328E7F747eb2e66446eFe707728be7",
+        "chain": 1,
+        "chains": [
+         "Ethereum"
+        ]
+       },
+       {
+        "name": "uniUSDT",
+        "purpose": "vault shares",
+        "address": "0xb8274eFADB953FE9ae052D481a3FC5B6A3ceD703",
+        "chain": 1,
+        "chains": [
+         "Ethereum"
+        ]
+       },
+       {
+        "name": "uniETH",
+        "purpose": "vault shares",
+        "address": "0x98D2b241DA14c5dd848812708Eb8A1F3c5512f9d",
+        "chain": 1,
+        "chains": [
+         "Ethereum"
+        ]
+       },
+       {
+        "name": "S0CKS",
+        "purpose": "redemption collectible",
+        "address": "0x65770b5283117639760beA3F867b69b3697a91dd",
+        "chain": 1,
+        "chains": [
+         "Ethereum"
+        ]
+       }
+      ]
+     },
+     {
+      "label": "Main contract",
+      "value": "v4 PoolManager: 0x000000000004444c5dc75cB358380D2e3dE08A90 on Ethereum",
+      "lines": [
+       "L14",
+       "L13"
+      ],
+      "url": "https://etherscan.io/address/0x000000000004444c5dc75cB358380D2e3dE08A90"
+     },
+     {
+      "label": "Chains",
+      "value": "Ethereum, Base, Arbitrum, Polygon, Unichain, Arc, Elysium and others",
+      "lines": [
+       "L01",
+       "L94",
+       "L95",
+       "L119"
+      ],
+      "url": "https://developers.uniswap.org/deployments",
+      "values": [
+       "Ethereum",
+       "Base",
+       "Arbitrum",
+       "Polygon",
+       "Unichain",
+       "Arc",
+       "Elysium"
+      ]
+     },
+     {
+      "label": "Supply",
+      "value": "1B UNI, 296.99 SOCKS, uniUSDC 10.00M, uniUSDT 2.83M, uniETH 0.7K, 151 S0CKS",
+      "lines": [
+       "L42",
+       "L53",
+       "L106",
+       "L107",
+       "L108",
+       "L115"
+      ],
+      "values": [
+       {
+        "name": "UNI",
+        "value": "1000000000"
+       },
+       {
+        "name": "SOCKS",
+        "value": "296.992857926618025474"
+       },
+       {
+        "name": "uniUSDC",
+        "value": "9997120.750654657807308770"
+       },
+       {
+        "name": "uniUSDT",
+        "value": "2831861.076663145183881064"
+       },
+       {
+        "name": "uniETH",
+        "value": "715.559292022898531990"
+       },
+       {
+        "name": "S0CKS",
+        "value": "151"
+       }
+      ]
+     },
+     {
+      "label": "Price",
+      "value": "0% Labs interface fee plus applicable pool and network costs",
+      "lines": [
+       "L05",
+       "L06",
+       "L10"
+      ],
+      "url": "https://support.uniswap.org/hc/en-us/articles/42640092742541-What-are-Uniswap-Labs-fees"
+     },
+     {
+      "label": "Size",
+      "value": "$3.11B locked, DefiLlama, November 23, 2026",
+      "lines": [
+       "L90"
+      ],
+      "url": "https://defillama.com/protocol/uniswap?denomination=USD"
+     },
+     {
+      "label": "Deployed by",
+      "value": "Transaction sender: 0x6b93e3bb9c0780c0f9042346ffc379530a5882c1 on Ethereum",
+      "lines": [
+       "L66"
+      ],
+      "url": "https://etherscan.io/tx/0x747e0e02b7590eed32cface28e83260884e0b80675f5ae223c6888053aa68528"
+     },
+     {
+      "label": "Controlled by",
+      "value": "v4 settings: governance timelock 0x1a9c8182c09f50c8318d769245bea52c32be35bc on Ethereum",
+      "lines": [
+       "L43",
+       "L47",
+       "L59"
+      ]
+     },
+     {
+      "label": "Founder or creator",
+      "value": "Hayden Adams",
+      "lines": [
+       "L37"
+      ],
+      "url": "https://about.uniswap.org/"
+     },
+     {
+      "label": "Contributors",
+      "value": "Uniswap Labs, Uniswap Foundation and community contributors",
+      "lines": [
+       "L70",
+       "L39",
+       "L102"
+      ],
+      "values": [
+       "Uniswap Labs",
+       "Uniswap Foundation",
+       "Community contributors"
+      ]
+     },
+     {
+      "label": "Official accounts",
+      "lines": [
+       "L40",
+       "L71",
+       "L72",
+       "L73",
+       "L74",
+       "L75",
+       "L76",
+       "L112"
+      ],
+      "values": [
+       {
+        "name": "@Uniswap on X",
+        "url": "https://x.com/Uniswap"
+       },
+       {
+        "name": "@UniswapBuilders on X",
+        "url": "https://x.com/UniswapBuilders"
+       },
+       {
+        "name": "@UniswapAuctions on X",
+        "url": "https://x.com/UniswapAuctions"
+       },
+       {
+        "name": "Uniswap on GitHub",
+        "url": "https://github.com/Uniswap"
+       },
+       {
+        "name": "Uniswap on Discord",
+        "url": "https://discord.gg/uniswap"
+       },
+       {
+        "name": "Uniswap on LinkedIn",
+        "url": "https://www.linkedin.com/company/uniswaporg"
+       },
+       {
+        "name": "@Uniswap-Labs on YouTube",
+        "url": "https://www.youtube.com/@Uniswap-Labs"
+       },
+       {
+        "name": "@uniswap on TikTok",
+        "url": "https://www.tiktok.com/@uniswap"
+       },
+       {
+        "name": "r/uniswap on Reddit",
+        "url": "https://www.reddit.com/r/uniswap/"
+       },
+       {
+        "name": "@Uniswap on Lens",
+        "url": "https://lenster.xyz/u/uniswap"
+       }
+      ]
+     },
+     {
+      "label": "Launched",
+      "value": "January 31, 2025",
+      "lines": [
+       "L63"
+      ],
+      "url": "https://blog.uniswap.org/uniswap-v4-is-here"
+     },
+     {
+      "label": "App provider",
+      "value": "Universal Navigation Inc., trading as Uniswap Labs",
+      "lines": [
+       "L36"
+      ]
+     },
+     {
+      "label": "Governance delay",
+      "value": "2 days at the Ethereum snapshot",
+      "lines": [
+       "L46"
+      ]
+     }
+    ],
+    "related": [
+     {
+      "name": "Ethereum",
+      "id": "eip155:1",
+      "relation": "Main contract deployment and settlement",
+      "lines": [
+       "L14",
+       "L65"
+      ]
+     },
+     {
+      "name": "Unichain",
+      "id": "eip155:130",
+      "relation": "Trading network developed with Labs",
+      "lines": [
+       "L01",
+       "L70",
+       "L97"
+      ]
+     },
+     {
+      "name": "Morpho",
+      "id": "morpho.org",
+      "relation": "Lending vaults for Earn",
+      "lines": [
+       "L77",
+       "L79"
+      ]
+     },
+     {
+      "name": "Gauntlet",
+      "id": "gauntlet.xyz",
+      "relation": "Selects Earn lending markets",
+      "lines": [
+       "L80"
+      ]
+     },
+     {
+      "name": "Optimism",
+      "id": "optimism.io",
+      "relation": "Runs Unichain production infrastructure",
+      "lines": [
+       "L96"
+      ]
+     },
+     {
+      "name": "Arc",
+      "id": "eip155:5042",
+      "relation": "Circle network hosting Uniswap versions",
+      "lines": [
+       "L94"
+      ],
+      "contract": "0x8366a39CC670B4001A1121B8F6A443A643e40951"
+     }
+    ],
+    "lines": []
+   },
+   "ranked": [
+    {
+     "address": "0x000000000004444c5dc75cb358380d2e3de08a90",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x23617e59a5925b2a4bf75d73ff6711cd0b29de85",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x1f98431c8ad98523631ae4a59f267346ea31f984",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x23b608675a2b2fb1890d3abbd85c5775c51691d5",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x1a9c8182c09f50c8318d769245bea52c32be35bc",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x408ed6354d4973f66138c91495f2f2fcbd8724c3",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xf38521f130fccf29db1961597bc5d2b60f995f85",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x0d5cd355e2abeb8fb1552f56c965b867346d6721",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x89a5d5bf00a27d55c02951e49078a5c5771051db",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xf2371551fe3937db7c750f4dfabe5c2fffdcbf5a",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x5b453493d2328e7f747eb2e66446efe707728be7",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xb8274efadb953fe9ae052d481a3fc5b6a3ced703",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x98d2b241da14c5dd848812708eb8a1f3c5512f9d",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x65770b5283117639760bea3f867b69b3697a91dd",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x05931d644063954f35afa3dbefa4725b0ad79f85",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+     "chainId": 5042,
+     "tier": 3
+    },
+    {
+     "address": "0x6b93e3bb9c0780c0f9042346ffc379530a5882c1",
+     "chainId": 1,
+     "tier": 2
+    }
+   ]
+  },
+  {
+   "id": "imd.fun",
+   "job": "85445a56",
+   "raw": {
+    "found": true,
+    "subject": {
+     "name": "IMD (Identity.md)",
+     "one_line": "Identity.md runs a paid AI-agent network with customer and worker apps, Ethereum payment contracts, a token launch service and a staking market.",
+     "contracts": [
+      {
+       "address": "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",
+       "chain": 1,
+       "role": "Main Ethereum payment token. The job contract quotes its entry fee in this token, and a recorded Ethereum job payment used it.",
+       "main": true
+      },
+      {
+       "address": "0x0000ec93127baa929e58e97dd0095a2bfb38ec1d",
+       "chain": 1,
+       "role": "Seat NFT collection",
+       "main": false
+      },
+      {
+       "address": "0xa43e6f75ee006411f79ac1c84120606c2330de82",
+       "chain": 1,
+       "role": "Intake v2, accepts payments and requests",
+       "main": false
+      },
+      {
+       "address": "0x1397434cd35e8a9c8ac312a61d3a285eb31dea56",
+       "chain": 1,
+       "role": "Earlier request and payment contract",
+       "main": false
+      },
+      {
+       "address": "0xce0e6a670aa75e161d02aca3c7f00b94ca428ccb",
+       "chain": 1,
+       "role": "Delivers results from another chain",
+       "main": false
+      },
+      {
+       "address": "0x12c63b581d07093f6126bc02263c58f7eadaa96f",
+       "chain": 1,
+       "role": "LaunchFactory",
+       "main": false
+      },
+      {
+       "address": "0xa47fcb220ddd1cddda865f89029bec1b9eca3bf1",
+       "chain": 1,
+       "role": "LaunchFactory registry",
+       "main": false
+      },
+      {
+       "address": "0xff03410d0fe5fa8f7f59f743de35e333d9857120",
+       "chain": 1,
+       "role": "ProjectFactory",
+       "main": false
+      },
+      {
+       "address": "0x7c9d5ee697bff5ac4f10e2e54d3f40c44e48fe23",
+       "chain": 1,
+       "role": "ProjectFactory registry",
+       "main": false
+      },
+      {
+       "address": "0x784ff9a3ac5d88a30bfff6f7f2a270161fbe6000",
+       "chain": 1,
+       "role": "Restricts pool initialization to ProjectFactory",
+       "main": false
+      },
+      {
+       "address": "0x12c9e1007262afac205567457f5826a9416a3863",
+       "chain": 1,
+       "role": "Launch pool fee settings",
+       "main": false
+      },
+      {
+       "address": "0xb6d0a187b050fa5bb0b87033a203f37becf4a775",
+       "chain": 1,
+       "role": "Work receipts and reviews",
+       "main": false
+      },
+      {
+       "address": "0xde152afb7db5373f34876e1499fbd893a82dd336",
+       "chain": 1,
+       "role": "ERC-8004 adapter",
+       "main": false
+      },
+      {
+       "address": "0x5f7bb59365ce557c26dbcaa4ee9d39a4b95b7127",
+       "chain": 4663,
+       "role": "Robinhood Chain payment token",
+       "main": false
+      },
+      {
+       "address": "0xa43e6f75ee006411f79ac1c84120606c2330de82",
+       "chain": 4663,
+       "role": "Intake v2, accepts payments and requests",
+       "main": false
+      },
+      {
+       "address": "0x1397434cd35e8a9c8ac312a61d3a285eb31dea56",
+       "chain": 4663,
+       "role": "Earlier request and payment contract",
+       "main": false
+      },
+      {
+       "address": "0xce0e6a670aa75e161d02aca3c7f00b94ca428ccb",
+       "chain": 4663,
+       "role": "Delivers results from another chain",
+       "main": false
+      },
+      {
+       "address": "0xa25b02a1e93903b790e6aaf7da1b8b8d50294645",
+       "chain": 4663,
+       "role": "LaunchFactory",
+       "main": false
+      },
+      {
+       "address": "0x842e9bcff1e68566d45697a84f5b38c1c7766edb",
+       "chain": 4663,
+       "role": "LaunchFactory registry",
+       "main": false
+      },
+      {
+       "address": "0x9c9d2fcb75c2c132c0ac0c42df3819a42347265e",
+       "chain": 4663,
+       "role": "ProjectFactory",
+       "main": false
+      },
+      {
+       "address": "0xf52bbe066b7ad2d28c2195d066ea08dcbca88406",
+       "chain": 4663,
+       "role": "ProjectFactory registry",
+       "main": false
+      },
+      {
+       "address": "0x19bec7c2e1b2aadaf67b259744751a9960d66000",
+       "chain": 4663,
+       "role": "Restricts pool initialization to ProjectFactory",
+       "main": false
+      },
+      {
+       "address": "0xf053525ffe8f8d8973339e36ee8d455690fb73cb",
+       "chain": 4663,
+       "role": "Launch pool fee settings",
+       "main": false
+      },
+      {
+       "address": "0x56bcf2a5f47710649a4091219ef0b56e2d1b58bf",
+       "chain": 11155111,
+       "role": "Sepolia test payment token",
+       "main": false
+      },
+      {
+       "address": "0x44a1cd38474fb1748400e7deb5f8d786cce3f89a",
+       "chain": 11155111,
+       "role": "Retired test payment token",
+       "main": false
+      },
+      {
+       "address": "0xa0443799c320e16c80801c9c1911f3571260287f",
+       "chain": 11155111,
+       "role": "Test seat NFT collection",
+       "main": false
+      },
+      {
+       "address": "0xa43e6f75ee006411f79ac1c84120606c2330de82",
+       "chain": 11155111,
+       "role": "Intake v2, accepts payments and requests",
+       "main": false
+      },
+      {
+       "address": "0x1397434cd35e8a9c8ac312a61d3a285eb31dea56",
+       "chain": 11155111,
+       "role": "Earlier request and payment contract",
+       "main": false
+      },
+      {
+       "address": "0xce0e6a670aa75e161d02aca3c7f00b94ca428ccb",
+       "chain": 11155111,
+       "role": "Delivers results from another chain",
+       "main": false
+      },
+      {
+       "address": "0x315752fee5cbcaa00333e0d4d91e0cd69429e908",
+       "chain": 11155111,
+       "role": "LaunchFactory",
+       "main": false
+      },
+      {
+       "address": "0x78ba7bdcc66715d0f6e425b4700207a0b75ad5a4",
+       "chain": 11155111,
+       "role": "LaunchFactory registry",
+       "main": false
+      },
+      {
+       "address": "0x84cf2bc1dc2af577dba5d62e26f90d041ca38f7a",
+       "chain": 11155111,
+       "role": "ProjectFactory",
+       "main": false
+      },
+      {
+       "address": "0x90aaedd35073e2a31861276e58081251a601aad9",
+       "chain": 11155111,
+       "role": "ProjectFactory registry",
+       "main": false
+      },
+      {
+       "address": "0xa0602cb30558d5dd17415b6268a4feea3a0ca000",
+       "chain": 11155111,
+       "role": "Restricts pool initialization to ProjectFactory",
+       "main": false
+      },
+      {
+       "address": "0x428ff16d1bb25d6674463881ed6a62bd09e30584",
+       "chain": 11155111,
+       "role": "Launch pool fee settings",
+       "main": false
+      },
+      {
+       "address": "0x7621630cb63a73a194f45a3e6801b8c6a7ec2f92",
+       "chain": 11155111,
+       "role": "ERC-8004 adapter",
+       "main": false
+      },
+      {
+       "address": "0xFF0C532FDB8Cd566Ae169C1CB157ff2Bdc83E105",
+       "chain": 8453,
+       "role": "Original Fren Pet token on Base, listed by IMD as its bridged Base token",
+       "main": false
+      },
+      {
+       "address": "0xab152db8aaC047b6757fFCF495FfE88d7712690A",
+       "chain": 8453,
+       "role": "Base bridge adapter",
+       "main": false
+      },
+      {
+       "address": "0x9efa934d9fad4ae28c998a40195646b965a97247",
+       "chain": 1,
+       "role": "sIMD staking vault",
+       "main": false
+      },
+      {
+       "address": "0xc6c965bd164c483e87d0b550671798e9a3602840",
+       "chain": 1,
+       "role": "POOL4 market hook",
+       "main": false
+      },
+      {
+       "address": "0x9046739E1535B40EfBe6AB3f45d0024b690eCA30",
+       "chain": 1,
+       "role": "POOL4 reward distributor",
+       "main": false
+      },
+      {
+       "address": "0xe6D3De6daEAf327fCA42745f1998FcD989e00884",
+       "chain": 1,
+       "role": "POOL4 reward dripper",
+       "main": false
+      },
+      {
+       "address": "0xe29386719C155B6847aD5a4E97C6674f10ffc750",
+       "chain": 1,
+       "role": "IMD burn executor",
+       "main": false
+      },
+      {
+       "address": "0x73d1ae084F04f793A5bbd6B623d74400C9Fc3f42",
+       "chain": 1,
+       "role": "Community Coins factory",
+       "main": false
+      },
+      {
+       "address": "0x51768F5dA32BA2008304cC81674da51aCb802888",
+       "chain": 1,
+       "role": "Community Coins trading hook",
+       "main": false
+      }
+     ],
+     "channels": []
+    },
+    "infobox": [
+     {
+      "label": "Website",
+      "value": "imd.fun",
+      "lines": [
+       "F1-p-4",
+       "F1-wd-1"
+      ],
+      "url": "https://imd.fun/"
+     },
+     {
+      "label": "Tokens",
+      "value": "IMD: jobs, 0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7 Ethereum, 0x5f7bb59365ce557c26dbcaa4ee9d39a4b95b7127 Robinhood Chain, 0xff0c532fdb8cd566ae169c1cb157ff2bdc83e105 Base (Fren Pet); sIMD: staking, 0x9efa934d9fad4ae28c998a40195646b965a97247 Ethereum; imdTEST: test jobs, 0x56bcf2a5f47710649a4091219ef0b56e2d1b58bf Sepolia",
+      "lines": [
+       "F1-oc-2",
+       "N20",
+       "F1-oc-9",
+       "F3-base-symbol",
+       "BridgeFlow",
+       "VaultSymbol",
+       "StakeFlow",
+       "TestPayment",
+       "TestSymbol"
+      ],
+      "values": [
+       "IMD: jobs, 0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7 Ethereum, 0x5f7bb59365ce557c26dbcaa4ee9d39a4b95b7127 Robinhood Chain, 0xff0c532fdb8cd566ae169c1cb157ff2bdc83e105 Base (Fren Pet)",
+       "sIMD: staking, 0x9efa934d9fad4ae28c998a40195646b965a97247 Ethereum",
+       "imdTEST: test jobs, 0x56bcf2a5f47710649a4091219ef0b56e2d1b58bf Sepolia"
+      ]
+     },
+     {
+      "label": "Main contract",
+      "value": "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7 on Ethereum",
+      "lines": [
+       "F1-h-1",
+       "F1-m-2",
+       "F1-m-3"
+      ],
+      "url": "https://eth.blockscout.com/address/0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7"
+     },
+     {
+      "label": "Chains",
+      "value": "Ethereum, Base, Robinhood Chain, Sepolia testnet",
+      "lines": [
+       "N20",
+       "TestPayment",
+       "LatestLaunches"
+      ],
+      "values": [
+       "Ethereum",
+       "Base",
+       "Robinhood Chain",
+       "Sepolia testnet"
+      ]
+     },
+     {
+      "label": "Supply",
+      "value": "About 7.08 million Fren Pet on Base; 241,300 sIMD",
+      "lines": [
+       "BaseSupply",
+       "VaultSupply",
+       "BridgeFlow"
+      ],
+      "values": [
+       "About 7.08 million Fren Pet on Base",
+       "About 241,300 sIMD on Ethereum"
+      ]
+     },
+     {
+      "label": "Seats",
+      "value": "2,000 issued; 2,000 cap",
+      "lines": [
+       "F1-oc-5",
+       "F1-oc-6"
+      ]
+     },
+     {
+      "label": "Job entry price",
+      "value": "0.5 IMD per Ethereum job",
+      "lines": [
+       "F1-m-1",
+       "F1-m-2"
+      ],
+      "url": "https://imd.fun/docs/"
+     },
+     {
+      "label": "Size",
+      "value": "3,989 paid orders, @0xminion, October 12, 2026",
+      "lines": [
+       "MinionOrders"
+      ],
+      "url": "https://x.com/0xminion/status/2109716396120969448"
+     },
+     {
+      "label": "Deployed by",
+      "value": "0x047f606fd5b2baa5f5c6c4ab8958e45cb6b054b7",
+      "lines": [
+       "F1-h-2"
+      ]
+     },
+     {
+      "label": "Controlled by",
+      "value": "0x047f606fd5b2baa5f5c6c4ab8958e45cb6b054b7 owns main token and Ethereum intake",
+      "lines": [
+       "MainOwner",
+       "IntakeOwner",
+       "MainOwnPower",
+       "IntakeControls"
+      ]
+     },
+     {
+      "label": "Founder or creator",
+      "value": "@surfcoderepeat, identified by Bankless",
+      "lines": [
+       "F1-p-1",
+       "N14"
+      ],
+      "url": "https://x.com/surfcoderepeat"
+     },
+     {
+      "label": "Contributors",
+      "value": "Taylor McKnight, site and explorer redesign",
+      "lines": [
+       "F1-p-2",
+       "F1-p-2-redesign",
+       "N21"
+      ],
+      "url": "https://taylor.fyi/"
+     },
+     {
+      "label": "Official accounts",
+      "value": "Identity-md on GitHub",
+      "lines": [
+       "DesktopSource",
+       "F2-p-5"
+      ],
+      "values": [
+       {
+        "name": "Identity-md on GitHub",
+        "url": "https://github.com/Identity-md"
+       }
+      ]
+     },
+     {
+      "label": "Launched",
+      "value": "September 20, 2026",
+      "lines": [
+       "N22"
+      ]
+     }
+    ],
+    "related": [
+     {
+      "name": "Fren Pet",
+      "id": "8453:0xff0c532fdb8cd566ae169c1cb157ff2bdc83e105",
+      "relation": "Original Base token listed for the IMD bridge",
+      "lines": [
+       "F3-fren-pet-address",
+       "F3-bridge-asset",
+       "BridgeFlow"
+      ]
+     },
+     {
+      "name": "LayerZero",
+      "id": "layerzero.network",
+      "relation": "Carries bridged tokens and burn batches",
+      "lines": [
+       "F2-h-bridge",
+       "PoolBurnBridge"
+      ]
+     },
+     {
+      "name": "Uniswap v4",
+      "id": "1:0x000000000004444c5dc75cb358380d2e3de08a90",
+      "relation": "Trading infrastructure for POOL4 and launches",
+      "lines": [
+       "F4-L27",
+       "PoolManager"
+      ]
+     },
+     {
+      "name": "ERC-8004 Reputation Registry",
+      "id": "1:0x8004baa17c55a88189ae136b182e5fda19de9b63",
+      "relation": "Records agent feedback",
+      "lines": [
+       "WorkReceipt"
+      ]
+     },
+     {
+      "name": "imdUSD",
+      "id": "1:0x61aaf8a992a3143e2b0c9cb0030b9fe702854a25",
+      "relation": "Optional pairing for Ethereum token launches",
+      "lines": [
+       "N15",
+       "N16",
+       "USDOrigin"
+      ]
+     }
+    ],
+    "lines": []
+   },
+   "ranked": [
+    {
+     "address": "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x0000ec93127baa929e58e97dd0095a2bfb38ec1d",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xa43e6f75ee006411f79ac1c84120606c2330de82",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x1397434cd35e8a9c8ac312a61d3a285eb31dea56",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xce0e6a670aa75e161d02aca3c7f00b94ca428ccb",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x12c63b581d07093f6126bc02263c58f7eadaa96f",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xa47fcb220ddd1cddda865f89029bec1b9eca3bf1",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xff03410d0fe5fa8f7f59f743de35e333d9857120",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x7c9d5ee697bff5ac4f10e2e54d3f40c44e48fe23",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x784ff9a3ac5d88a30bfff6f7f2a270161fbe6000",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x12c9e1007262afac205567457f5826a9416a3863",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xb6d0a187b050fa5bb0b87033a203f37becf4a775",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xde152afb7db5373f34876e1499fbd893a82dd336",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x5f7bb59365ce557c26dbcaa4ee9d39a4b95b7127",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0xa43e6f75ee006411f79ac1c84120606c2330de82",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0x1397434cd35e8a9c8ac312a61d3a285eb31dea56",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0xce0e6a670aa75e161d02aca3c7f00b94ca428ccb",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0xa25b02a1e93903b790e6aaf7da1b8b8d50294645",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0x842e9bcff1e68566d45697a84f5b38c1c7766edb",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0x9c9d2fcb75c2c132c0ac0c42df3819a42347265e",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0xf52bbe066b7ad2d28c2195d066ea08dcbca88406",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0x19bec7c2e1b2aadaf67b259744751a9960d66000",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0xf053525ffe8f8d8973339e36ee8d455690fb73cb",
+     "chainId": 4663,
+     "tier": 3
+    },
+    {
+     "address": "0x56bcf2a5f47710649a4091219ef0b56e2d1b58bf",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0x44a1cd38474fb1748400e7deb5f8d786cce3f89a",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0xa0443799c320e16c80801c9c1911f3571260287f",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0xa43e6f75ee006411f79ac1c84120606c2330de82",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0x1397434cd35e8a9c8ac312a61d3a285eb31dea56",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0xce0e6a670aa75e161d02aca3c7f00b94ca428ccb",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0x315752fee5cbcaa00333e0d4d91e0cd69429e908",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0x78ba7bdcc66715d0f6e425b4700207a0b75ad5a4",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0x84cf2bc1dc2af577dba5d62e26f90d041ca38f7a",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0x90aaedd35073e2a31861276e58081251a601aad9",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0xa0602cb30558d5dd17415b6268a4feea3a0ca000",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0x428ff16d1bb25d6674463881ed6a62bd09e30584",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0x7621630cb63a73a194f45a3e6801b8c6a7ec2f92",
+     "chainId": 11155111,
+     "tier": 3
+    },
+    {
+     "address": "0xff0c532fdb8cd566ae169c1cb157ff2bdc83e105",
+     "chainId": 8453,
+     "tier": 3
+    },
+    {
+     "address": "0xab152db8aac047b6757ffcf495ffe88d7712690a",
+     "chainId": 8453,
+     "tier": 3
+    },
+    {
+     "address": "0x9efa934d9fad4ae28c998a40195646b965a97247",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xc6c965bd164c483e87d0b550671798e9a3602840",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x9046739e1535b40efbe6ab3f45d0024b690eca30",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xe6d3de6daeaf327fca42745f1998fcd989e00884",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0xe29386719c155b6847ad5a4e97c6674f10ffc750",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x73d1ae084f04f793a5bbd6b623d74400c9fc3f42",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x51768f5da32ba2008304cc81674da51acb802888",
+     "chainId": 1,
+     "tier": 3
+    },
+    {
+     "address": "0x047f606fd5b2baa5f5c6c4ab8958e45cb6b054b7",
+     "chainId": 1,
+     "tier": 2
+    },
+    {
+     "address": "0xf29100983e058b709f3d539b0c765937b804ac15",
+     "chainId": 1,
+     "tier": 1
+    },
+    {
+     "address": "0x00000000000c2e074ec69a0dfb2997ba6c7d2e1e",
+     "chainId": 1,
+     "tier": 1
+    }
+   ]
+  }
+ ]
+}

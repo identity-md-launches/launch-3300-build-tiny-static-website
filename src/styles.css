@@ -99,6 +99,12 @@ a { color: inherit; text-underline-offset: 0.15em; text-decoration-thickness: fr
 .top-row { max-width: var(--page-max); margin: 0 auto; padding: var(--space-2) var(--page-pad); display: flex; align-items: center; gap: var(--space-4); row-gap: var(--space-1); min-width: 0; }
 /* Only on another chain (Switch beside the chip) may the wallet controls take a second line. */
 .top-row:has(.acct-wrap) { flex-wrap: wrap; }
+/* Under 360 px the name, How it works and Connect do not fit on one row: the name and Connect keep the first row and
+   How it works takes the second, so nothing scrolls sideways. */
+@media (max-width: 22.49rem) {
+  .top-row { flex-wrap: wrap; column-gap: var(--space-2); }
+  .top-row > .top-link { order: 3; flex: 1 1 100%; }
+}
 .brand { font-weight: 600; text-decoration: none; margin-inline-end: auto; min-height: 44px; display: inline-flex; align-items: center; }
 /* The tabs wrap to a second row when the five labels cannot fit (320 wide), so no label is ever clipped. */
 .tabs { max-width: 60rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 0 var(--space-1); }
@@ -291,12 +297,14 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .related { display: grid; gap: var(--space-2); min-width: 0; }
 .related h2 { font-size: var(--text-heading); }
 .related-list { display: grid; gap: 0; border-top: 1px solid var(--color-border); }
-.rel-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); row-gap: 0; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); min-width: 0; }
-.rel-name { font-weight: 600; overflow-wrap: anywhere; }
+/* One entry per line: the name, its relation in the same text flow, and the small Add link attached to the entry.
+   A long entry wraps by words like a sentence; nothing reserves a column, so a short entry stays on one line. */
+.rel-row { display: block; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); min-width: 0; overflow-wrap: anywhere; }
+.rel-name { font-weight: 600; }
 a.rel-name { color: var(--color-accent-solid); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
-.rel-what { flex: 1 1 16rem; min-width: 0; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.rel-what { margin-inline-start: var(--space-2); color: var(--color-text-secondary); }
 .rel-one + .rel-one::before { content: " · "; }
-.rel-add { margin-left: auto; white-space: nowrap; }
+.rel-add { margin-inline-start: var(--space-2); white-space: nowrap; color: var(--color-accent-solid); }
 .rel-name:focus-visible, .rel-add:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* Record: closed sections with counts, the search and the settled filter. */
@@ -815,7 +823,10 @@ body.has-tray main { padding-bottom: 9rem; }
 .tok-purpose { color: var(--color-text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .tok-addr { display: inline-flex; align-items: center; gap: 0; white-space: nowrap; }
 .tok-chain { display: inline-block; font-size: var(--text-small); line-height: 1.5; color: var(--color-text-secondary); background: var(--color-bg-hover); border-radius: 999px; padding: 0 var(--space-2); white-space: nowrap; }
-.tok-chain-row { margin: var(--space-1) 0 0; }
+/* Every address in Key facts: shortened and linked, its copy icon, its chain tag; kept together on one line. */
+.addr { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; vertical-align: middle; }
+.addr-link { color: var(--color-accent-solid); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.addr-link:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* A line opened by its permanent address. */
 .row.is-addressed, tr.is-addressed > * { background: var(--color-accent-subtle); }
@@ -831,11 +842,29 @@ body.has-tray main { padding-bottom: 9rem; }
 .doc-sec { margin-top: var(--space-6); }
 .doc-sec h2 { font-size: var(--text-title); margin: 0 0 var(--space-2); }
 .doc-sec p { margin: 0 0 var(--space-2); }
+.doc-intro { display: grid; gap: var(--space-3); }
+.doc-intro .lead { margin: 0; }
+.doc-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; }
+/* One fact, three kinds: three cards, side by side from 44rem, stacked on phones. */
 .doc-kinds { list-style: none; padding: 0; margin: 0 0 var(--space-2); display: grid; gap: var(--space-2); }
-.doc-kinds .kind { margin-inline-end: var(--space-2); }
-.doc-flow { list-style: none; padding: 0; margin: 0 0 var(--space-3); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.doc-flow li { border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); background: var(--color-bg); }
-.doc-flow li + li::before { content: "→"; color: var(--color-text-secondary); margin-inline-end: var(--space-2); }
+@media (min-width: 44rem) { .doc-kinds { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.doc-kind { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-3); background: var(--color-bg); min-width: 0; }
+.doc-kind p { margin: 0 0 var(--space-1); }
+.doc-kind-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-weight: 600; }
+/* How it is built: five boxes joined by arrows, in one row from 44rem; on phones one column with arrows pointing down. */
+.doc-flow { list-style: none; padding: 0; margin: 0 0 var(--space-3); display: grid; gap: 0; }
+.doc-step { display: grid; justify-items: center; min-width: 0; }
+.doc-box { display: block; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); background: var(--color-bg-subtle, var(--color-bg)); text-align: center; overflow-wrap: break-word; }
+.doc-arrow { display: block; width: 2px; height: var(--space-4); background: var(--color-text-secondary); position: relative; margin-block: 2px 6px; }
+.doc-arrow::after { content: ""; position: absolute; left: -4px; bottom: -6px; border: 5px solid transparent; border-top-color: var(--color-text-secondary); border-bottom: 0; }
+@media (min-width: 44rem) {
+  .doc-flow { grid-template-columns: minmax(0, 1fr) repeat(4, auto minmax(0, 1fr)); align-items: stretch; }
+  .doc-step { display: contents; }
+  .doc-box { display: flex; align-items: center; justify-content: center; font-size: var(--text-small); padding: var(--space-2); }
+  .doc-arrow { align-self: center; width: var(--space-4); height: 2px; margin: 0 6px 0 2px; }
+  .doc-arrow::after { left: auto; right: -6px; bottom: auto; top: -4px; border: 5px solid transparent; border-left-color: var(--color-text-secondary); border-right: 0; }
+}
+.doc-steps { margin: 0 0 var(--space-2); padding-inline-start: var(--space-6); display: grid; gap: var(--space-2); }
 .doc-files { columns: 2 220px; }
 .doc-facts dd { min-width: 0; }
 

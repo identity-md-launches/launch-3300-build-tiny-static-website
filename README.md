@@ -721,8 +721,8 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreif3fi6iqngr24ornlfmzaocbhz5bt7vj2uqiqzr574aafuwyabwgu?filename=rebuild-bb2a3c8834d1.txt`,
-  sha256 `bb2a3c8834d1d71d16acacc81c209f3d0cff54ea9044331eff8001696c003635`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreifwje56pejsh46gz3sgfiuw7nxnnwshiais6emv6xwi3p6m5papzy?filename=rebuild-b6493be79132.txt`,
+  sha256 `b6493be791323f3c6cee462a296fb6ed6da4740112f1195f5ec8dbfccebc0fce`
 - changes: `https://ipfs.filebase.io/ipfs/bafkreiglwez6i6okxkupjk2ayc6drnxbrfso4c5pa53pmv77hg4fqxu6gy?filename=changes-cbb133e479ca.txt`,
   sha256 `cbb133e479cabaa8f4ab40c0bc38b6e18964ee0baf0776f657ff39b8585e9e36`
 <!-- instructions:end -->

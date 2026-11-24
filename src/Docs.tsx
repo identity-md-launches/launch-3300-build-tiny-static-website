@@ -4,6 +4,7 @@ import { ETHERSCAN, IMD, INTAKE } from "./config";
 import { INSTRUCTIONS } from "./instructions";
 import { PUBLISHED_INSTRUCTIONS } from "./counts";
 import { KindMark } from "./Record";
+import { subjectHref } from "./route";
 import type { Quote } from "./Suggest";
 
 export const DOCS_SECTIONS = [
@@ -16,6 +17,7 @@ export const DOCS_SECTIONS = [
   "Cost",
   "How it is built",
   "Citing a line",
+  "Reading the record from your own code",
   "Which jobs count",
   "Limits",
   "For agents",
@@ -44,9 +46,18 @@ export function Docs({ quote }: { quote: Quote }) {
   }, []);
   return (
     <article className="tab docs" aria-labelledby="docs-title">
-      <h1 id="docs-title" className="tab-title" tabIndex={-1}>
-        How it works
-      </h1>
+      <header className="doc-intro">
+        <h1 id="docs-title" tabIndex={-1}>
+          What a project says, next to what can be proven.
+        </h1>
+        <p className="lead">
+          Every page here is built from sources: the project's own site, its contracts, and what others have written. Each line is marked by who said it and whether anyone can check it. The research is done by the IMD swarm. Anyone can add a source or dispute a line.
+        </p>
+        <p className="doc-actions">
+          <a className="btn btn-primary" href="#/">Look up a project</a>
+          <a className="btn" href={subjectHref("imdusd.com")}>See an example page</a>
+        </p>
+      </header>
       <Section title="What this is">
         <p>A public record of what projects say, next to what can be proven. Anyone can add a project or a source. The IMD swarm does the research and the checking.</p>
       </Section>
@@ -54,15 +65,26 @@ export function Docs({ quote }: { quote: Quote }) {
         <p>What a project says is spread over sites, posts and contracts. It is hard to tell what has been checked from what has only been said.</p>
       </Section>
       <Section title="Three kinds of line">
-        <ul className="doc-kinds">
-          <li>
-            <KindMark kind="proof" /> Anyone can re-run it from a contract or public record. The line shows the steps.
+        <p>One fact, ZORA's total supply, shown the three ways a line can carry it:</p>
+        <ul className="doc-kinds" aria-label="One fact, three kinds of line">
+          <li className="doc-kind">
+            <p className="doc-kind-head">
+              <KindMark kind="claim" /> Someone else says it
+            </p>
+            <p>A news site reports that ZORA has a supply of ten billion.</p>
           </li>
-          <li>
-            <KindMark kind="statement" /> Said by the project through a channel tied to it: its own domain, an account linked from its own site, or an address verified on chain.
+          <li className="doc-kind">
+            <p className="doc-kind-head">
+              <KindMark kind="statement" /> The project says it
+            </p>
+            <p>zora.co states a total supply of 10,000,000,000 ZORA.</p>
           </li>
-          <li>
-            <KindMark kind="claim" /> Said by anyone else.
+          <li className="doc-kind">
+            <p className="doc-kind-head">
+              <KindMark kind="proof" /> Anyone can check it
+            </p>
+            <p>The token contract on Base reports a total supply of ten billion.</p>
+            <p className="small">To run it again: on Base, call <span className="mono">totalSupply()</span> on the ZORA token contract and divide by 10<sup>18</sup>. The line gives the contract, the block and a public RPC.</p>
           </li>
         </ul>
         <p>Who said a line never changes. What changes is whether another line confirms, contradicts or supersedes it.</p>
@@ -87,14 +109,13 @@ export function Docs({ quote }: { quote: Quote }) {
         </p>
       </Section>
       <Section title="How it is built">
-        <ol className="doc-flow" aria-label="From your wallet to this page">
-          <li>Your wallet</li>
-          <li>
-            IMD Intake contract <span className="small">(a public request)</span>
-          </li>
-          <li>A swarm job</li>
-          <li>Result files on IMD's API</li>
-          <li>This site, which reads the chain and the API in your browser</li>
+        <ol className="doc-flow" aria-label="From your wallet to this page, in five steps">
+          {["Your wallet", "IMD Intake contract", "A swarm job", "Result files on IMD's API", "This site, in your browser"].map((step, i) => (
+            <li key={step} className="doc-step">
+              {i > 0 && <span className="doc-arrow" aria-hidden="true" />}
+              <span className="doc-box">{step}</span>
+            </li>
+          ))}
         </ol>
         <p>There is no server and no contract of our own. Job instructions are fixed files on IPFS named by their hash, and each page shows which file built it. So anyone can rebuild the same pages from the same data, and everything you submit is public for good, next to your wallet.</p>
         <dl className="facts doc-facts">
@@ -121,6 +142,25 @@ export function Docs({ quote }: { quote: Quote }) {
       <Section title="Citing a line">
         <p>
           Every line has a permanent address: the explorer job that first wrote it, plus its line id, like <span className="mono">job-id:L3</span>. Open a line on the Record and press <strong>Copy citation</strong> to copy the explorer link and the line id. The address never changes, even when a later page carries the line over or merges it with another.
+        </p>
+      </Section>
+      <Section title="Reading the record from your own code">
+        <ol className="doc-steps">
+          <li>
+            Find a subject's jobs in the Intake's <span className="mono">Requested</span> logs on Ethereum: the request body's tag is <span className="mono">{'{"app":"rec-test-1","kind":"add","subject":"example.com"}'}</span>. Keep only jobs whose objective matches the published template (see Which jobs count).
+          </li>
+          <li>
+            The matching <span className="mono">Completed</span> log gives the result hash. Fetch the result file from <span className="mono">https://api.imd.fun/artifacts/&lt;hash&gt;</span>; the newest counted page job is the page.
+          </li>
+          <li>
+            Its main fields: <span className="mono">lines</span> (each with id, kind, text, by, sources, quote and rerun), <span className="mono">infobox</span> (the key facts, each naming the line ids it rests on), <span className="mono">summary</span> (sentences with their line ids) and <span className="mono">sources</span> (what was read, and when).
+          </li>
+          <li>
+            Cite a line by the explorer job that first wrote it and its line id, such as <span className="mono">job-id:L3</span>.
+          </li>
+        </ol>
+        <p>
+          <a href="./agents.md">agents.md</a> has the exact routes, bodies and field lists.
         </p>
       </Section>
       <Section title="Which jobs count">

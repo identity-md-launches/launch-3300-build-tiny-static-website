@@ -59,12 +59,14 @@ const edit = put({
   lines: [{ id: "L1", source: "V1", section: "money", text: "Seats cost 1 ETH.", kind: "claim", quote: "1 ETH" }],
 });
 const reqs = [
-  { n: 1, action: "job.open@job-1", body: researchBody(), file: ["page", page1], cb: 100 },
-  { n: 2, action: "job.open@job-1", body: sourceBody(["https://news.example/a"], [], "", IMD), file: ["lines", src1], cb: 101 },
-  { n: 6, action: "oracle.request@oracle-1", body: oracleBody(Q_P1, "panel"), file: null, cb: 102 },
-  { n: 3, action: "job.open@job-1", body: rebuildBody(prior, IMD), file: ["page", page2], cb: 103, logo: logoHash },
-  { n: 4, action: "job.open@job-1", body: sourceBody(["https://blog.example/b"], [], "", IMD), file: ["lines", src2], cb: 104 },
-  { n: 5, action: "job.open@job-1", body: editBody("x", prior, [], IMD), file: ["edit", edit], cb: 105 },
+  // The earlier results a rebuild names complete before it is sent (a result written later is not one of its earlier
+  // results); the sources, panel and change jobs after it are later results.
+  { n: 1, action: "job.open@job-1", body: researchBody(), file: ["page", page1], cb: 2 },
+  { n: 3, action: "job.open@job-1", body: sourceBody(["https://news.example/a"], [], "", IMD), file: ["lines", src1], cb: 4 },
+  { n: 6, action: "oracle.request@oracle-1", body: oracleBody(Q_P1, "panel"), file: null, cb: 7 },
+  { n: 10, action: "job.open@job-1", body: rebuildBody(prior, IMD), file: ["page", page2], cb: 103, logo: logoHash },
+  { n: 11, action: "job.open@job-1", body: sourceBody(["https://blog.example/b"], [], "", IMD), file: ["lines", src2], cb: 104 },
+  { n: 12, action: "job.open@job-1", body: editBody("x", prior, [], IMD), file: ["edit", edit], cb: 105 },
 ];
 const hx = (n: number) => toHex(n) as Hex;
 const oracleId = "11111111-2222-4333-8444-555555555555";

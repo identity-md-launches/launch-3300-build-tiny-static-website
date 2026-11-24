@@ -485,6 +485,8 @@ export interface SubjectSummary {
   main: string;
   /** Every contract the page lists with its chain id, so the home bar and Related find a subject by any of them. */
   contracts: KnownContract[];
+  /** The same addresses ranked by how they tie to the subject, for Related (rankedAddresses). */
+  ranked?: RankedAddress[];
   /** The page job's checked PNG logo as a data: URL, or null: a letter tile is shown instead. */
   logo: string | null;
   /** The logo file's SHA-256: the digest keeps it, and the logo itself is kept once under that hash. */
@@ -581,7 +583,7 @@ export function statusText(s: FirstPageStatus): string {
 export interface Digest {
   type: "digest";
   /** 4 since counts are grouped as proven, stated and claimed; older digests are read again. */
-  v: 5;
+  v: 6;
   id: string;
   /** The completed results it was taken from; a different list means newer results exist. */
   sig: string;
@@ -593,6 +595,7 @@ export interface Digest {
   hasPage: boolean;
   main: string;
   contracts: KnownContract[];
+  ranked?: RankedAddress[];
   /** Why there is no page, when the files said so (found: false). */
   status: FirstPageStatus | null;
   /** Completed results and panel answers not folded into the page shown, when it was taken. */
@@ -625,7 +628,7 @@ export function digestOf(id: string, list: Activity[]): Digest | null {
   const s = summaryOf(id, list, core);
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
-  return { type: "digest", v: 5, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
+  return { type: "digest", v: 6, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
 }
 
 /** Results and panel answers still to fold into the page shown: the number the out-of-date note gives. */
@@ -676,6 +679,46 @@ export function recordAddresses(page: Page | null): KnownContract[] {
   return out.filter((c) => { const k = `${c.chainId}:${c.address}`; if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
+/** How strongly a record ties an address to its subject: 3 its own contract, 2 a Key facts value, 1 a proof's checked contract. */
+export interface RankedAddress extends KnownContract {
+  tier: 1 | 2 | 3;
+}
+
+/** The contract a proof's re-run queries: after "cast call", a JSON "to", or eth_getLogs "address"/"on". */
+const CHECKED = /(?:cast call\s+|"to"\s*:\s*"|\baddress\s+|\bon\s+)(0x[0-9a-fA-F]{40})(?![0-9a-fA-F])/g;
+
+/**
+ * Every address a subject's record names, ranked for Related: the page's own contracts and main contract first, then
+ * Key facts addresses, then the contract a proof line runs its check against. Addresses a proof only mentions (an
+ * argument, a pool's other token) are left out: they name another project's contract, not this subject's.
+ */
+export function rankedAddresses(page: Page | null): RankedAddress[] {
+  if (!page) return [];
+  const best = new Map<string, RankedAddress>();
+  const put = (a: KnownContract, tier: 1 | 2 | 3) => {
+    const k = `${a.chainId}:${a.address}`;
+    const have = best.get(k);
+    if (!have || have.tier < tier) best.set(k, { ...a, tier });
+  };
+  const mainChain = page.contracts.find((c) => c.main || c.address.toLowerCase() === page.main.toLowerCase())?.chain;
+  const fallback = mainChain ? chainIdOf(mainChain) : page.contracts.length ? chainIdOf(page.contracts[0]!.chain) : null;
+  for (const c of page.contracts) if (/^0x[0-9a-fA-F]{40}$/.test(c.address)) put({ address: c.address.toLowerCase(), chainId: chainIdOf(c.chain) }, 3);
+  if (/^0x[0-9a-fA-F]{40}$/.test(page.main)) put({ address: page.main.toLowerCase(), chainId: fallback }, 3);
+  for (const r of page.infobox) {
+    for (const t of [r.value, ...r.values, ...(r.entries ?? []).map((e) => `${e.name} ${e.text ?? ""}`)]) for (const a of addressesIn(t, fallback)) put(a, 2);
+    for (const it of r.items ?? []) {
+      if (/^0x[0-9a-fA-F]{40}$/.test(it.address)) put({ address: it.address.toLowerCase(), chainId: (it.chain ? chainIdOf(it.chain) : null) ?? fallback }, 2);
+      for (const a of addressesIn(`${it.name} ${it.text}`, fallback)) put(a, 2);
+    }
+  }
+  for (const l of page.lines) {
+    if (l.kind !== "proof") continue;
+    const c = rerunChain(l.rerun) ?? fallback;
+    for (const m of l.rerun.matchAll(CHECKED)) put({ address: m[1]!.toLowerCase(), chainId: c }, 1);
+  }
+  return [...best.values()];
+}
+
 function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSummary {
   const doneTimes = list.filter((a) => a.state === "completed").map((a) => a.doneTime ?? a.time ?? 0);
   const anyTimes = list.map((a) => a.time ?? 0);
@@ -691,6 +734,7 @@ function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSu
     hasPage: !!core.page,
     main: core.page?.main ?? "",
     contracts: recordAddresses(core.page),
+    ranked: rankedAddresses(core.page),
     logo: core.latest?.logo ?? null,
     logoHash: core.latest?.logoHash ?? null,
     status: core.page ? null : firstPageStatus(list),
@@ -729,6 +773,7 @@ export function subjectSummaries(items: Activity[], digests: Map<string, Digest>
       hasPage: d.hasPage,
       main: d.main,
       contracts: d.contracts,
+      ranked: d.ranked ?? [],
       logo: d.logoHash ? logos.get(d.logoHash) ?? null : null,
       logoHash: d.logoHash,
       status: d.hasPage ? null : d.status && d.sig === resultSig(list) ? d.status : own.status,

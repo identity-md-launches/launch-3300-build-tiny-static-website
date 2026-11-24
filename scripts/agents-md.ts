@@ -7,7 +7,7 @@ import { writeFileSync } from "node:fs";
 import { INSTRUCTIONS } from "../src/instructions";
 import { MAX_OBJECTIVE } from "../src/bodies";
 import { describeSubject, refFromId, refFromInput } from "../src/subject";
-import { ACTIONS, API, IMD, INTAKE, INSTRUCTIONS_GATEWAY, TOPIC_COMPLETED, TOPIC_REQUESTED, APP_TAG } from "../src/config";
+import { ACTIONS, API, IMD, INTAKE, INSTRUCTIONS_GATEWAY, TOPIC_COMPLETED, TOPIC_REQUESTED, APP_TAG, LAUNCH_BLOCK } from "../src/config";
 import { CHANGES_TEMPLATE, CHANGE_MAX_LINKS, NOTE_MAX, READ_MAX_LINKS, changesBody, itemsText, lineTarget, noTarget, sentenceTarget, type Change } from "../src/changes";
 import { LEGACY_PRESETS, filedUnder, questionContract, questionPage, questionPost, templateBody, SOURCE_TEMPLATE, EDIT_TEMPLATE, REBUILD_TEMPLATE, EDIT_MAX_LINKS, EDIT_MAX_TEXT, editBody, encodeBody, oracleBody, priorText, questionP4, rebuildBody, sourceBody, SOURCE_MAX_LINKS, SOURCE_MAX_URL, SOURCE_MAX_OBJECTIVE } from "../src/bodies";
 
@@ -516,12 +516,35 @@ with its own serializer and compares the whole text. Then it checks the parts: t
 earlier result listed is the result file of a job that itself counts for the same subject; every channel is the
 subject's own domain (or a subdomain) or an account a counted page of the same subject lists (compared by host and
 path, so \`https://x.com/a\` and \`https://x.com/b\` are different channels). A job that fails is shown only in Activity,
-as "Not read: not sent through this record's instructions", with its explorer link; its result is never fetched,
+as "Not read: <the rule it failed>", with its explorer link; its result is never fetched,
 never becomes the page and adds no lines, patches, sources or counts. Jobs sent before instruction files existed count
 only when a later counted rebuild of the same subject lists their result among its earlier results.
 
 Build objectives with the current files below, exactly as the bodies in this file show; never edit the text around
 the filled-in parts.
+
+The reasons Activity gives, word for word after "Not read: ":
+
+- its objective differs from this record's template
+- its subject differs from its tag
+- earlier result F<n> is not from a job that counts
+- channel <url> is not listed by an earlier page
+- it names no instruction file and was sent after instruction files existed
+- it was sent before instruction files existed and no later counted page lists its result
+
+A result completed later than a request (a later block, or later in the same block) is never one of that request's
+earlier results.
+
+## Reading the record from your own code
+
+1. Find a subject's jobs in the Intake's \`Requested\` logs on Ethereum (Intake ${INTAKE}, from block ${LAUNCH_BLOCK}):
+   the body's tag is \`{"app":"${APP_TAG}","kind":"add","subject":"<domain>"}\`. Keep the jobs that count (above).
+2. The matching \`Completed\` log carries the result hash; the newest completed counted page job is the page. Fetch
+   its file from \`${API}/artifacts/<result hash>\`.
+3. Main fields of the result file: \`lines\` (id, section, kind, text, by, sources, quote, rerun, fact, from, links),
+   \`infobox\` (Key facts: label, value, url and the line ids each rests on), \`summary\` (sentences with their line
+   ids and paragraph) and \`sources\` (id, ref, type, read_at, could_open).
+4. Cite a line as \`<job id>:<line id>\` (below).
 
 ## Citing a line
 

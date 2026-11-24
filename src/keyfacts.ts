@@ -1,4 +1,5 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
+import { takeAddress } from "./addrDisplay";
 import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem } from "./page";
 import { chainIdOf, chainLabel, chainName, explorerAddressUrl } from "./subject";
 import { proofIdsOf, settleOf } from "./settle";
@@ -97,6 +98,9 @@ export function tokenOfItem(e: ValueItem): TokenItem {
   const s = shownItemOf(e);
   // A string entry ("UNI: governance, 0x… on Ethereum") is read as the older Tokens text was.
   if (!e.shaped) return tokensOf(e.text, "", [e.text])[0] ?? { symbol: "", purpose: e.text, address: "", chain: "", url: "" };
+  // A partly structured entry ("imdUSD", "Borrowing dollar; 0x… on Ethereum") keeps its address in the text.
+  const took = !s.address ? takeAddress(s.text) : null;
+  if (took) return { symbol: s.name, purpose: took.rest, address: took.address, chain: s.chain || took.chain, url: s.url && s.url.toLowerCase().includes(took.address.toLowerCase()) ? s.url : "" };
   return { symbol: s.name, purpose: s.text, address: s.address, chain: s.chain, url: s.explorer || s.url };
 }
 
@@ -132,18 +136,12 @@ void TICKER_START;
  */
 export function tokensOf(value: string, rowUrl = "", values: string[] = []): TokenItem[] {
   const items = (values.length ? values : tokenParts(value)).map((p) => {
-    const address = ADDR.exec(p)?.[0] ?? "";
-    let rest = p;
-    let chain = "";
-    if (address) {
-      const at = rest.indexOf(address);
-      const after = rest.slice(at + address.length);
-      const c = /^\s*\)?\s*(?:,\s*)?\(?\s*on\s+([A-Z][A-Za-z0-9 .\-]{0,30}?)\s*\)?\s*[.,]?\s*$/.exec(after);
-      if (c) {
-        chain = c[1]!.trim();
-        rest = rest.slice(0, at) + " ";
-      } else rest = rest.slice(0, at) + " " + after;
-    }
+    // The first address and the chain written after it ("0x… on Ethereum", "0x… Base"); other addresses stay in the
+    // purpose, where Key facts shows each with its own chain tag.
+    const took = takeAddress(p);
+    const address = took?.address ?? "";
+    const chain = took?.chain ?? "";
+    let rest = took ? took.rest : p;
     const sym = /^\s*\$?([A-Za-z0-9][A-Za-z0-9.\-]{0,11})(?=\s*(?:[:(\-–—,]|$|\s))/.exec(rest);
     // A ticker has two capitals in a row (IMD, sIMD, veCRV, USDC.e) or a $ before it; "Pays" or "Governance" is a word.
     const symbol = sym && (/[A-Z]{2,}/.test(sym[1]!) || /^\s*\$/.test(sym[0])) ? sym[1]! : "";

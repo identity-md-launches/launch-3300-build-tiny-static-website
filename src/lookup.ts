@@ -41,6 +41,8 @@ export interface KnownContract {
 export interface Findable {
   id: string;
   contracts?: KnownContract[];
+  /** Addresses ranked by how they tie to the subject (3 own contract, 2 Key facts, 1 a proof's checked contract). */
+  ranked?: (KnownContract & { tier: number })[];
   main?: string;
 }
 
@@ -224,4 +226,26 @@ export function mergeRepeats<R extends { line: Line; same?: R[] }>(sections: { s
     alias,
     merged,
   };
+}
+
+/**
+ * The subject a Related entry names by address, never `self`: a subject whose id is the contract (rank 4), else the
+ * one whose record ties the address closest (its own contract, then Key facts, then a proof's checked contract), on
+ * the same chain. Ties go to the subject id that sorts first, so Home's order never decides. A subject without a
+ * ranked index counts its listed contracts at rank 2.
+ */
+export function relatedSubject(q: Lookup, subjects: Findable[], self: string): string | null {
+  if (q.kind === "domain") return subjects.some((s) => s.id === q.domain && s.id !== self) ? q.domain : null;
+  if (q.kind !== "address") return null;
+  const a = q.address.toLowerCase();
+  const same = (c: KnownContract) => c.address === a && (q.chainId === null || c.chainId === null || c.chainId === q.chainId);
+  let best: { id: string; rank: number } | null = null;
+  for (const s of subjects) {
+    if (s.id === self) continue;
+    const m = /^(\d+):(0x[0-9a-f]{40})$/.exec(s.id);
+    let rank = m && m[2] === a && (q.chainId === null || Number(m[1]) === q.chainId) ? 4 : 0;
+    if (!rank) rank = s.ranked ? Math.max(0, ...s.ranked.filter(same).map((c) => c.tier)) : contractsOf(s).some(same) ? 2 : 0;
+    if (rank && (!best || rank > best.rank || (rank === best.rank && s.id < best.id))) best = { id: s.id, rank };
+  }
+  return best?.id ?? null;
 }
