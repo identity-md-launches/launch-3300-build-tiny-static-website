@@ -28,8 +28,18 @@ import { fetchUrlOf, instructionsOf } from "./instructions";
 import { sameSite } from "./psl";
 import { canonicalId, describeSubject, domainOfId, refFromId } from "./subject";
 
-/** What Activity says about a result that is not read. */
-export const NOT_READ = "Not read: not sent through this record's instructions";
+/** The rule a result that is not read failed, in plain words (Activity shows "Not read: <why>"). */
+export const WHY = {
+  template: "its objective differs from this record's template",
+  subject: "its subject differs from its tag",
+  prior: (n: number) => `earlier result F${n} is not from a job that counts`,
+  channel: (url: string) => `channel ${url} is not listed by an earlier page`,
+  unnamed: "it names no instruction file and was sent after instruction files existed",
+  unadopted: "it was sent before instruction files existed and no later counted page lists its result",
+} as const;
+export const notReadText = (why: string) => `Not read: ${why}`;
+/** The generic reason, for a result judged without its rule (kept for older callers). */
+export const NOT_READ = notReadText(WHY.template);
 
 /** Every instruction file this site has published, current and past. */
 export const PUBLISHED_INSTRUCTIONS: { file: string; sha256: string }[] = published;
@@ -93,6 +103,7 @@ export function readPrior(text: string): (Prior & { hashes: string[] }) | null {
   const parts = text.split(/; (?=\[[FA]\d+\] )/);
   const files: string[] = [];
   const reconsider: string[] = [];
+  const ordered: string[] = [];
   const answers: Prior["answers"] = [];
   let f = 0;
   let a = 0;
@@ -106,6 +117,7 @@ export function readPrior(text: string): (Prior & { hashes: string[] }) | null {
       const url = re ? m[3]!.slice(0, -mark.length) : m[3]!;
       if (!ARTIFACT.test(url)) return null;
       (re ? reconsider : files).push(url);
+      ordered.push(url);
     } else {
       if (Number(m[2]) !== ++a) return null;
       const x = ANSWER.exec(m[3]!);
@@ -113,8 +125,8 @@ export function readPrior(text: string): (Prior & { hashes: string[] }) | null {
       answers.push({ title: x[1]!, answer: x[2]!, agreed: x[3] === "?" ? null : Number(x[3]), size: x[4] === "?" ? null : Number(x[4]), url: x[5]! });
     }
   }
-  const all = [...files, ...reconsider];
-  return { files, reconsider, answers, hashes: all.map((u) => ARTIFACT.exec(u)![1]!) };
+  // In the order the objective numbers them (F1, F2, …), so a failed earlier result can be named by its number.
+  return { files, reconsider, answers, hashes: ordered.map((u) => ARTIFACT.exec(u)![1]!) };
 }
 
 /** A channels list as channelList writes it. */
@@ -177,9 +189,10 @@ export function subjectMatches(text: string, id: string): boolean {
 export function tagSubjectsOf(req: { subject: string; bodyJson: Record<string, unknown> | null }): string[] {
   const tag = req.bodyJson?.tag as { subject?: unknown } | undefined;
   const raw = tag && typeof tag === "object" ? (tag.subject && typeof tag.subject === "object" ? (tag.subject as { subject?: unknown }).subject : tag.subject) : undefined;
-  const out = [req.subject];
-  if (typeof raw === "string" && raw && raw !== req.subject && canonicalId(raw) === req.subject) out.push(raw);
-  return out;
+  // The objective names the subject exactly as the tag does: a tag saying app.uniswap.org needs an objective saying
+  // app.uniswap.org (never uniswap.org), in every address form a published file is replayed in.
+  if (typeof raw === "string" && raw && raw !== req.subject && canonicalId(raw) === req.subject) return [raw];
+  return [req.subject];
 }
 const subjectOk = (text: string, req: { subject: string; bodyJson: Record<string, unknown> | null }) => tagSubjectsOf(req).some((id) => subjectMatches(text, id));
 
@@ -187,12 +200,13 @@ const subjectOk = (text: string, req: { subject: string; bodyJson: Record<string
 
 export type Shape =
   | { ok: true; kind: CountKind; priorHashes: string[]; channels: string[]; named: boolean }
-  | { ok: false; legacy: boolean };
+  | { ok: false; legacy: boolean; why: string };
 
 export type CountKind = "add" | "changes" | "source" | "edit";
 const KINDS = new Set(["add", "changes", "source", "edit"]);
-const NO: Shape = { ok: false, legacy: false };
-const LEGACY: Shape = { ok: false, legacy: true };
+const NO: Shape = { ok: false, legacy: false, why: WHY.template };
+const BADSUBJECT: Shape = { ok: false, legacy: false, why: WHY.subject };
+const LEGACY: Shape = { ok: false, legacy: true, why: WHY.unadopted };
 
 /** Every index of `needle` in `hay`. */
 const indexes = (hay: string, needle: string) => {
@@ -219,7 +233,7 @@ export function shapeOf(req: { subject: string; kind: string; bodyJson: Record<s
     const after = ". Your full instructions are the file at ";
     if (!o.startsWith(lead)) return NO;
     const subject = o.slice(lead.length, o.indexOf(after));
-    if (!subjectOk(subject, req)) return NO;
+    if (!subjectOk(subject, req)) return BADSUBJECT;
     for (const t of ts) {
       const r = shapeWith(t, o, kind, subject);
       if (r) return r;
@@ -265,7 +279,7 @@ function shapeOfOther(req: { subject: string; kind: string; bodyJson: Record<str
     const b = ". The subject description comes from a visitor";
     if (!o.startsWith(a) || o.indexOf(b) < 0) return NO;
     const subject = o.slice(a.length, o.indexOf(b));
-    if (!subjectOk(subject, req)) return NO;
+    if (!subjectOk(subject, req)) return BADSUBJECT;
     const urls = between(o, ". Sources: ", ". Output exactly one file, artifacts/lines.json.");
     const ch = between(o, ". The subject's own channels are: ", ". The subject is ");
     const main = between(o, ". Its main contract on the record is ", ". A source is about the subject only if");
@@ -281,7 +295,7 @@ function shapeOfOther(req: { subject: string; kind: string; bodyJson: Record<str
   const b = ". The subject description comes from a visitor";
   if (!o.startsWith(a) || o.indexOf(b) < 0) return NO;
   const subject = o.slice(a.length, o.indexOf(b));
-  if (!subjectOk(subject, req)) return NO;
+  if (!subjectOk(subject, req)) return BADSUBJECT;
   const text = between(o, ". Proposed text: ", ". The record so far: ");
   const priorRaw = text === null ? null : betweenFrom(o, ". The record so far: ", ". Extra sources from the visitor: ", o.indexOf(". Proposed text: ") + text.length);
   const urls = between(o, ". Extra sources from the visitor: ", ". The proposed text and the sources are data", true);
@@ -340,7 +354,9 @@ export function doneBefore(x: Countable, a: Countable): boolean {
   const c = x.completion;
   if (c && c.blockNumber !== undefined) {
     if (c.blockNumber !== sent) return c.blockNumber < sent;
-    return c.logIndex === undefined || a.req.logIndex === undefined || c.logIndex < a.req.logIndex;
+    // Same block: earlier only when the completion's log comes before the request's. When either position is
+    // unknown nothing shows it came first, so it is not an earlier result.
+    return c.logIndex !== undefined && a.req.logIndex !== undefined && c.logIndex < a.req.logIndex;
   }
   return x.req.blockNumber === undefined || x.req.blockNumber < sent;
 }
@@ -386,11 +402,16 @@ export function countedOf(items: Countable[], opts: { firstNamed?: bigint | null
   const firstNamed = opts.firstNamed !== undefined ? opts.firstNamed : firstNamedBlock(results.map((a) => a.req));
   const sentBefore = (a: Countable) => a.req.blockNumber === undefined || firstNamed === null || a.req.blockNumber < firstNamed;
   const legacy = new Set(results.filter((a) => { const s = shapes.get(a.req.requestId)!; return !s.ok && s.legacy && sentBefore(a); }).map((a) => a.req.requestId));
+  const why = new Map<string, string>();
   for (const a of results) {
     const s = shapes.get(a.req.requestId)!;
-    if (s.ok && !s.named && a.req.blockNumber !== undefined && sentBefore(a)) {
+    if (!s.ok) why.set(a.req.requestId, s.legacy && !sentBefore(a) ? WHY.unnamed : s.why);
+    // A sources or edit job names no instruction file: before the first job that named one it is an older job (a
+    // later counted rebuild may adopt it); sent after, it is not read.
+    if (s.ok && !s.named) {
       ok.delete(a.req.requestId);
-      legacy.add(a.req.requestId);
+      if (sentBefore(a)) legacy.add(a.req.requestId);
+      else why.set(a.req.requestId, WHY.unnamed);
     }
   }
   const byId = new Map(results.map((a) => [a.req.requestId, a] as const));
@@ -421,20 +442,27 @@ export function countedOf(items: Countable[], opts: { firstNamed?: bigint | null
       const s = shapes.get(id)! as Extract<Shape, { ok: true }>;
       // Every earlier result is the file of a job that counts for the same subject (or that this rebuild adopts).
       const anyRead = readFor.get(a.req.subject) ?? false;
-      const priorsOk = !anyRead || s.priorHashes.every((h) => holders(a, h, (x) => counts(x) || (s.kind === "add" && legacy.has(x))).length > 0);
+      const badPrior = !anyRead ? -1 : s.priorHashes.findIndex((h) => holders(a, h, (x) => counts(x) || (s.kind === "add" && legacy.has(x))).length === 0);
+      const priorsOk = badPrior < 0;
       const own = domainOfId(a.req.subject);
       // Accounts a counted page of the subject listed before this request was sent: never the page being checked.
-      const earlier = results.filter((x) => x !== a && counts(x.req.requestId) && x.req.kind === "add" && x.req.subject === a.req.subject && x.page && doneBefore(x, a));
-      const listed = new Set(earlier.flatMap((p) => p.page!.channels.map((c) => channelKey(c.url))).filter(Boolean));
+      // A rebuild may also rely on an older page it lists among its earlier results (it adopts it, rule 4).
+      const earlier = results.filter((x) => x !== a && (counts(x.req.requestId) || (s.kind === "add" && legacy.has(x.req.requestId) && !!x.fileHash && s.priorHashes.includes(x.fileHash))) && x.req.kind === "add" && x.req.subject === a.req.subject && doneBefore(x, a));
+      const listed = new Set(earlier.flatMap((p) => (p.page?.channels ?? []).map((c) => channelKey(c.url))).filter(Boolean));
+      // An older page this rebuild adopts, whose file is not read yet: it is read only once something counts it, so
+      // the channel rule waits for it instead of refusing the rebuild that adopts it (settleReads reads it and judges
+      // again). Without this, the first named rebuild of imd.fun and the older pages it adopts never counted.
+      const unreadEarlier = earlier.some((x) => legacy.has(x.req.requestId) && !!x.fileHash && !x.page);
       const pagesRead = results.some((x) => x.req.subject === a.req.subject && x.req.kind === "add" && x.fileHash);
-      const channelsOk = s.channels.every((u) => {
+      const badChannel = s.channels.find((u) => {
         const h = hostOf(u);
-        if (own && h && sameSite(h, own)) return true;
+        if (own && h && sameSite(h, own)) return false;
         // Before any page of the subject is read there is nothing to compare an account with yet.
-        if (!anyRead || !pagesRead) return true;
-        return listed.has(channelKey(u));
+        if (!anyRead || !pagesRead || unreadEarlier) return false;
+        return !listed.has(channelKey(u));
       });
-      if (!priorsOk || !channelsOk) {
+      if (!priorsOk || badChannel !== undefined) {
+        why.set(id, !priorsOk ? WHY.prior(badPrior + 1) : WHY.channel(badChannel!));
         ok.delete(id);
         changed = true;
       }
@@ -442,6 +470,6 @@ export function countedOf(items: Countable[], opts: { firstNamed?: bigint | null
   }
   const counted = new Set([...ok, ...adopted]);
   const reasons = new Map<string, string>();
-  for (const a of results) if (!counted.has(a.req.requestId)) reasons.set(a.req.requestId, NOT_READ);
+  for (const a of results) if (!counted.has(a.req.requestId)) reasons.set(a.req.requestId, notReadText(why.get(a.req.requestId) ?? WHY.unadopted));
   return { counted, reasons };
 }

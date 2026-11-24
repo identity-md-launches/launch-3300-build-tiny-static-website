@@ -1,6 +1,7 @@
 /** Turns untrusted page.json and lines.json into plain strings. Nothing here is ever rendered as HTML. */
 import { countLines, type Counts } from "./settle";
 import { registrableDomain, sameSite } from "./psl";
+import { chainIdOf } from "./subject";
 
 export const SECTIONS = ["what_it_does", "how_it_works", "money", "people", "on_chain", "history"] as const;
 export const SECTION_TITLES: Record<string, string> = {
@@ -316,6 +317,14 @@ export function relatedId(v: string): string {
   const m = /^(\d+)\s*:\s*(0x[0-9a-fA-F]{40})$/.exec(s);
   if (m) return `${m[1]}:${m[2]!.toLowerCase()}`;
   if (/^0x[0-9a-fA-F]{40}$/.test(s)) return s.toLowerCase();
+  // "Ethereum (chain 1): 0x…", "Base: 0x…", "eip155:8453:0x…": the chain named before the address.
+  const named = /^(.{1,60}?)[\s:]+(0x[0-9a-fA-F]{40})$/.exec(s);
+  if (named) {
+    const pre = named[1]!.replace(/^eip155\s*:\s*/i, "");
+    const id = /chain(?:\s*id)?\s*(\d{1,12})/i.exec(pre)?.[1] ?? (/^\d{1,12}$/.test(pre.trim()) ? pre.trim() : null);
+    const chain = id !== null ? Number(id) : chainIdOf(pre.replace(/\(.*\)/, "").replace(/:$/, ""));
+    return chain !== null ? `${chain}:${named[2]!.toLowerCase()}` : named[2]!.toLowerCase();
+  }
   const host = hostOf(s).toLowerCase();
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : "";
 }

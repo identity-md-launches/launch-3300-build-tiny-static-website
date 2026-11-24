@@ -26,7 +26,7 @@ import {
   type ChannelStatus,
   isFactRow, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
 import { readDate } from "./dates";
-import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, isInstructionsUnavailable, statusText, type FirstPageStatus, type RecordModel } from "./model";
+import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, isInstructionsUnavailable, statusText, unreadableText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { OutdatedNote, ReaderNote, StillReading } from "./Home";
 import { AddButtons, ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest } from "./Suggest";
@@ -719,50 +719,89 @@ function PanelAnswers({ m }: { m: RecordModel }) {
   );
 }
 
+/** One Related card: a subject on the site (or one entry not on it) with every relation the page gives it. */
+export interface RelatedCard {
+  key: string;
+  name: string;
+  /** The subject id on this site, or null when it is not on the site yet. */
+  found: string | null;
+  /** What "Add this project" fills in: a domain, chain:0x…, or "" (the empty field). */
+  addable: string;
+  relations: { name: string; relation: string }[];
+}
+
 /**
- * Related projects at the bottom of Overview, as a row of chips: the project's name with its relation in small text
- * under it. A chip links to that project's page when a subject with that domain or contract exists on the site;
- * otherwise a click offers "Add this project", which opens the home bar filled in.
+ * Related entries grouped by the subject they resolve to: an entry matches a subject by its id (domain), its main
+ * contract, or any address in that subject's record on the same chain (Key facts and proof lines, model.ts
+ * recordAddresses). Entries that resolve to the same subject become one card listing each relation; an entry that
+ * resolves to the page's own subject is left out. The card is named by the entry given by domain, else the first.
+ */
+export function relatedCards(related: { name: string; id: string; relation: string }[], subjects: Findable[], self: string): RelatedCard[] {
+  const cards: RelatedCard[] = [];
+  const by = new Map<string, RelatedCard>();
+  for (const [i, r] of related.entries()) {
+    const q = parseLookup(r.id);
+    const found = q.kind === "domain" || q.kind === "address" ? findSubject(q, subjects) : null;
+    if (found === self) continue;
+    const addable = q.kind === "domain" || (q.kind === "address" && q.chainId !== null) ? r.id : q.kind === "address" ? q.address : "";
+    const rel = { name: r.name || r.id, relation: r.relation || "related" };
+    const key = found ?? `entry-${i}`;
+    const have = by.get(key);
+    if (have) {
+      have.relations.push(rel);
+      if (q.kind === "domain" && r.name) have.name = r.name;
+      continue;
+    }
+    const card: RelatedCard = { key, name: r.name || r.id || found || "Unnamed project", found, addable, relations: [rel] };
+    by.set(key, card);
+    cards.push(card);
+  }
+  return cards;
+}
+
+const RELATED_SHOWN = 6;
+
+/**
+ * Related projects at the bottom of Overview as a compact list: name and relation on one line, at most six, then
+ * "Show all N". A project on the site links to its page; one not on it carries a small "Add this project" link.
  */
 function Related({ m, subjects }: { m: RecordModel; subjects: Findable[] }) {
-  const related = m.page?.related ?? [];
-  const [offer, setOffer] = useState<number | null>(null);
-  if (!related.length) return null;
+  const [all, setAll] = useState(false);
+  const cards = relatedCards(m.page?.related ?? [], subjects, m.subject.id);
+  if (!cards.length) return null;
+  const shown = all ? cards : cards.slice(0, RELATED_SHOWN);
   return (
     <section className="related" aria-labelledby="related-title">
       <h2 id="related-title">Related</h2>
-      <ul className="plain related-chips">
-        {related.map((r, i) => {
-          const q = parseLookup(r.id);
-          const found = q.kind === "domain" || q.kind === "address" ? findSubject(q, subjects.filter((s) => s.id !== m.subject.id)) : null;
-          const addable = q.kind === "domain" || (q.kind === "address" && q.chainId !== null) ? r.id : q.kind === "address" ? q.address : "";
-          const body = (
-            <>
-              <span className="rel-name">{r.name || r.id}</span>
-              <span className="rel-what">{r.relation || "related"}</span>
-            </>
-          );
-          return (
-            <li key={i} className="rel-item">
-              {found ? (
-                <a className="rel-chip" href={subjectHref(found)}>
-                  {body}
-                </a>
-              ) : (
-                <button type="button" className="rel-chip" aria-expanded={offer === i} onClick={() => setOffer(offer === i ? null : i)}>
-                  {body}
-                </button>
-              )}
-              {/* An identifier with no usable domain or contract (an older "eip155:1") opens the empty lookup field. */}
-              {offer === i && !found && (
-                <a className="btn btn-small rel-add" href={addHref(addable)} aria-label={addable ? undefined : `Add this project: enter the domain or contract of ${r.name || r.id}`}>
-                  Add this project
-                </a>
-              )}
-            </li>
-          );
-        })}
+      <ul className="plain related-list">
+        {shown.map((c) => (
+          <li key={c.key} className="rel-row">
+            {c.found ? (
+              <a className="rel-name" href={subjectHref(c.found)}>{c.name}</a>
+            ) : (
+              <span className="rel-name">{c.name}</span>
+            )}
+            <span className="rel-what">
+              {c.relations.map((r, i) => (
+                <span key={i} className="rel-one">
+                  {c.relations.length > 1 && r.name !== c.name ? `${r.name}: ` : ""}
+                  {r.relation}
+                </span>
+              ))}
+            </span>
+            {!c.found && (
+              <a className="rel-add small" href={addHref(c.addable)} aria-label={c.addable ? `Add this project: ${c.name}` : `Add this project: enter the domain or contract of ${c.name}`}>
+                Add this project
+              </a>
+            )}
+          </li>
+        ))}
       </ul>
+      {cards.length > RELATED_SHOWN && (
+        <button type="button" className="linklike small" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? "Show fewer" : `Show all ${cards.length.toLocaleString("en-US")}`}
+        </button>
+      )}
     </section>
   );
 }
@@ -780,7 +819,7 @@ function DisputedNote({ m }: { m: RecordModel }) {
   );
 }
 
-export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean }) {
+export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false, unreadable = 0 }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean; unreadable?: number }) {
   const { page, latest, error } = m;
   const name = page?.name || m.subject.id;
   // The same first-page status Home shows for this subject: in progress, refused, failed or no project found.
@@ -819,6 +858,13 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
         <div className="card empty" id="first-page">
           {items === null ? (
             readingFiles ? <h2>Reading the page…</h2> : <StillReading error={chainError} retrying={retrying} />
+          ) : unreadable > 0 && !latest ? (
+            <>
+              <h2>No result could be read</h2>
+              <p className="why">
+                {unreadableText(unreadable)} See <a href={to("activity")}>Activity</a>.
+              </p>
+            </>
           ) : latest && !error ? (
             <>
               <h2>Downloading the record…</h2>

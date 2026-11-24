@@ -30,7 +30,7 @@ import { isChangesJob, readable, rememberSent, sentTxs, useActivity } from "./us
 import { holdFocus } from "./modal";
 import { followAdmission, rpcReceipt, waitForReceipt, type ReceiptRead } from "./receipt";
 import { Payment, type PayStep } from "./payFlow";
-import { leftOutText, pendingRebuildOf, planRebuild, subjectRefFor, subjectSummaries, useRecordModel, type RecordModel } from "./model";
+import { leftOutText, pendingRebuildOf, planRebuild, subjectRefFor, subjectSummaries, unreadableBySubject, unreadableCount, useRecordModel, type RecordModel } from "./model";
 import { InstructionsBlock } from "./Instructions";
 import { INSTRUCTIONS_UNREACHABLE, instructionsOf, instructionsReachable, type InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
@@ -867,7 +867,7 @@ function SubjectView({ subject, items, allItems, activity, route, onAsk, researc
         ))}
       </nav>
       <PendingBar subject={subject} items={activity.items} sent={sent} jobs={jobs} />
-      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} subjects={subjects} chainError={activity.error} retrying={activity.retrying} readingFiles={readingFiles} />}
+      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} subjects={subjects} chainError={activity.error} retrying={activity.retrying} readingFiles={readingFiles} unreadable={unreadableCount(allItems ?? [])} />}
       {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
       {route.tab === "sources" && <SourcesTab m={rec} />}
       {route.tab === "activity" && <ActivityList {...activity} items={allItems} shown={rec} subject={subject} />}
@@ -941,6 +941,7 @@ export default function App() {
     return mine.every((a) => a.filesRead !== false || a.notRead) ? mine : null;
   }, [activity.items, subject]);
   const items = useMemo(() => (allItems ? readable(allItems) : allItems), [allItems]);
+  const unreadable = useMemo(() => unreadableBySubject(activity.items ?? []), [activity.items]);
   const readingFiles = !!subject && activity.items !== null && items === null;
   const subjects = useMemo<Findable[]>(() => subjectSummaries(counted ?? [], digests, logos).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts })), [activity.items, digests, logos]);
   useEffect(() => {
@@ -986,7 +987,7 @@ export default function App() {
         ) : subject ? (
           <SubjectView key={subject} sent={sent} jobs={jobs} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} allItems={allItems} activity={activity} route={route} onAsk={openAsk} researchPrice={researchPrice} researchQuote={researchQuote} />
         ) : (
-          <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} />
+          <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={researchPrice} bad={route.bad} prefill={route.add} unreadable={unreadable} />
         )}
         <footer className="about">
           <p>About: a test. Payments go to IMD and are not refunded. Every line comes from a paid job or panel answer on Ethereum.</p>

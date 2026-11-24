@@ -76,10 +76,10 @@ describe("A. Overview order", () => {
     expect(html).not.toContain("Value 9");
     expect(html).toContain("Show all 10");
   });
-  it("Related chips: name, relation under it, a link when the project has a page, Add on click otherwise; no dots", () => {
+  it("Related (revision 18): a compact list, name and relation on one line, a link when the project has a page, a small Add link otherwise; no dots", () => {
     const rel = html.slice(html.indexOf('class="related"'), html.indexOf('class="ov-foot"'));
-    expect(rel).toContain('<a class="rel-chip" href="#/s/base.org"><span class="rel-name">Base</span><span class="rel-what">runs on</span></a>');
-    expect(rel).toMatch(/<button type="button" class="rel-chip" aria-expanded="false"><span class="rel-name">Other<\/span>/);
+    expect(rel).toContain('<a class="rel-name" href="#/s/base.org">Base</a><span class="rel-what"><span class="rel-one">runs on</span></span>');
+    expect(rel).toMatch(/<span class="rel-name">Other<\/span><span class="rel-what">.*?<\/span><a class="rel-add small" href="#\/add\//);
     expect(rel).not.toMatch(/sdot|badge/);
   });
   it("is stacked at every width: no side column, the summary at a reading width, Key facts full width (revision 15)", () => {

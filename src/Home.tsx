@@ -5,7 +5,7 @@
  */
 import { GROUP_TONE, GROUP_WORDS, homeGroups } from "./settle";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { outdatedText, readerNoteText, statusText, subjectSummaries, type Digest, type SubjectSummary } from "./model";
+import { outdatedText, readerNoteText, statusText, subjectSummaries, unreadableSummary, unreadableText, type Digest, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
@@ -77,7 +77,7 @@ function PlaceholderItem({ s, failed, retry }: { s: SubjectSummary; failed: stri
 }
 
 function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading: boolean; failed: string; retry?: (id: string) => void }) {
-  if (s.unread) return <PlaceholderItem s={s} failed={reading ? "" : failed} retry={retry} />;
+  if (s.unread && !s.unreadable) return <PlaceholderItem s={s} failed={reading ? "" : failed} retry={retry} />;
   const status = s.status ? statusText(s.status) : "";
   return (
     <li className="subject">
@@ -88,7 +88,7 @@ function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading
           {s.name !== s.id && <span className="subject-id mono">{s.id}</span>}
         </a>
         <p className={`subject-line${s.status && s.status.kind !== "pending" && s.status.kind !== "none" ? " subject-status" : ""}`}>
-          {s.hasPage ? s.oneLine || "No one-line description yet." : status}
+          {s.hasPage ? s.oneLine || "No one-line description yet." : s.unreadable ? <>{unreadableText(s.unreadable)} See <a href={subjectHref(s.id, "activity")}>Activity</a>.</> : status}
         </p>
         <p className="subject-meta small">
           {s.counts && (
@@ -210,8 +210,10 @@ export function StillReading({ error, retrying }: { error: string | null; retryi
   );
 }
 
-export function Home({ items, error, loading, retrying, cached, digests, logos, reading, failed, busy, retry, reload, onAdd, price, bad, prefill }: {
+export function Home({ items, error, loading, retrying, cached, digests, logos, reading, failed, busy, retry, reload, onAdd, price, bad, prefill, unreadable }: {
   items: Activity[] | null;
+  /** Subjects with finished page jobs none of which is read, and how many of their results were not read. */
+  unreadable?: Map<string, number>;
   error: string | null;
   loading: boolean;
   /** A public RPC failed or limited a range and the scan moved on. */
@@ -239,7 +241,13 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const [submitted, setSubmitted] = useState<{ raw: string; q: Lookup } | null>(null);
   const [err, setErr] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  const all = useMemo(() => subjectSummaries(items ?? [], digests, logos), [items, digests, logos]);
+  const all = useMemo(() => {
+    const listed = subjectSummaries(items ?? [], digests, logos);
+    if (!unreadable?.size) return listed;
+    const have = new Set(listed.map((s) => s.id));
+    const marked = listed.map((s) => (!s.hasPage && unreadable.get(s.id) ? { ...s, unread: false, status: null, unreadable: unreadable.get(s.id) } : s));
+    return [...marked, ...[...unreadable].filter(([id]) => !have.has(id)).map(([id, n]) => unreadableSummary(id, n))];
+  }, [items, digests, logos, unreadable]);
   const [onlyStale, setOnlyStale] = useState(false);
   const needs = all.filter((s) => s.outdated).length;
   const shown = all.filter((s) => matchesQuery(s, q) && (!onlyStale || !!s.outdated));

@@ -266,10 +266,8 @@ try {
       // Revision 13 (A2): Related at the bottom of the Overview, above the footer links; a project not on the site is a
       // chip that offers "Add this project" on click.
       const relAtBottom = await page.evaluate(() => { const r = document.querySelector(".related"), o = document.querySelector(".overview"), f = document.querySelector(".foot-links"); return !!r && !!o && !!f && (o.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING) > 0 && (r.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING) > 0; });
-      const addBefore = await page.locator('.related a[href="#/add/ens.domains"]').count();
-      await page.locator('.related button.rel-chip:has-text("Ethereum Name Service")').click().catch(() => {});
-      const addAfter = await page.locator('.related a[href="#/add/ens.domains"]').count();
-      check(`${W} Related at the bottom as chips, each with its relation; a project not on the site offers Add this project on click`, relAtBottom && /Ethereum Name Service/.test(rel) && /names its agents/.test(rel) && addBefore === 0 && addAfter === 1 && (await page.locator(".related .sdot, .related .badge").count()) === 0, rel);
+      const addLink = await page.locator('.related .rel-row:has-text("Ethereum Name Service") a.rel-add[href="#/add/ens.domains"]').count();
+      check(`${W} Related at the bottom as a compact list, name and relation on one line; a project not on the site has a small Add this project link`, relAtBottom && /Ethereum Name Service/.test(rel) && /names its agents/.test(rel) && addLink === 1 && (await page.locator(".related .sdot, .related .badge").count()) === 0, rel);
       check(`${W} only Website and Official accounts rows show a channel label`, kfRows.filter((r) => !/^(Website|Official accounts?)$/.test(r.label)).every((r) => r.badges.every((b) => !/Own domain|Verified on chain|Not verified/.test(b))) && row("Seat supply").join() === "Proven on chain", JSON.stringify(kfRows));
       check(`${W} no old tie words anywhere on Overview`, !/Confirmed on chain|Names the contract|Not confirmed/.test(await page.locator("main").innerText()));
       check(`${W} Checked by a panel is gone from Overview`, !/Checked by a panel/.test(await page.locator("main").innerText()));

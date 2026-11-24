@@ -24,7 +24,7 @@ export function splitDigests(values: unknown[]): { digests: Map<string, Digest>;
   const logos = new Map<string, string>();
   for (const v of values) {
     const o = v as Partial<Digest> & Partial<LogoEntry>;
-    if (o?.type === "digest" && typeof o.id === "string" && o.v === 4) digests.set(o.id, o as Digest);
+    if (o?.type === "digest" && typeof o.id === "string" && o.v === 5) digests.set(o.id, o as Digest);
     else if (o?.type === "logo" && typeof o.hash === "string" && typeof o.url === "string" && o.url.startsWith("data:image/png;base64,")) logos.set(o.hash, o.url);
   }
   return { digests, logos };

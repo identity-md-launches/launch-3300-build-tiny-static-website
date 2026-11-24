@@ -117,6 +117,8 @@ export interface TaggedRequest {
   template: string;
   amount: bigint;
   blockNumber: bigint;
+  /** The Requested log's index in its block: a result completed in the same block counts as earlier only before it. */
+  logIndex?: number;
   transactionHash: Hex;
 }
 
@@ -165,6 +167,7 @@ export function decodeRequested(log: RawLog): TaggedRequest | null {
     template: match?.template ?? "",
     amount,
     blockNumber: BigInt(log.blockNumber),
+    logIndex: Number(log.logIndex ?? "0x0"),
     transactionHash: log.transactionHash,
   };
 }

@@ -184,9 +184,10 @@ export type HistoryReads = Map<string, PriorLines[]>;
 const counting = (items: Activity[]) => countedOf(items);
 
 export function coreOf(items: Activity[], history?: HistoryReads, counted?: Set<string>): Core {
-  const count = counted ?? counting(items).counted;
+  const judged = counted ? null : counting(items);
+  const count = counted ?? judged!.counted;
   const done = items.filter((a) => isResult(a) && count.has(a.req.requestId)).sort(completionOrder);
-  const notRead = new Map(items.filter(isResult).filter((a) => !count.has(a.req.requestId)).map((a) => [a.req.requestId, NOT_READ] as const));
+  const notRead = new Map(items.filter(isResult).filter((a) => !count.has(a.req.requestId)).map((a) => [a.req.requestId, a.notRead ?? judged?.reasons.get(a.req.requestId) ?? NOT_READ] as const));
   const latest = done.filter((a) => isPageJob(a.req)).at(-1);
   const page = latest?.page ?? null;
   const results = done.filter((a) => a !== latest);
@@ -492,6 +493,13 @@ export interface SubjectSummary {
   status: FirstPageStatus | null;
   /** Result files (other than the page shown) that could not be read: its counts may be short. */
   incomplete?: number;
+  /** Finished results that could not be read when none of its finished page jobs is read (unreadableCount). */
+  unreadable?: number;
+}
+
+/** A row for a subject whose every finished result is not read: only its id and how many results were not read. */
+export function unreadableSummary(id: string, n: number): SubjectSummary {
+  return { id, name: id, oneLine: "", counts: null, outdated: null, changed: null, requests: n, pending: 0, hasPage: false, main: "", contracts: [], logo: null, logoHash: null, status: null, unreadable: n };
 }
 
 /** A subject with no page: its first page job is pending, was refused (or failed), or found no project. */
@@ -523,6 +531,29 @@ export function firstPageStatus(list: Activity[]): FirstPageStatus {
   return last.state === "completed" && !last.page ? { kind: "pending" } : { kind: "none" };
 }
 
+/**
+ * How many finished results of a subject could not be read, when it has finished page jobs and none of them is read
+ * (every one is marked not read): Home and the page then say so instead of "Reading its record…" or "No page yet".
+ * 0 otherwise. `list` is every request of the subject, including those not read.
+ */
+export function unreadableCount(list: Activity[]): number {
+  const pages = list.filter((a) => isPageJob(a.req) && a.state === "completed");
+  if (!pages.length || pages.some((a) => !a.notRead)) return 0;
+  return list.filter((a) => a.state === "completed" && a.notRead && (isPageJob(a.req) || isSourceJob(a.req) || isEditJob(a.req) || isChangesJob(a.req))).length;
+}
+/** Each subject's unreadableCount, for the subjects where it is above 0. */
+export function unreadableBySubject(items: Activity[]): Map<string, number> {
+  const by = new Map<string, Activity[]>();
+  for (const a of items) by.set(a.req.subject, [...(by.get(a.req.subject) ?? []), a]);
+  const out = new Map<string, number>();
+  for (const [id, list] of by) {
+    const n = unreadableCount(list);
+    if (n) out.set(id, n);
+  }
+  return out;
+}
+export const unreadableText = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "result" : "results"} could not be read.`;
+
 /** The words Home shows for a subject with no page. */
 export function statusText(s: FirstPageStatus): string {
   switch (s.kind) {
@@ -550,7 +581,7 @@ export function statusText(s: FirstPageStatus): string {
 export interface Digest {
   type: "digest";
   /** 4 since counts are grouped as proven, stated and claimed; older digests are read again. */
-  v: 4;
+  v: 5;
   id: string;
   /** The completed results it was taken from; a different list means newer results exist. */
   sig: string;
@@ -594,7 +625,7 @@ export function digestOf(id: string, list: Activity[]): Digest | null {
   const s = summaryOf(id, list, core);
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
-  return { type: "digest", v: 4, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
+  return { type: "digest", v: 5, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
 }
 
 /** Results and panel answers still to fold into the page shown: the number the out-of-date note gives. */
@@ -605,6 +636,45 @@ export const unfoldedCount = (core: Pick<Core, "unfolded" | "unfoldedAnswers">) 
 
 /** Why a subject's digest should be read again on this visit although nothing new completed: a read that failed. */
 export const needsRetry = (d: Digest | undefined) => !!d && (d.failedReads > 0 || d.logo === "failed");
+
+/** An address and the chain written right after it ("0x… on Base", "0x… Ethereum"), else the fallback chain. */
+const ADDRESS_AT = /(0x[0-9a-fA-F]{40})\b(?:\)?,?\s+(?:on\s+)?([A-Za-z][A-Za-z]*(?: [A-Za-z]+)?))?/g;
+function addressesIn(text: string, fallback: number | null): KnownContract[] {
+  const out: KnownContract[] = [];
+  for (const m of text.matchAll(ADDRESS_AT)) out.push({ address: m[1]!.toLowerCase(), chainId: (m[2] ? chainIdOf(m[2]) : null) ?? fallback });
+  return out;
+}
+/** The chain a proof's re-run steps name ("Chain 1, block …", "On Ethereum mainnet (chain ID 1)", "On Base"). */
+function rerunChain(rerun: string): number | null {
+  const n = /chain(?:\s*id)?\s*(\d{1,12})/i.exec(rerun);
+  if (n) return Number(n[1]);
+  const on = /\bon ([A-Z][A-Za-z]+(?: [A-Za-z]+)?)/.exec(rerun);
+  return on ? chainIdOf(on[1]!) : null;
+}
+
+/**
+ * Every address a subject's record names, with its chain: the page's contracts and main contract, every address in
+ * Key facts (values, entries, parts) and every address a proof line's text or re-run steps use. Related, the home
+ * bar and lookups find a subject by any of them on the same chain. An address with no chain written beside it takes
+ * the main contract's chain.
+ */
+export function recordAddresses(page: Page | null): KnownContract[] {
+  if (!page) return [];
+  const mainChain = page.contracts.find((c) => c.main || c.address.toLowerCase() === page.main.toLowerCase())?.chain;
+  const fallback = mainChain ? chainIdOf(mainChain) : page.contracts.length ? chainIdOf(page.contracts[0]!.chain) : null;
+  const out: KnownContract[] = page.contracts.filter((c) => /^0x[0-9a-fA-F]{40}$/.test(c.address)).map((c) => ({ address: c.address.toLowerCase(), chainId: chainIdOf(c.chain) }));
+  if (/^0x[0-9a-fA-F]{40}$/.test(page.main)) out.push({ address: page.main.toLowerCase(), chainId: fallback });
+  for (const r of page.infobox) {
+    for (const t of [r.value, ...r.values, ...(r.entries ?? []).map((e) => `${e.name} ${e.text ?? ""}`)]) out.push(...addressesIn(t, fallback));
+    for (const it of r.items ?? []) {
+      if (/^0x[0-9a-fA-F]{40}$/.test(it.address)) out.push({ address: it.address.toLowerCase(), chainId: (it.chain ? chainIdOf(it.chain) : null) ?? fallback });
+      out.push(...addressesIn(`${it.name} ${it.text}`, fallback));
+    }
+  }
+  for (const l of page.lines) if (l.kind === "proof") { const c = rerunChain(l.rerun) ?? fallback; out.push(...addressesIn(l.text, c), ...addressesIn(l.rerun, c).map((a) => ({ ...a, chainId: c }))); }
+  const seen = new Set<string>();
+  return out.filter((c) => { const k = `${c.chainId}:${c.address}`; if (seen.has(k)) return false; seen.add(k); return true; });
+}
 
 function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSummary {
   const doneTimes = list.filter((a) => a.state === "completed").map((a) => a.doneTime ?? a.time ?? 0);
@@ -620,9 +690,7 @@ function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSu
     pending: list.filter((a) => a.state === "pending").length,
     hasPage: !!core.page,
     main: core.page?.main ?? "",
-    contracts: (core.page?.contracts ?? [])
-      .filter((c) => /^0x[0-9a-fA-F]{40}$/.test(c.address))
-      .map((c) => ({ address: c.address.toLowerCase(), chainId: chainIdOf(c.chain) })),
+    contracts: recordAddresses(core.page),
     logo: core.latest?.logo ?? null,
     logoHash: core.latest?.logoHash ?? null,
     status: core.page ? null : firstPageStatus(list),
