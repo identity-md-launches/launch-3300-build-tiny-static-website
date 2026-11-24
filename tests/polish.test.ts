@@ -68,9 +68,9 @@ describe("the panel", () => {
     expect(html).toMatch(/class="ev-row" href="[^"]*line-L1"/); // each row opens its line
     // The kept rule is only under Reword it; the panel opens on This is wrong.
     expect(html).not.toContain("Your wording is kept");
-    // Add to my changes is disabled until the note has 10 characters.
+    // Add to my changes is disabled until there is a note or a link; the open form's own message says so.
     expect(html).toMatch(/<button class="btn btn-ink" type="submit" disabled=""/);
-    expect(html).toContain("Write at least 10 characters.");
+    expect(html).toContain("Write what is wrong or missing, or add a link.");
   });
   it("shows a Record line's own marker, speaker and quote instead", () => {
     const html = render(createElement(ChangePanel, { target: lineTarget("L3", "Line L3 text."), mode: "line", evidence: evidenceOf([lines[2]!]) }));
@@ -193,7 +193,7 @@ describe("layout rules", () => {
     expect(css).toMatch(/\.ov-foot \{[^}]*font-size: var\(--text-small\)/);
     const rec = readFileSync("src/Record.tsx", "utf8");
     // Revision 21: one line pointing at the pencil and the open form; panel checks and Rebuild moved off the footer.
-    expect(rec).toContain("Something wrong or missing? Use the pencil on any row or sentence, or <a href={to(\"suggest-changes\")}>say it in your own words</a>.");
+    expect(rec).toContain("Something wrong or missing? Use the pencil on any row, click a sentence, or <a href={to(\"suggest-changes\")}>say it in your own words</a>.");
     for (const w of ["Ask a panel to check a fact", "Rebuild the page"]) expect(rec).not.toContain(`>${w}</a>`);
     const sg = readFileSync("src/Suggest.tsx", "utf8");
     expect(sg).not.toContain("Add a missing line");

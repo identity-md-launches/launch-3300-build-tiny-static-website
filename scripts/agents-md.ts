@@ -251,7 +251,8 @@ Each item is \`(n) type: <type>; target: <target>; note: <JSON string or none>; 
 items separated by one space. Types: \`note\` (the open field "What's wrong or missing?": the visitor's own words
 and any sources, with no target when sent from Contribute, or about the line, key fact or summary sentence whose
 pencil opened it; a note may be links alone), and the optional quick choices \`wrong\`, \`context\`, \`backing\` (a
-record line or key fact) and \`reword\` (a summary sentence; the note is the new sentence). \`new_line\` and \`links\`
+record line, key fact or summary sentence; on a sentence the line it writes links to the lines the sentence rests
+on) and \`reword\` (a summary sentence; the note is the new sentence). \`new_line\` and \`links\`
 (no target) are older types the site no longer offers; jobs sent with them are still read. The target is
 \`F<n>:<line id> "<line text>"\` for a line (its file in \`<PRIOR>\`), \`F<n>:<line id> key fact "<Label: value>"\` for a key
 facts row, \`summary sentence "<text>"\`, or \`none\`. A note is at most ${NOTE_MAX.toLocaleString("en-US")} characters; a change has
@@ -510,12 +511,15 @@ under "also on" with that chain; one whose chain is not written gets no chain ta
 never the home chain's.
 
 **Related.** "Add this project" is offered only for an entry given by a domain of its own, never for a chain, a
-standard or another project's token.
+standard or another project's token. The entry itself decides: its name or site is a chain's (Ethereum, ethereum.org,
+base.org, solana.com…), its name is a standard (ERC-20, "… standard") or a token (a symbol such as USDC), or its
+relation says it is the chain it runs on. The bare words token, coin or network in a relation never hide the link.
 
 **Page upkeep.** "Rebuild the page" sits in a closed "Page upkeep" section at the bottom of Contribute. A page built
 with an older instruction file reads "Built with older instructions. A rebuild applies the current rules." there, and
 its Rebuild link opens the rebuild dialog. A subject with a finished page job never offers "Create the page", also
-when its page file fails to load: it shows "The page could not be loaded. Try again."
+when its page file fails to load: it shows "The page could not be loaded. Try again." Before the chain and the files
+have answered, nothing offers "Create the page" and Page upkeep stays closed.
 
 **Privacy.** On load the site contacts only its own host, IMD's API and the public RPCs. The wallet code (wagmi
 and the EIP-6963 injected connector; browser-extension wallets only) is loaded only when the visitor presses

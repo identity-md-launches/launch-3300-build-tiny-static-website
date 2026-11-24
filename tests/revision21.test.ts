@@ -128,7 +128,7 @@ describe("D. small fixes", () => {
     expect(rec2).toMatch(/latest && error \?/);
     expect(rec2).toContain("items !== null && (unreadable > 0 || latest) ?");
     const app = read("src/App.tsx");
-    expect(app).toContain("if (!rec.page && rec.latest)");
+    expect(app).toContain("if (!rec.page && (rec.latest || unreadable > 0))");
   });
   it("11: other chains' addresses keep their own chain, never the home chain", () => {
     expect(otherAddresses(`governance; Polygon: ${OTHER}`).also).toEqual([{ address: OTHER, chain: "Polygon", note: "" }]);

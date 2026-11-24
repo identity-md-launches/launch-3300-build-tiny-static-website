@@ -224,7 +224,7 @@ describe("B4, 4b, C5, E10, F11-F14. instruction files", () => {
   const LAUNCH = "Launched is the date the project first went live. If the current version is much newer, add it in the same value, such as 'November 2018; current version since January 2025'. When sources disagree on the date, give the project's own date and say so in a line.";
   const RUNBY = "Run by is the organisation and the person leading it now, such as 'Zora Labs; Dee Goens, chief executive'. Contributors is for other people and teams who work on it; never put the chief executive there.";
   const SIZE = "Size uses a figure from an established independent tracker or the project's own published statistics; never a figure from an individual's social post.";
-  const VALUES = "Every infobox value that lists several things gives them in values as objects with exactly these keys: name, text (what to show after the name; may be empty) and optionally url or address with chain. Use no other shapes.";
+  const VALUES = "Every infobox value that lists several things gives them in values as objects with exactly these keys: name, text (what to show after the name; may be empty) and optionally url or address with chain; a Tokens entry may also have also, a list of {chain, address}. Use no other shapes.";
   it("rebuild carries every new rule word for word, Run by after Founder or creator, and drops the old ones", () => {
     for (const s of [TOKENS, BRIDGE, ATTR, HIST, LAUNCH, RUNBY, SIZE, VALUES]) expect(r).toContain(s);
     expect(r).toContain("Founder or creator, Run by, Contributors");

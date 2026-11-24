@@ -899,7 +899,6 @@ body.has-tray main { padding-bottom: 9rem; }
 .qchip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 /* Page upkeep: a small closed section at the bottom of Contribute. */
 .upkeep { border-top: 1px solid var(--color-border); padding-top: var(--space-2); }
-.upkeep > summary { font-weight: 600; min-height: 44px; }
 .upkeep[open] > summary { margin-bottom: var(--space-2); }
 .upkeep-note { margin: 0; }
 /* A token on several chains: the home address, then "also on" and each other chain's own address and tag. */
@@ -907,3 +906,23 @@ body.has-tray main { padding-bottom: 9rem; }
 .tok-also-k { font-size: var(--text-small); color: var(--color-text-secondary); }
 .tok-also-one { display: inline-flex; align-items: center; gap: var(--space-1); }
 .add-row { margin: var(--space-3) 0 0; }
+
+/* ---------- Revision 22: Key facts on phones, disclosure markers ---------- */
+/* Phones: a token's address, copy button and chain tag wrap inside the value cell (the chain tag drops to the next
+   line), so nothing grows under the badge column. The short address itself never breaks. */
+@media (max-width: 40rem) {
+  .kf-tokens, .kf-items, .kf-values { grid-template-columns: minmax(0, 1fr); }
+  .kf-tokens li, .kf-items li { min-width: 0; }
+  .kf-value .addr { display: inline-flex; flex-wrap: wrap; white-space: normal; max-width: 100%; }
+  .kf-value .addr-link { white-space: nowrap; }
+  .kf-value .tok-also, .kf-value .tok-also-one { flex-wrap: wrap; max-width: 100%; min-width: 0; }
+}
+/* "Page upkeep" and "Read the objective" open: a chevron before each, turned down when open, and the link colour. */
+.upkeep > summary, .upkeep details > summary { display: flex; align-items: center; gap: var(--space-2); color: var(--color-accent-solid); }
+.upkeep > summary::before, .upkeep details > summary::before {
+  content: ""; flex: none; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg); transition: transform 120ms ease;
+}
+.upkeep[open] > summary::before, .upkeep details[open] > summary::before { transform: rotate(45deg); }
+@media (prefers-reduced-motion: reduce) { .upkeep > summary::before, .upkeep details > summary::before { transition: none; } }
+.upkeep summary::-webkit-details-marker { display: none; }

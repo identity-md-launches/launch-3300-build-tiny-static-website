@@ -5,7 +5,7 @@ import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { addressText, historicFor, shortJobId } from "./addresses";
 import { explorerAddressUrl } from "./subject";
-import { addressRuns, chainEntries, chainTag, chainText } from "./addrDisplay";
+import { addressRuns, chainEntries, chainTag, chainText, isChainName } from "./addrDisplay";
 import { keyFacts, splitAddresses, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
 import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
@@ -216,7 +216,8 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
             {t.symbol && <strong className="tok-symbol">{t.symbol}</strong>}
             {/* Its own words, then the home chain's address, then "also on" with each other chain's own address and tag. */}
             {t.purpose && <span className="tok-purpose"><Runs text={t.purpose} /></span>}
-            {t.address && <Addr address={t.address} chain={chainTag(t.chain || chain)} url={t.url} />}
+            {/* Only the first token may take the subject's home chain; another without a chain of its own gets no tag. */}
+            {t.address && <Addr address={t.address} chain={chainTag(i === 0 ? t.chain || chain : t.chain)} url={t.url} />}
             {(t.also?.length ?? 0) > 0 && (
               <span className="tok-also">
                 <span className="tok-also-k">also on</span>
@@ -788,16 +789,35 @@ export function relatedCards(related: { name: string; id: string; relation: stri
   return cards;
 }
 
+/** Sites of chains, which are never projects to add even though they have a domain of their own. */
+const CHAIN_SITES = new Set(["ethereum.org", "base.org", "polygon.technology", "optimism.io", "arbitrum.io", "arbitrum.foundation", "solana.com", "unichain.org", "bnbchain.org", "avax.network", "zksync.io", "linea.build", "blast.io", "scroll.io", "zora.energy", "bitcoin.org"]);
+/** Chain names that are also ordinary words, so a project's host label ("mode.app", "abstract.money") is not read as a chain. */
+const GENERIC_LABELS = new Set(["mode", "ink", "op", "sonic", "abstract", "near", "ton", "celo", "gnosis", "mantle", "ronin", "taiko"]);
+/** Common tokens named as if they were projects. */
+const TOKEN_SYMBOLS = new Set(["eth", "weth", "steth", "wsteth", "reth", "btc", "wbtc", "cbbtc", "usdc", "usdt", "dai", "usds", "usde", "eurc", "pyusd", "frax", "lusd", "gho", "crvusd"]);
+
 /**
  * Whether a Related entry may offer "Add this project": only an entry given by a domain of its own (a bare host,
- * no path), and never a chain, a standard or a token, which are not projects to add even when they carry a domain.
+ * no path), and never a chain, a standard or another project's token. It matches the entry itself (its name, its
+ * domain), never the bare words of its relation, which say which token or chain a project uses; the relation counts
+ * only when it says the entry itself is a chain or a standard ("chain it runs on", "supported network").
  */
 export function ownDomainEntry(r: { name: string; id: string; relation: string }, q: Lookup = parseLookup(r.id)): boolean {
   if (q.kind !== "domain") return false;
-  const id = r.id.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  const id = r.id.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "").toLowerCase();
   if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(id)) return false;
-  const what = `${r.name} ${r.relation}`;
-  if (/\b(?:chain|network|blockchain|mainnet|layer[ -]?[12]|l[12]|rollup|standard|erc-?\d+|eip-?\d+|token|stablecoin|coin)\b/i.test(what)) return false;
+  const name = r.name.trim();
+  const host = q.domain.toLowerCase();
+  const label = host.split(".")[0] ?? "";
+  // A chain: by its name, its site, or its site's main label (ethereum.org, base.org, solana.com).
+  if (isChainName(name) || CHAIN_SITES.has(host) || CHAIN_SITES.has(id) || (isChainName(label) && !GENERIC_LABELS.has(label))) return false;
+  // A standard: ERC-20, EIP-1559, "Token standard".
+  if (/^(?:erc|eip)[- ]?\d+$/i.test(name) || /\bstandard$/i.test(name)) return false;
+  // A token: a $ symbol, a name ending in "token", a common token's symbol, or an address for a name.
+  const bare = name.replace(/^\$/, "").toLowerCase();
+  if (/^\$/.test(name) || /\btoken$/i.test(name) || TOKEN_SYMBOLS.has(bare) || TOKEN_SYMBOLS.has(label) || /0x[0-9a-f]{40}/i.test(name)) return false;
+  // The relation says the entry itself is a chain or a standard.
+  if (/\b(?:(?:the\s+)?chain (?:it|this|the project) (?:runs|is built|is deployed|lives) on|supported (?:chain|network)|token standard|(?:its|the) (?:home|base|settlement|host) (?:chain|network))\b/i.test(r.relation)) return false;
   return true;
 }
 
@@ -983,7 +1003,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       {page ? (
         <div className="ov-foot" id="suggest">
           <p>
-            Something wrong or missing? Use the pencil on any row or sentence, or <a href={to("suggest-changes")}>say it in your own words</a>.
+            Something wrong or missing? Use the pencil on any row, click a sentence, or <a href={to("suggest-changes")}>say it in your own words</a>.
           </p>
         </div>
       ) : items !== null && (unreadable > 0 || latest) ? (
@@ -993,13 +1013,14 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
             <a href={to("activity")}>See why in Activity</a>
           </p>
         </div>
-      ) : (
+      ) : items !== null && !latest && unreadable === 0 ? (
+        // Only once the chain has answered and shows no finished page job; while it is read, nothing is offered.
         <div className="ov-foot">
           <p className="foot-links">
             <a href={to("rebuild")}>Create the page</a>
           </p>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

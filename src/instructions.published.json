@@ -40,6 +40,14 @@
     "sha256": "cbb133e479cabaa8f4ab40c0bc38b6e18964ee0baf0776f657ff39b8585e9e36"
   },
   {
+    "file": "changes-e469ba6f33e4.txt",
+    "sha256": "e469ba6f33e4d2b1dc708ec0bf01b6aa3739dded1710142dc00f9fc97b29f2ae"
+  },
+  {
+    "file": "rebuild-153b2cd5869b.txt",
+    "sha256": "153b2cd5869bdb6853081cf4f2dbff02f933284d3cc46708f4c9fccd28a19fe8"
+  },
+  {
     "file": "rebuild-323385aa01ae.txt",
     "sha256": "323385aa01ae67564661a7a1dc4ad91bab1d28ed6a647dd0a177b09438842ad1"
   },

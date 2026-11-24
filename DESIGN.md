@@ -108,11 +108,11 @@ No tracked capitals, no eyebrows above headings.
   project says", orange dot "others say", then "Summary written from the record by a research job." Below
   Key facts, one small quiet block
   (`.ov-foot`, no card, no border box; a 1px top rule and 16px above it; 13px secondary text): "Something wrong or
-  missing? Hover any row or click a sentence to suggest a change." and, on the next line, four 13px underlined text
-  links of one style (`.foot-links`, 32px tall, 16px apart), all four real links: "Add a missing line"
-  (`#/s/<subject>/add-line`) and "Add links to read" (`…/add-links`) open their panel under the block in place,
-  and the same address opened in a new tab opens the page with that panel; "Ask a panel to check a fact" and
-  "Rebuild the page". No buttons and no negative margins, so nothing overlaps it. With no page, a "No page yet" card; when the research said `found: false`, a "Not a project
+  missing? Use the pencil on any row, click a sentence, or say it in your own words." The link opens the open form
+  on Contribute (`#/s/<subject>/suggest-changes`). No buttons and no negative margins, so nothing overlaps it. With no
+  page and once the chain shows no finished page job, the footer is the one link "Create the page"; while the chain
+  or the files are read it is empty, and with a finished page job that could not be read it is "See why in
+  Activity". With no page, a "No page yet" card; when the research said `found: false`, a "Not a project
   record" card with the job's notes and a link to Activity instead. There is no panel box on Overview.
 - **Record**: the accounting warning (orange left rule on orange-50), a closed `details` "Dropped in the last
   rebuild", the kind filter (All, Proof, Statement, Claim with counts; pressed state is dark fill), then one card
@@ -141,17 +141,16 @@ No tracked capitals, no eyebrows above headings.
   the line's whole quote (`.ev-quote-full`, never clamped, wrapping anywhere), or in grey italics "No quote: this
   line is a re-runnable check." (a proof) / "No quote given." before its text; on a Record line a grey-50 block (`.ev-own`) shows that line's own marker, speaker and quote.
   Opening a panel scrolls only as needed to show it between the sticky header and the tray bar; when it is taller
-  than that room, its heading and "This rests on" start 8px under the header (`revealPanel`). "Ask a panel to
-  check it" is a tile-styled button (`.opt-action`) beside the radios, not one of them, so arrow keys stay in the form.
-  Then the choices as tiles (`.opt`, 44px, bold word and one short hint line, checked = 1px inset dark ring, no
-  radio circle; the grid's minimum is `min(9.5rem, 100%)`, so one tile per row on the narrowest phones), the note
-  (count of 300, "at least 10" while short), the links box (3, or 20 for Add links to read), the orange no-source
-  note while there is no link, and "Add to my changes" (dark `btn-ink`) and "Cancel". "Your wording is kept if
-  those lines, or a link you add, support it." appears only under Reword it. "Add to my changes" is natively
-  disabled until the note has 10 characters (Back this up and Add links to read need a usable link instead) and,
-  for Reword it, until the new sentence differs from the current one; the reason is in 13px text under the
-  buttons (`aria-describedby`). Closing it returns focus to the pencil, sentence, Edit
-  or add button that opened it. A row with a pending change shows the violet pill "In your changes" and Edit.
+  than that room, its heading and "This rests on" start 8px under the header (`revealPanel`). The quick choices are tiles (`.opt`, 44px, bold word and one short hint line, checked = 1px inset dark ring, no
+  radio circle; the grid's minimum is `min(9.5rem, 100%)`): This is wrong, Add context, Back this up on every
+  target, and Reword it on a summary sentence. None is required; with none picked the change is a note. Above
+  them "About: <text>" names the item. Then the note (a count of 1,000; 4 rows in the pencil's form so the whole
+  placeholder shows at 390, 5 on Contribute), the Sources box (one link per line), and "Add to my changes" (dark
+  `btn-ink`) and "Cancel". "Your wording is kept if those lines, or a link you add, support it." appears only under
+  Reword it. "Add to my changes" is natively disabled until there is a note or a link ("Write what is wrong or
+  missing, or add a link."), Back this up needs a usable link, and Reword it waits until the new sentence differs
+  from the current one; the reason is in 13px text under the buttons (`aria-describedby`). Closing it returns focus
+  to the pencil, sentence, Edit or add button that opened it. A row with a pending change shows the violet pill "In your changes" and Edit.
 - **Tray** (`.tray`): fixed to the bottom of every tab while a change is pending, gray-900 with white text:
   "N changes", "X with a source, Y without · room for about Z more · <price>" in 13px gray-200, and a white
   "Review and submit" button. The price is read when the tray appears, when Review opens and every 30 seconds;
@@ -168,12 +167,17 @@ No tracked capitals, no eyebrows above headings.
   for all 3"), "Read the full request", an underlined link (`#review-body`) that shows and focuses the request in
   place, and the primary "Submit" at the right. A change Activity put back whose cited lines are all gone is held
   with the "choose the row again" alert.
-- **Contribute**: three full-width cards in a `.stack`: Suggest changes (three numbered steps and the two add
-  buttons), Ask a panel to check a fact ("What to check" as three equal 44px segment buttons, label on one line,
-  selected = dark fill; the contract template's chain picker lists only chains the oracle accepts), and Rebuild the
-  page last with a secondary button, "It is given N earlier files and M panel answers", and the objective under
-  "Read the objective". Every action opens the same pay dialog with amount, Intake, action id and the full body
-  before any wallet prompt.
+- **Contribute**: a `.stack` of the open form card (`.note-card`): an `h2` "What's wrong or missing?", the 1,000
+  character text area, "Sources" with its hint, "Add to my changes", and the three numbered lines (`.note-steps`);
+  the open form's draft is kept above the tabs, so switching tabs does not lose it. Then one 13px line on payment,
+  then **Page upkeep** (`details.upkeep`, closed by default, 1px top rule, 44px summary in the accent colour with a
+  7px chevron drawn by `::before` that turns 90 degrees when open; "Read the objective" inside uses the same
+  chevron). Inside, the rebuild card: the older-instructions line with its Rebuild link (opens the rebuild dialog),
+  "Rebuild the page" (or "Create the page" only once the chain shows no page job), "It is given N earlier files and
+  M panel answers", and the objective under "Read the objective". While the record is read the card says only
+  "Reading the record from Ethereum…"; a subject with finished page jobs but no readable page shows "The page could
+  not be loaded. Try again." Panel checks are hidden for now (`PANEL_CHECKS = false`). Every action opens the same
+  pay dialog with amount, Intake, action id and the full body before any wallet prompt.
 - **Dialog**: bottom sheet on phones, centred from 640px; Escape and the × close it. Escape goes to the top
   modal only: with the wallet sheet open over the pay dialog, one Escape closes the sheet and focus returns to the
   dialog's Connect button. While a dialog or the
@@ -238,3 +242,16 @@ No tracked capitals, no eyebrows above headings.
 - **How it works** `.docs`: one 760px column, twelve `h2` sections at `--text-title`; the three kind badges reuse `.kind`; the build diagram `.doc-flow` is a wrapping row of bordered boxes joined by "→", so it stacks on phones.
 - **Profile** `.profile`: address line (short address, copy icon, Etherscan link), then `.totals`, an auto-fit grid of four bordered cells (min 140px, so 2×2 at 390 and one row at desktop) with the value at `--text-title` weight 600, then the request list reusing the Activity `.card.act` rows.
 - The type scale is unchanged: six sizes (`--text-display`, `--text-title`, `--text-heading`, `--text-body`, `--text-nav`, `--text-small`).
+
+## Revision 22 additions (from src/styles.css, end of file)
+
+- **Key facts on phones** (below 40rem): `.kf-tokens`, `.kf-items` and `.kf-values` are one `minmax(0, 1fr)` column,
+  their items `min-width: 0`; inside a value cell `.addr` wraps (`inline-flex`, `flex-wrap: wrap`, `white-space:
+  normal`, `max-width: 100%`) so the chain tag drops to the next line instead of running under the badge column;
+  the short address itself (`.addr-link`) never breaks; `.tok-also` and each `.tok-also-one` wrap the same way.
+- **Tokens on several chains**: home address and chain tag first, then `.tok-also` ("also on" in 13px secondary)
+  with each other chain's short address, copy icon, its own chain tag and its own explorer (Polygon PoS:
+  polygonscan.com; a chain the text does not name gets no tag and a Blockscan link).
+- **Disclosure chevron**: `.upkeep > summary` and `.upkeep details > summary` are flex rows (8px gap) in
+  `--color-accent-solid` with a 7px two-border chevron (`::before`) pointing right, turned down on `[open]`;
+  the transition is off under reduced motion; the WebKit marker is hidden.

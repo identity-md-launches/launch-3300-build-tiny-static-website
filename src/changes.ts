@@ -50,7 +50,7 @@ export const NOTE_STEPS = [
 ] as const;
 /** The quick choices the pencil's form offers, none of them required. */
 export const QUICK_LINE: ChangeType[] = ["wrong", "context", "backing"];
-export const QUICK_SENTENCE: ChangeType[] = ["wrong", "reword", "context"];
+export const QUICK_SENTENCE: ChangeType[] = ["wrong", "context", "backing", "reword"];
 export const KEPT_RULE = "Your wording is kept if those lines, or a link you add, support it.";
 
 export const NOTE_MAX = 1000;

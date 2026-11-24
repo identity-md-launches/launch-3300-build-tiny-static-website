@@ -170,7 +170,7 @@ function LeftOut({ rec }: { rec: RecordState }) {
   );
 }
 
-function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: Ask) => void; rec: RecordState; price: string; onRefresh: () => void; refreshing: boolean }) {
+function RebuildCard({ onAsk, rec, price, onRefresh, refreshing, known = true, unreadable = 0 }: { onAsk: (a: Ask) => void; rec: RecordState; price: string; onRefresh: () => void; refreshing: boolean; known?: boolean; unreadable?: number }) {
   const ask = rebuildAsk(rec.prior, rec.subject, !!rec.page, rec.promptChannels.list, rec.promptChannels.more);
   const prior = priorText(rec.prior);
   // Never opened for payment over the limit: the objective must fit in 7,900 characters.
@@ -178,13 +178,21 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing }: { onAsk: (a: 
   const running = rec.pendingRebuild;
   const ready = rec.snapshot.ok && !ask.warning && !running;
   // A subject with a finished page job never offers "Create the page", even when its page file failed to load.
-  if (!rec.page && rec.latest)
+  // Until the chain and the result files have answered, the app cannot know whether a page job finished: it says
+  // only that it is reading, and offers nothing.
+  if (!rec.page && !known)
+    return (
+      <div className="card" id="rebuild-card">
+        <p className="small" role="status">Reading the record from Ethereum…</p>
+      </div>
+    );
+  if (!rec.page && (rec.latest || unreadable > 0))
     return (
       <div className="card" id="rebuild-card">
         <p className="why" role="status">
-          {rec.error ? "The page could not be loaded." : "Reading the page…"}{" "}
+          {rec.error || !rec.latest ? "The page could not be loaded." : "Reading the page…"}{" "}
           <button type="button" className="linklike" onClick={onRefresh} disabled={refreshing}>
-            {refreshing ? "Trying again…" : "Try again"}
+            {refreshing ? "Trying again…" : "Try again."}
           </button>
         </p>
       </div>
@@ -437,10 +445,11 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
  */
 export const PANEL_CHECKS = false;
 
-function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState; onRefresh: () => void; refreshing: boolean }) {
-  // Page upkeep is closed by default; it starts open only when there is no page and no page job has finished, so
-  // "Create the page" is not hidden from a subject that has nothing else.
-  const firstPage = !rec.page && !rec.latest;
+function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing, items, unreadable }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState; onRefresh: () => void; refreshing: boolean; items: unknown[] | null; unreadable: number }) {
+  // Page upkeep is closed by default; it starts open only once the chain and the files have answered and show no page,
+  // no finished page job and no unreadable result, so "Create the page" is not hidden from a subject that has nothing else.
+  const known = items !== null;
+  const firstPage = known && !rec.page && !rec.latest && unreadable === 0;
   return (
     <section className="tab" aria-labelledby="actions-title">
       <h1 id="actions-title" className="tab-title" tabIndex={-1}>
@@ -454,7 +463,7 @@ function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing }: { o
         <p className="small pay-line">Every request is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
         <details className="upkeep" id="rebuild" open={firstPage || undefined}>
           <summary>Page upkeep</summary>
-          <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} />
+          <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} known={known} unreadable={unreadable} />
         </details>
       </div>
     </section>
@@ -904,7 +913,7 @@ function SubjectView({ subject, items, allItems, activity, route, onAsk, researc
       {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
       {route.tab === "sources" && <SourcesTab m={rec} />}
       {route.tab === "activity" && <ActivityList {...activity} items={allItems} shown={rec} subject={subject} />}
-      {route.tab === "contribute" && <ContributeTab onAsk={onAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} />}
+      {route.tab === "contribute" && <ContributeTab onAsk={onAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} items={items} unreadable={unreadableCount(allItems ?? [])} />}
       <TrayBar rec={rec} quote={researchQuote} onAsk={onAsk} />
     </SuggestProvider>
   );

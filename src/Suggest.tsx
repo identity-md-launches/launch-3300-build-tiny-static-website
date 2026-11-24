@@ -79,6 +79,11 @@ interface SuggestState {
   setOpen: (key: string | null) => void;
   /** Each saved change's target as the record shows it now (by change id), or null when its row is gone. */
   live: Map<string, ChangeTarget | null>;
+  /**
+   * The open form's note and links being written, by subject: kept here, above the tabs, so a visitor who looks at
+   * Record while writing finds the draft again. Cleared on Add to my changes. A ref, so typing re-renders nothing else.
+   */
+  drafts: React.MutableRefObject<Map<string, { note: string; links: string }>>;
 }
 const Ctx = createContext<SuggestState | null>(null);
 
@@ -106,10 +111,11 @@ export function liveTarget(rec: Pick<RecordModel, "scope" | "resolve">, t: Chang
 export function SuggestProvider({ subject, rec, children }: { subject: string; rec: Pick<RecordModel, "scope" | "resolve" | "sections">; children: React.ReactNode }) {
   const tray = useTray(subject);
   const [open, setOpen] = useState<string | null>(null);
+  const drafts = useRef(new Map<string, { note: string; links: string }>());
   // rec.resolve is new on every render; the record's sections and scope are what it reads.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const live = useMemo(() => new Map(tray.list.map((c) => [c.id, liveTarget(rec, c.target)] as const)), [tray.list, rec.sections, rec.scope]);
-  const value = useMemo(() => ({ subject, tray, open, setOpen, live }), [subject, tray, open, live]);
+  const value = useMemo(() => ({ subject, tray, open, setOpen, live, drafts }), [subject, tray, open, live]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -299,8 +305,25 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
   const existing = inline ? editable(pendingFor(s, target.key)) : null;
   const quick = QUICK[mode];
   const [type, setType] = useState<ChangeType>(existing?.type ?? "note");
-  const [note, setNote] = useState(existing?.note ?? "");
-  const [links, setLinks] = useState((existing?.links ?? []).join("\n"));
+  // The open form starts from the draft kept for this subject; a pencil's form from its pending change.
+  const draft = !inline ? s.drafts.current.get(s.subject) : undefined;
+  const [note, setNoteState] = useState(existing?.note ?? draft?.note ?? "");
+  const [links, setLinksState] = useState(draft?.links ?? (existing?.links ?? []).join("\n"));
+  const keep = (next: { note?: string; links?: string }) => {
+    if (inline) return;
+    const cur = s.drafts.current.get(s.subject) ?? { note: "", links: "" };
+    const d = { ...cur, ...next };
+    if (!d.note && !d.links) s.drafts.current.delete(s.subject);
+    else s.drafts.current.set(s.subject, d);
+  };
+  const setNote = (v: string) => {
+    setNoteState(v);
+    keep({ note: v });
+  };
+  const setLinks = (v: string) => {
+    setLinksState(v);
+    keep({ links: v });
+  };
   const [corrected, setCorrected] = useState(existing?.suggest ?? "");
   const [errs, setErrs] = useState<{ note?: string; links?: string }>({});
   const [added, setAdded] = useState(0);
@@ -399,7 +422,7 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
         )}
         <textarea
           id={`${id}-note`}
-          rows={inline ? 3 : 5}
+          rows={inline ? 4 : 5}
           value={note}
           placeholder={type === "reword" ? undefined : NOTE_PLACEHOLDER}
           onChange={(e) => setNote(e.target.value)}

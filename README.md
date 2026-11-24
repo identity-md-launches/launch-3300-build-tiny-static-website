@@ -501,9 +501,19 @@ page file. The site:
   a Record line the panel shows that line's own marker, speaker and quote instead; on a Key facts row each of its
   lines with its quote. "Your wording is kept if those lines, or a link you add, support it." appears only under
   Reword it.
-- **Add to my changes** stays disabled until the note has at least 10 characters (Back this up and Add links to
-  read need a usable https link instead), and for Reword it until the new sentence differs from the current one.
-  The reason is written under the buttons.
+- **The open form** (revision 21/22). Contribute starts with one form, "What's wrong or missing?": a text area of up
+  to 1,000 characters (placeholder "Say it in your own words. For example: the team changed in September, or the
+  fee is 0.3% not 1%."), a **Sources** box (one link per line, as many as fit, hint "Add a link if you have one.
+  Without one the swarm has to find a source, and may not.") and **Add to my changes**, which puts a change of type
+  `note` (no target) in the tray. A note may be links alone. Under it: "1. The swarm reads your note and its sources.
+  2. What holds up is added or corrected, with the source shown. 3. You can follow the job on the IMD explorer." The
+  draft is held above the tabs (`SuggestProvider`), so looking at Record while writing keeps it; it is cleared when
+  it is added. The pencil on a line or key fact, or a click on a summary sentence, opens the same form with "About:
+  <text>" above it and optional quick choices: This is wrong, Add context, Back this up (and Reword it on a
+  sentence). The separate forms for a missing line and for links to read are gone; both are cases of the open form.
+- **Add to my changes** stays disabled until there is a note or a link ("Write what is wrong or missing, or add a
+  link."), Back this up needs a usable https link, and Reword it waits until the new sentence differs from the
+  current one. The reason is written under the buttons.
 - **Key facts targets.** A change on a Key facts row carries every line id the row rests on, as
   `F1:L2,F1:L5 key fact "Supply: 1,000,000,000 IMD"`; a fallback row with no lines sends its label and value as
   text, `key fact "Website: imd.fun"`. A line or key fact change with neither is held in Review and never sent.
@@ -516,9 +526,21 @@ page file. The site:
   warning, only when some change has no link: "N of your changes have no source. They only reach the page if the
   swarm finds one." (singular for one). The footer is one line: "0.5 IMD for all N", "Read the full request" (a
   link-style toggle) and Submit at the right.
-- **Overview footer**: one small quiet block with no card: "Something wrong or missing? Hover any row or click a
-  sentence to suggest a change." and four text links, "Add a missing line", "Add links to read", "Ask a panel to
-  check a fact", "Rebuild the page" (without a page: "Ask a panel to check a fact" and "Create the page").
+- **Overview footer**: one quiet line, "Something wrong or missing? Use the pencil on any row, click a sentence, or
+  say it in your own words." The link opens the form on Contribute. Without a page it offers only Create the page,
+  once the chain shows no finished page job and no unreadable result; while the chain or the files are still read it
+  offers nothing, and a subject whose finished page job could not be read links to Activity instead.
+- **Page upkeep**: "Rebuild the page" sits in a closed "Page upkeep" section at the bottom of Contribute (a chevron
+  marks it as a control). A page built with older instructions reads "Built with older instructions. A rebuild
+  applies the current rules." and its Rebuild link opens the rebuild dialog. A subject with finished page jobs (or a
+  result that could not be read) shows "The page could not be loaded. Try again." there instead of Create the page;
+  before the chain has answered it shows "Reading the record from Ethereum…".
+- **Tokens on several chains**: Key facts shows a token's home address first, then "also on" with each other
+  chain's own address, chain tag and explorer link (ENS on ens.domains: Ethereum, also on Polygon PoS with
+  polygonscan.com). On phones the address, copy button and chain tag wrap inside the value cell.
+- **Related**: "Add this project" only for an entry with a domain of its own; never for a chain (by its name or
+  site: Ethereum, Base, Polygon, Solana…), a standard (ERC-20, "… standard") or a token (a symbol such as USDC).
+  The relation's wording (which token a project uses) never hides the link.
 - **Header**: the header row uses the page's own maximum width and side padding (`--page-max`, `--page-pad`), so
   the site name and the wallet sit on the content's edges at every width. Connected, the wallet is a chip (the
   Connect button's 44px height) with the ENS name or short address; it opens a small menu with "Copy address" and
@@ -689,7 +711,7 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-b6493be79132.txt` and `changes-cbb133e479ca.txt`; still served: `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-153b2cd5869b.txt` and `changes-e469ba6f33e4.txt`; still served: `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
@@ -721,10 +743,10 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreifid4x6cw47aq4yjjbyntou4kbsoztkpai7425sv2odscerw6o2yy?filename=rebuild-a81f2fe15b9f.txt`,
-  sha256 `a81f2fe15b9f043984a4386cdd4e28327666a7811fe6bb2ae9c390891b79dac6`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreiew42x5r4anjoxxdc7did7hmhe7sbodadp6b27lwmwnwnglrq2k5m?filename=changes-96e6afd8f00d.txt`,
-  sha256 `96e6afd8f00d4baf718be340fe761c9f905c300dfe0ebebb32cdb34cb8c34aeb`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreiavhmwnlbu33nufgca46tznx7yc7ezsqtj4yrtqr5gj7tgsrim75a?filename=rebuild-153b2cd5869b.txt`,
+  sha256 `153b2cd5869bdb6853081cf4f2dbff02f933284d3cc46708f4c9fccd28a19fe8`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreiheng5g6m7e2ky5y4eoyc7qdnvkg44533ixcakc3qapt7exwkpsvy?filename=changes-e469ba6f33e4.txt`,
+  sha256 `e469ba6f33e4d2b1dc708ec0bf01b6aa3739dded1710142dc00f9fc97b29f2ae`
 <!-- instructions:end -->
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,

@@ -1,5 +1,5 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
-import { chainTag, otherAddresses, takeAddress, type OtherAddr } from "./addrDisplay";
+import { chainOnlyPiece, chainTag, otherAddresses, takeAddress, type OtherAddr } from "./addrDisplay";
 import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem } from "./page";
 import { chainIdOf, chainLabel, chainName, explorerAddressUrl } from "./subject";
 import { proofIdsOf, settleOf } from "./settle";
@@ -154,7 +154,14 @@ void TICKER_START;
  * it points at: the token whose address it contains, or the only token.
  */
 export function tokensOf(value: string, rowUrl = "", values: string[] = []): TokenItem[] {
-  const items = (values.length ? values : tokenParts(value)).map((p) => {
+  // A piece that is only a chain and an address ("Polygon 0x…") is the previous token on another chain, never a token.
+  const pieces: { text: string; also: { chain: string; address: string }[] }[] = [];
+  for (const p of values.length ? values : tokenParts(value)) {
+    const only = pieces.length ? chainOnlyPiece(p) : null;
+    if (only) pieces[pieces.length - 1]!.also.push(only);
+    else pieces.push({ text: p, also: [] });
+  }
+  const items = pieces.map(({ text: p, also: folded }) => {
     // The first address and the chain written after it ("0x… on Ethereum", "0x… Base"); other addresses stay in the
     // purpose, where Key facts shows each with its own chain tag.
     const took = takeAddress(p);
@@ -172,7 +179,7 @@ export function tokensOf(value: string, rowUrl = "", values: string[] = []): Tok
       .replace(/^[\s:,(–—-]+|[\s:,(–—-]+$/g, "")
       .replace(/^\((.*)\)$/, "$1")
       .trim();
-    return withAlso({ symbol, purpose, address, chain, url: "" });
+    return withAlso({ symbol, purpose, address, chain, url: "" }, folded);
   });
   if (rowUrl) {
     const lower = rowUrl.toLowerCase();
