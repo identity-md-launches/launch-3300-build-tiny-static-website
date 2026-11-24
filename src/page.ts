@@ -1,4 +1,4 @@
-import { isAnyAddress } from "./addr";
+import { isAddressFor } from "./addr";
 import { statusWord as liveStatus } from "./liveness";
 /** Turns untrusted page.json and lines.json into plain strings. Nothing here is ever rendered as HTML. */
 import { countLines, type Counts } from "./settle";
@@ -137,7 +137,7 @@ export function alsoOf(o: Record<string, unknown>): { key: string; list: { chain
       const e = x as Record<string, unknown>;
       const address = str(e.address ?? e.contract, 80).trim();
       const chain = str(e.chain ?? e.network ?? e.chain_id ?? e.chainId, 60).trim();
-      return isAnyAddress(address) ? [{ chain, address }] : [];
+      return isAddressFor(address, chain) ? [{ chain, address }] : [];
     });
     if (list.length) return { key: k, list };
   }
@@ -172,7 +172,8 @@ export function valueItemOf(x: unknown): ValueItem | null {
   const ad = pick(ADDRESS_KEYS, 80);
   const ch = pick(CHAIN_KEYS, 60);
   const url = str(o.url, 400).trim();
-  const address = ad && isAnyAddress(ad.v) ? ad.v : "";
+  // An address field is checked against the chain it names (a Solana address need not look like a key).
+  const address = ad && isAddressFor(ad.v, ch?.v ?? "") ? ad.v : "";
   const status = liveStatus(o.status);
   const also = alsoOf(o);
   const used = new Set([nm?.key, address ? ad?.key : "", ch?.key, "url", also?.key, status ? "status" : ""].filter(Boolean) as string[]);

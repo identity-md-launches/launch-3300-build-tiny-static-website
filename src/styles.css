@@ -955,6 +955,8 @@ body.has-tray main { padding-bottom: 9rem; }
 }
 .example { width: 100%; max-width: 60rem; margin: 0 auto; }
 .example .label-card { display: grid; gap: var(--space-2); align-content: start; }
+/* All three cards the same height, side by side or stacked. */
+.example .label-cards { grid-auto-rows: 1fr; }
 .example-text { overflow-wrap: anywhere; }
 .example-from { text-align: center; margin-top: var(--space-2); }
 .example-src { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; font-weight: 600; }
@@ -1066,8 +1068,7 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
 .doc-divider { border: 0; border-top: 1px solid var(--color-border); margin: 32px 0 16px; }
 .doc-list { padding-inline-start: 20px; }
 .doc-mono { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; flex-wrap: wrap; }
-.doc-cards .label-card { height: 100%; }
-.doc-cards { align-items: stretch; }
+.doc-example { max-width: none; margin: var(--space-3) 0; }
 @media (min-width: 1000px) {
   .doc-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
   .doc-toc { position: sticky; top: 16px; align-self: start; }

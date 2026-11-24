@@ -43,7 +43,7 @@ import { DOCS_HREF, TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, t
 import { Docs } from "./Docs";
 import { Profile } from "./Profile";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
-import { Home, StillReading } from "./Home";
+import { Home, StillReading, pickExample } from "./Home";
 import { useDigests } from "./digest";
 import type { Activity } from "./useActivity";
 import { NoteForm, SuggestProvider, TrayBar, type Quote } from "./Suggest";
@@ -1069,7 +1069,9 @@ export default function App() {
   const changesQuote = useKindPrice(CHANGES);
   // Requests not sent through this record's instructions are left out of every view but Activity (counts.ts).
   const counted = useMemo(() => (activity.items ? readable(activity.items) : null), [activity.items]);
-  const { digests, logos, reading, failed, busy, retry } = useDigests(counted, subject ?? null, activity.readSubject);
+  const { digests, logos, reading, failed, busy, retry, readAll } = useDigests(counted, subject ?? null, activity.readSubject);
+  // One example for the three cards, on Home and in Docs.
+  const example = useMemo(() => pickExample(digests), [digests]);
   if (subject) setLinkSubject(subject);
   // A subject's page waits until its result files are read: until then its requests are the home list's light ones.
   const allItems = useMemo(() => {
@@ -1126,13 +1128,13 @@ export default function App() {
       </header>
       <main id="root-main" tabIndex={-1}>
         {route.docs ? (
-          <Docs quote={rebuildQuote} />
+          <Docs quote={rebuildQuote} example={example} digests={digests} logos={logos} />
         ) : route.wallet ? (
           <Profile key={route.wallet} address={route.wallet} activity={activity} />
         ) : subject ? (
           <SubjectView key={subject} sent={sent} jobs={jobs} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} allItems={allItems} activity={activity} route={route} onAsk={openAsk} researchPrice={rebuildQuote.text} firstPrice={firstQuote.text} changesQuote={changesQuote} />
         ) : (
-          <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} reload={activity.reload} onAdd={addProject} price={firstQuote.text} bad={route.bad} prefill={route.add} unreadable={unreadable} />
+          <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} readAll={readAll} example={example} reload={activity.reload} onAdd={addProject} price={firstQuote.text} bad={route.bad} prefill={route.add} unreadable={unreadable} />
         )}
         <footer className="about">
           <p>Beta. Payments go to IMD and are not refunded. Every line comes from a paid job on Ethereum.</p>

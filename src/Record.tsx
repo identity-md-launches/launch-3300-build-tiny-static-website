@@ -234,7 +234,7 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
   if (row.tokens.length) {
     // One entry per token: symbol, purpose, then each address it names as Addr with its chain tag.
     return (
-      <ShowSome className="kf-tokens" limit={listLimit(row.label)} items={liveFirst(row.tokens.map((t, i) => ({ t, i, st: livenessOf({ name: t.symbol, text: t.purpose, chain: t.chain }) })), (x) => x.st).map(({ t, i, st }) => (
+      <ShowSome className="kf-tokens" limit={listLimit(row.label)} items={liveFirst(row.tokens.map((t, i) => ({ t, i, st: livenessOf({ status: t.status, name: t.symbol, text: t.purpose, chain: t.chain }) })), (x) => x.st).map(({ t, i, st }) => (
           <li key={i} className="tok-line">
             {t.symbol && <strong className="tok-symbol">{t.symbol}</strong>}
             {/* Its own words, then the home chain's address, then "also on" with each other chain's own address and tag. */}
@@ -259,21 +259,24 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
     );
   }
   const entries = valueEntries(row.label, row.value);
+  /** Every entry of a Test networks row is a test network; elsewhere an entry's words decide. */
+  const testRow = /^test networks?$/i.test(row.label.trim());
   if (entries.length > 1)
+    // A legacy text list ("ONE: 1; TWO: 2; …"): live entries first, each tagged, and Supply and Tokens cut at 3.
     return (
-      <ul className="kf-values">
-        {entries.map((v, i) => (
+      <ShowSome className="kf-values" limit={listLimit(row.label)} items={liveFirst(entries.map((v, i) => ({ v, i, st: testRow ? ("test" as const) : livenessOf({ text: v }) })), (x) => x.st).map(({ v, i, st }) => (
           <li key={i}>
             {i === entries.length - 1 ? <ValueText text={v} url={safeHref(row.url) && addressRuns(row.value).some((r) => r.kind === "address") ? row.url : ""} chain={chain} /> : <Runs text={v} chain={chain} />}
+            <LiveTag s={st} />
           </li>
-        ))}
-      </ul>
+        ))} />
     );
   return (
     <>
       {named && <><strong className="kf-main-name">{row.mainName}</strong>{" "}</>}
       <ValueText text={row.value} url={row.url} chain={chain} />
       {row.note && <span className="small"> {row.note}</span>}
+      {testRow && <>{" "}<LiveTag s="test" /></>}
     </>
   );
 }
@@ -354,17 +357,25 @@ const qDate = (t: number | null | undefined) => (t ? new Date(t).toLocaleDateStr
 /** One question with its permanent link: open with "Answer this", or marked Answered (or no longer open) with the date. */
 function QuestionItem({ q, m }: { q: Question; m: RecordModel }) {
   const anchor = questionAnchor(q.id);
-  const next = q.next ? m.questions.all.get(q.next) : undefined;
+  const narrowed = q.history?.at(-1);
   return (
     <li id={anchor} className={`question q-${q.state}`} tabIndex={-1}>
       <span className="q-text">{q.text}</span>{" "}
       {q.state === "open" ? (
-        <AnswerLink q={q} m={m} />
+        <>
+          <AnswerLink q={q} m={m} />
+          {narrowed && (
+            <span className="small q-state">
+              {" "}
+              · Answered in part{narrowed.at ? ` ${qDate(narrowed.at)}` : ""}; first asked as “{q.history![0]!.text}”
+              {narrowed.lines.length ? <> · {m.editRefs(narrowed.by, narrowed.lines, null).map((l, i) => <Fragment key={l.id}>{i > 0 && ", "}<a href={to(lineAnchor(l.id))}>{`line ${i + 1}`}</a></Fragment>)}</> : null}
+            </span>
+          )}
+        </>
       ) : (
         <span className="small q-state">
-          <span className="live-tag">{q.state === "closed" ? "No longer open" : q.state === "reworded" ? "Answered in part" : "Answered"}</span>
+          <span className="live-tag">{q.state === "closed" ? "No longer open" : "Answered"}</span>
           {q.closedAt ? ` ${qDate(q.closedAt)}` : ""}
-          {next && <> · now asked as <a href={to(questionAnchor(next.id))}>{next.text}</a></>}
           {q.by && q.lines?.length ? <> · {m.editRefs(q.by, q.lines, null).map((l, i) => <Fragment key={l.id}>{i > 0 && ", "}<a href={to(lineAnchor(l.id))}>{`line ${i + 1}`}</a></Fragment>)}</> : null}
         </span>
       )}{" "}
@@ -1854,6 +1865,7 @@ function FactTable({ rows, ctx }: { rows: RecordRow[]; ctx: Ctx }) {
                       {/* Each check says what it is, as a standalone proof row does; a disputed one says so instead. */}
                       {disputed ? <SettleMark s={disputed} ctx={ctx} /> : stale ? <SettleMark s={stale} ctx={ctx} /> : <KindMark kind="proof" />}
                       <span className="block">{f.name}</span>
+                      <LiveTag s={row.line.status} />
                     </span>
                   </button>
                   {row.origin?.raised && <span className="by small block">raised by <PayerLink name={row.origin.payer} address={row.origin.payerAddr} /></span>}
@@ -2115,7 +2127,8 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
   const narrowState = narrowOpen.key === narrowKey ? narrowOpen.open : {};
   // A filter is a settled class as well as a kind: a settled row passes Proven or Contradicted, never Statement or Claim.
   const keep = (r: RecordRow) => passes(filter, rowClass(r.line, settled.by.get(r.line.id))) && rowMatches(r, query);
-  const shownFacts = factRows.filter(keep);
+  // Live proofs first, then test, then past, each with its grey tag.
+  const shownFacts = liveFirst(factRows.filter(keep), (r) => r.line.status ?? "live");
   const named = new Set(sections.map((s) => s.section));
   if (factRows.length) named.add("on_chain");
   const order = [...SECTIONS.filter((s) => named.has(s)), ...[...named].filter((s) => !(SECTIONS as readonly string[]).includes(s))];

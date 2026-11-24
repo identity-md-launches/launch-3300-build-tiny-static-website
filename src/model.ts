@@ -610,7 +610,7 @@ export interface Digest {
   pageReq: string | null;
   /** Three lines of this record that state one fact, for Home's example; null when it has none. */
   example: Example | null;
-  /** How many open questions the page shown lists (Home's Most open questions). */
+  /** How many questions are open now (questionsOf: the page shown, less those a counted changes job closed): Home's Most open questions. Unknown in a digest of an older shape. */
   open?: number;
   /** The Launched fact as a time, or null when the page has none (Home's Launch date). */
   launched?: number | null;
@@ -637,7 +637,7 @@ export function digestOf(id: string, list: Activity[]): Digest | null {
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
   const example = core.page ? exampleOf(core.sections.flatMap((x) => x.rows.map((r) => r.line))) : null;
-  return { type: "digest", v: 9, open: core.page?.openQuestions.length ?? 0, launched: launchedOf(core.page), example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
+  return { type: "digest", v: 9, open: core.page ? questionsOf(list, core.latest).open.length : 0, launched: launchedOf(core.page), example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
 }
 
 /** The Launched fact of a page as a time: its first full date, month and year, or year; null without one. */

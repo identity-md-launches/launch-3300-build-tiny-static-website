@@ -174,9 +174,9 @@ describe("A / C6 / E8. the Overview a reader sees", () => {
   });
   it("keys the dots under the summary in one line", () => {
     const key = html.slice(html.indexOf('class="small dot-key"'));
-    expect(key).toMatch(/kind-proof[^>]*><\/span> proven on chain/);
-    expect(key).toMatch(/kind-statement[^>]*><\/span> the project says/);
-    expect(key).toMatch(/kind-claim[^>]*><\/span> others say/);
+    expect(key).toMatch(/kind-proof dk-icon"><svg[\s\S]*?<\/svg><\/span> proven on chain/);
+    expect(key).toMatch(/kind-statement dk-icon"><svg[\s\S]*?<\/svg><\/span> the project says/);
+    expect(key).toMatch(/kind-claim dk-icon"><svg[\s\S]*?<\/svg><\/span> others say/);
     expect(key).toContain("Summary written from the record by a research job.");
     expect(html).not.toContain("Dots open supporting lines");
     expect(html).toContain("founded 2020");
@@ -223,9 +223,9 @@ describe("B4, 4b, C5, E10, F11-F14. instruction files", () => {
   const ATTR = "Plain descriptions of what the project is and how it is used need no attribution in words when they rest on the project's own statements; the dots show that. Attribute in words, once per sentence and after the fact, only when the sentence is about money flows, fees, who controls something, safety or performance, when it rests on a claim by someone else, or when sources disagree. Never use the same attribution phrase in two sentences running.";
   const HIST = "When the same source reports the same figure at different times, such as a tracker's value locked or a supply reading, keep one line with the newest reading and put older readings in history. Do not keep the older reading as a separate line or link it with outdates.";
   const LAUNCH = "Launched is the date the project first went live. If the current version is much newer, add it in the same value, such as 'November 2018; current version since January 2025'. When sources disagree on the date, give the project's own date and say so in a line.";
-  const RUNBY = "Run by is the organisation and the person leading it now, such as 'Zora Labs; Dee Goens, chief executive'. Contributors is for other people and teams who work on it; never put the chief executive there.";
+  const RUNBY = "Run by is the organisation and the person leading it now, such as 'Zora Labs; Dee Goens, chief executive'. When the sources do not say who runs the project, write exactly: 'Who runs it is not stated in the sources read.' Contributors is for other people and teams who work on it; never put the chief executive there.";
   const SIZE = "Size uses a figure from an established independent tracker or the project's own published statistics; never a figure from an individual's social post.";
-  const VALUES = "Every infobox value that lists several things gives them in values as objects with exactly these keys: name, text (what to show after the name; may be empty) and optionally url or address with chain; a Tokens entry may also have also, a list of {chain, address}. Use no other shapes.";
+  const VALUES = "Every infobox value that lists several things gives them in values as objects with exactly these keys: name, text (what to show after the name; may be empty) and optionally url or address with chain, and status; a Tokens entry may also have also, a list of {chain, address}. Use no other shapes.";
   it("rebuild carries every new rule word for word, Run by after Founder or creator, and drops the old ones", () => {
     for (const s of [TOKENS, BRIDGE, ATTR, HIST, LAUNCH, RUNBY, SIZE, VALUES]) expect(r).toContain(s);
     expect(r).toContain("Founder or creator, Run by, Contributors");

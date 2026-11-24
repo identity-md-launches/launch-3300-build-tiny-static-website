@@ -100,9 +100,9 @@ describe("D11. the rebuild instructions give one shape for also", () => {
   const t = read("templates/instructions/rebuild.txt");
   it("keeps the brief's three sentences and adds also to the values contract, example and keys", () => {
     expect(t).toContain("A token's entry gives its home chain and address. Other chains go in a field also, a list of {chain, address}. Never write another chain's address inside the text.");
-    expect(t).toContain("and optionally url or address with chain; a Tokens entry may also have also, a list of {chain, address}. Use no other shapes.");
+    expect(t).toContain("and optionally url or address with chain, and status; a Tokens entry may also have also, a list of {chain, address}. Use no other shapes.");
     expect(t).toContain('"chain": "Ethereum", "also": [{"chain": "Polygon", "address": "0x..."}]}]');
-    expect(t).toContain("values[{name,text,url,address,chain,also[{chain,address}]}]");
+    expect(t).toContain("values[{name,text,url,address,chain,status,also[{chain,address}]}]");
     expect(read(`public/instructions/${manifest.rebuild.file}`)).toBe(t);
   });
 });

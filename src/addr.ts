@@ -19,6 +19,41 @@ export function isOtherAddress(v: string): boolean {
 /** Any address this site shows as an address: a 0x address or a non-0x one. */
 export const isAnyAddress = (v: string) => EVM.test(v.trim()) || HEX64.test(v.trim()) || isOtherAddress(v);
 
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+/** How many bytes a base58 string decodes to; null when it is not base58. */
+export function base58Length(v: string): number | null {
+  if (!/^[1-9A-HJ-NP-Za-km-z]+$/.test(v)) return null;
+  const bytes: number[] = [];
+  for (const ch of v) {
+    let carry = B58.indexOf(ch);
+    for (let i = 0; i < bytes.length; i++) {
+      carry += bytes[i]! * 58;
+      bytes[i] = carry & 0xff;
+      carry >>= 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  let zeros = 0;
+  while (zeros < v.length && v[zeros] === "1") zeros++;
+  return zeros + bytes.length;
+}
+
+/**
+ * An address given in an address field with its chain named: checked against that chain, not against the look of a
+ * word in prose. On Solana any base58 value that decodes to 32 bytes is an address (the system program
+ * 11111111111111111111111111111111 included); elsewhere the general test applies.
+ */
+export function isAddressFor(v: string, chain = ""): boolean {
+  const s = v.trim();
+  if (isAnyAddress(s)) return true;
+  if (/solana/i.test(chain)) return base58Length(s) === 32;
+  if (/tron/i.test(chain)) return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(s) && base58Length(s) === 25;
+  return false;
+}
+
 /** Non-0x addresses inside a text: base58 keys (mixed digits and letters), bech32 and TON. */
 export const OTHER_ADDRESS_IN = /(?<![A-Za-z0-9])(?:[1-9A-HJ-NP-Za-km-z]{32,44}|[a-z]{2,12}1[02-9ac-hj-np-z]{20,90}|[EU]Q[A-Za-z0-9_-]{46})(?![A-Za-z0-9_-])/g;
 

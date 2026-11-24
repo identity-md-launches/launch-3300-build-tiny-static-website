@@ -4,8 +4,8 @@ import { ETHERSCAN, IMD, INTAKE } from "./config";
 import { INSTRUCTIONS } from "./instructions";
 import { PUBLISHED_INSTRUCTIONS } from "./counts";
 import { CopyIcon } from "./Record";
-import { KindIcon } from "./KindIcon";
-import { EXAMPLE_FALLBACK, EXAMPLE_ORDER } from "./Home";
+import { EXAMPLE_FALLBACK, ExampleCards, ExampleFrom, isZoraExample, type Example } from "./Home";
+import type { Digest } from "./model";
 import { subjectHref } from "./route";
 import type { Quote } from "./Suggest";
 
@@ -64,7 +64,8 @@ function Toc() {
   );
 }
 
-export function Docs({ quote }: { quote: Quote }) {
+export function Docs({ quote, example = { ...EXAMPLE_FALLBACK, from: null, name: null, logoHash: null }, digests, logos }: { quote: Quote; example?: Example; digests?: Map<string, Digest>; logos?: Map<string, string> }) {
+  const zora = isZoraExample(example);
   useEffect(() => {
     document.title = "How Swarmpedia works · Swarmpedia";
   }, []);
@@ -73,9 +74,8 @@ export function Docs({ quote }: { quote: Quote }) {
       <header className="doc-intro">
         <h1 id="docs-title" tabIndex={-1}>How Swarmpedia works</h1>
         <p className="lead">
-          Swarmpedia is a public record of what projects say, next to what can be proven. What a project says is spread over sites, posts and
-          contracts, and it is hard to tell what has been checked from what has only been said. Here every line shows who said it and whether
-          anyone can check it. Anyone can add a project or a source; the IMD swarm does the research and the checking.
+          Swarmpedia is a public record of projects. The IMD swarm checks websites, posts and contracts, and each line shows who said it and
+          whether you can verify it. Anyone can add a project or a source.
         </p>
         <p className="doc-actions">
           <a className="btn btn-primary" href="#/">Look up a project</a>
@@ -87,22 +87,16 @@ export function Docs({ quote }: { quote: Quote }) {
         <div className="doc-body">
           <h2 className="doc-group">For readers</h2>
           <Section title="Three kinds of line">
-            <p>One fact, ZORA's total supply, the three ways a line can carry it:</p>
-            <ul className="label-cards doc-cards" aria-label="One fact, three kinds of line">
-              {EXAMPLE_ORDER.map((l) => (
-                <li key={l.kind} className={`label-card label-${l.kind}`}>
-                  <span className="card-head">
-                    <span className={`card-icon kind-${l.kind}`}><KindIcon kind={l.kind} size={20} /></span>
-                    <span className="card-title">
-                      <span className={`card-name kind-${l.kind}`}>{l.word}</span>
-                      <span className="card-note">{l.note}</span>
-                    </span>
-                  </span>
-                  <span className="example-text">{EXAMPLE_FALLBACK[l.kind]}</span>
-                </li>
-              ))}
-            </ul>
-            <p>To run the proof again: on Base, call <span className="mono">totalSupply()</span> on the ZORA token contract and divide by 10<sup>18</sup>. The line gives the contract, the block and a public RPC.</p>
+            <p>{zora ? "One fact, ZORA's total supply, the three ways a line can carry it:" : "One fact, the three ways a line can carry it, as on the home page:"}</p>
+            <div className="example doc-example">
+              <ExampleCards example={example} label="One fact, three kinds of line" />
+              <ExampleFrom example={example} digests={digests} logos={logos} />
+            </div>
+            {zora ? (
+              <p>To run the proof again: on Base, call <span className="mono">totalSupply()</span> on the ZORA token contract and divide by 10<sup>18</sup>. The line gives the contract, the block and a public RPC.</p>
+            ) : (
+              <p>To run the proof again, open it in Record: its re-run steps give the chain, the contract or source, the block and a public RPC.</p>
+            )}
             <p>Who said a line never changes. What changes is whether another line confirms, contradicts or supersedes it.</p>
           </Section>
           <Section title="Reading a page">

@@ -61,11 +61,11 @@ function AnsweredQuestions({ a, shown }: { a: Activity; shown: Shown }) {
   if (!list.length) return null;
   return (
     <ul className="plain answered" aria-label="Questions this job answered">
-      {list.map((q) => {
-        const lines = shown.editRefs(a, q.by === a ? q.lines ?? [] : [], null);
+      {list.map((x, i) => {
+        const lines = shown.editRefs(a, x.lines, null);
         return (
-          <li key={q.id}>
-            <a href={to(questionAnchor(q.id))}>{q.by === a && q.state === "reworded" ? "Answered in part" : "Answered"}: {q.text}</a>
+          <li key={`${x.question.id}-${i}`}>
+            <a href={to(questionAnchor(x.question.id))}>{x.op === "reword" ? "Answered in part" : "Answered"}: {x.text}</a>
             {lines.length > 0 && (
               <span className="small">
                 {" "}

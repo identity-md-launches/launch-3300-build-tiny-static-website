@@ -728,6 +728,12 @@ takes the file to read from the kind's `results`. It must supply:
 The job check (`src/counts.ts`) must also learn the kind's objective shape before its results are read. IMD plans to
 sell many-agent goals through the Intake; that will be the next kind. None is added now.
 
+Question IDs are stable, so a future request kind can attach a reward to an open question. An open question's id is
+the job that first wrote it plus its own id (`<job id>:q<n>`, `src/questions.ts`), and it never changes: a changes
+job that rewords a question (an answer in part) keeps that id and updates its wording, and one that closes it marks
+that same id Answered, with the date and the lines that answer it. Today an answer is an ordinary changes request
+("Answer to: <the question>" as the note); there is no bounty and no separate kind.
+
 ## Objective openings (revision 24)
 
 Jobs sent now open with the action and the subject id, no colon: "Write the Swarmpedia page for <id>. ",
@@ -745,7 +751,7 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-d3414e5807fc.txt` and `changes-e7afaac38d03.txt`; still served: `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-59cb466af103.txt` and `changes-a7ea2f0a9c20.txt`; still served: `rebuild-d3414e5807fc.txt`, `changes-e7afaac38d03.txt`, `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
@@ -777,10 +783,10 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreigtifhfqb74ppqn3xpk67yxel7m3is4p7jl3cudf7k4kqnt6tb5ji?filename=rebuild-d3414e5807fc.txt`,
-  sha256 `d3414e5807fc7be0ddddeaf7f1722fecda25c7fd2bd8a832fd5c541b3f4c3d4a`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreihhv6vmhdidt3xyspbxecvy55e3wi35xw5yqjvq6vdwgmvl64hczm?filename=changes-e7afaac38d03.txt`,
-  sha256 `e7afaac38d039eef893c3720ab8ef49bb237dbdbb8826b0f5476332abf70e2cb`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreiczzndgv4idqjtv3iscusclmntvtx2udgjab4veufgjkm4kdmkv6i?filename=rebuild-59cb466af103.txt`,
+  sha256 `59cb466af10382675da242a484b636759df54199200f2a4a14c95338a1b155f2`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreifh5ixqvhbay3nw73iuqimcbwbykb3so4oegmzybat5oxuwmqomjm?filename=changes-a7ea2f0a9c20.txt`,
+  sha256 `a7ea2f0a9c20c6db6fed14821820d83850772771c4333380827d75e96641cc4b`
 <!-- instructions:end -->
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,

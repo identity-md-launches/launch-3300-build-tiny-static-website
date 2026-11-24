@@ -88,7 +88,7 @@ describe("settled lines", () => {
 
   it("the Record tab renders one row per settled line, led by its marker, with the speaker after", () => {
     const src = readFileSync("src/Record.tsx", "utf8");
-    expect(src).toContain("const rows = liveFirst(every.filter((r) => !facts.has(r.line.id) && keep(r)), (r) => r.line.status ?? "live");");
+    expect(src).toContain('const rows = liveFirst(every.filter((r) => !facts.has(r.line.id) && keep(r)), (r) => r.line.status ?? "live");');
     expect(src).toContain("Confirmed by a panel, ");
     expect(src).toContain('"Partly confirmed by"');
     expect(src).toContain("speakerText(line)");

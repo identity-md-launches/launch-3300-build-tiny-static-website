@@ -1,8 +1,11 @@
 /**
  * The home list's digests: one small record per subject (name, one_line, counts, logo hash, changed date, its
  * contracts, what the out-of-date note needs) kept in IndexedDB, plus each logo once under its hash. A digest is
- * written when a subject's files are read: when its page is opened, or when the home page reads, a few at a time and
- * newest first, every listed subject that has no digest (or one taken before newer results).
+ * written when a subject's files are read: when its page is opened. The home list never reads a full record to draw
+ * itself: it is drawn from the Intake scan and these cached digests, and a subject with no digest yet shows a light
+ * row from the scan alone. The one exception is a lookup of a contract address that no known row lists while some
+ * rows have no digest: before offering a paid page that could duplicate one, readAll() reads those subjects' files,
+ * a few at a time and newest first.
  */
 import { useEffect, useRef, useState } from "react";
 import { digestOf, needsRetry, resultSig, type Digest } from "./model";
@@ -18,13 +21,18 @@ export interface LogoEntry {
 /** How many subjects the home page reads at once. */
 export const DIGEST_CONCURRENCY = 3;
 
-/** Splits what the digests store holds into digests by subject id and logos by hash. Digests of an older shape are read again. */
+/**
+ * Splits what the digests store holds into digests by subject id and logos by hash. A digest of the previous shape
+ * (v8) is kept: its fields are the same, and the figures it does not have (open questions, launch date) are unknown
+ * until its page is opened again.
+ */
 export function splitDigests(values: unknown[]): { digests: Map<string, Digest>; logos: Map<string, string> } {
   const digests = new Map<string, Digest>();
   const logos = new Map<string, string>();
   for (const v of values) {
     const o = v as Partial<Digest> & Partial<LogoEntry>;
     if (o?.type === "digest" && typeof o.id === "string" && o.v === 9) digests.set(o.id, o as Digest);
+    else if (o?.type === "digest" && typeof o.id === "string" && (o as { v?: number }).v === 8) digests.set(o.id, { ...(o as Digest), open: undefined, launched: undefined, example: o.example ?? null });
     else if (o?.type === "logo" && typeof o.hash === "string" && typeof o.url === "string" && o.url.startsWith("data:image/png;base64,")) logos.set(o.hash, o.url);
   }
   return { digests, logos };
@@ -95,12 +103,14 @@ export interface DigestState {
   busy: boolean;
   /** Reads a subject's files again (its failed page, result files or logo), now. */
   retry: (id: string) => void;
+  /** Reads the files of every subject that has no digest yet: only for a contract lookup no known row answers. */
+  readAll: () => void;
 }
 
 /**
- * Writes a subject's digest whenever its files are read, and on the home page reads the files of every subject that
- * needs one (digestQueue) through one DigestQueue, DIGEST_CONCURRENCY at a time, filling each row in as its digest
- * arrives.
+ * Writes a subject's digest whenever its files are read (its page is opened). The home page reads no subject's files
+ * by itself: only readAll() (a contract lookup no known row answers) or retry() (a visitor's Try again) start reads,
+ * through one DigestQueue, DIGEST_CONCURRENCY at a time, filling each row in as its digest arrives.
  */
 export function useDigests(items: Activity[] | null, subject: string | null, readSubject?: (id: string) => Promise<Activity[]>): DigestState {
   const [state, setState] = useState<{ digests: Map<string, Digest>; logos: Map<string, string> }>({ digests: new Map(), logos: new Map() });
@@ -111,6 +121,10 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
   const tried = useRef(new Map<string, string>());
   const latest = useRef(state);
   latest.current = state;
+  /** Set by readAll(): read every subject that has no digest (a contract lookup needs every row's contracts). */
+  const wantAll = useRef(false);
+  /** Subjects a visitor asked to read again with Try again. */
+  const wanted = useRef(new Set<string>());
   const ctx = useRef({ items, subject, readSubject, loaded });
   ctx.current = { items, subject, readSubject, loaded };
 
@@ -161,7 +175,8 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
   const plan = () => {
     const { items: its, subject: open, readSubject: read, loaded: ready } = ctx.current;
     if (!its || open || !read || !ready || !queue.current) return;
-    queue.current.plan(digestQueue(its, latest.current.digests).filter((id) => tried.current.get(id) !== sigOf(its, id)));
+    const want = digestQueue(its, latest.current.digests).filter((id) => (wantAll.current ? !latest.current.digests.has(id) : false) || wanted.current.has(id));
+    queue.current.plan(want.filter((id) => tried.current.get(id) !== sigOf(its, id)));
   };
   queue.current ??= new DigestQueue(
     DIGEST_CONCURRENCY,
@@ -187,13 +202,19 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
     () => plan(),
   );
 
-  // The home page: read every subject that needs it, newest first, through the one queue.
+  // Reads asked for (readAll, Try again) continue as the list changes; nothing is read unasked.
   useEffect(() => {
     plan();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, subject, readSubject, loaded]);
 
+  const readAll = () => {
+    wantAll.current = true;
+    plan();
+  };
+
   const retry = (id: string) => {
+    wanted.current.add(id);
     tried.current.delete(id);
     setFailed((f) => {
       const n = new Map(f);
@@ -203,5 +224,5 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
     plan();
   };
 
-  return { ...state, reading, failed, busy: !loaded || reading.size > 0, retry };
+  return { ...state, reading, failed, busy: !loaded || reading.size > 0, retry, readAll };
 }

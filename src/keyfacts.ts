@@ -76,6 +76,8 @@ export interface TokenItem {
   chain: string;
   /** A safe explorer link for this token, when the row's url clearly points at it. */
   url: string;
+  /** live, test or past when its values entry gives a status (carried through every conversion). */
+  status?: "live" | "test" | "past";
   /**
    * Its other chains, after the home address: each with its own address, chain ("" when not written; never the home
    * chain by default) and a short note. Shown as "also on".
@@ -119,6 +121,10 @@ export function shownItemOf(e: ValueItem): ShownItem {
 
 /** A Tokens entry from a values object: symbol, purpose, address, chain and explorer link, each in full. */
 export function tokenOfItem(e: ValueItem): TokenItem {
+  const t = tokenOfItemBare(e);
+  return e.status ? { ...t, status: e.status } : t;
+}
+function tokenOfItemBare(e: ValueItem): TokenItem {
   const s = shownItemOf(e);
   // A string entry ("UNI: governance, 0x… on Ethereum") is read as the older Tokens text was.
   if (!e.shaped) return tokensOf(e.text, "", [e.text])[0] ?? { symbol: "", purpose: e.text, address: "", chain: "", url: "" };
