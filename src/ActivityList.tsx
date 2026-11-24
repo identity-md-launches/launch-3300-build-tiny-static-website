@@ -1,3 +1,4 @@
+import { questionAnchor } from "./questions";
 /** Every paid request of this site, newest first, with its state, refusal reason, panel answer, source outcomes or edit verdicts. */
 import { artifactUrl } from "./bodies";
 import { ACTIONS } from "./config";
@@ -24,7 +25,7 @@ function what(a: Activity) {
   return "Job";
 }
 
-type Shown = Pick<RecordModel, "standing" | "after" | "editRefs" | "resolve" | "pageHash" | "scope">;
+type Shown = Pick<RecordModel, "standing" | "after" | "editRefs" | "resolve" | "pageHash" | "scope"> & Partial<Pick<RecordModel, "questions">>;
 
 /** A change not kept because nothing backed it: no link was given, or the job says no source supported it. */
 export const lackedSource = (item: Pick<SentItem, "links">, why: string) => item.links.length === 0 || /\b(source|sources|link|links|evidence)\b/i.test(why);
@@ -52,6 +53,35 @@ export function retryTarget(item: SentItem, a: Activity, shown: Pick<Shown, "sco
     target = keyFactTarget(i > 0 ? item.text.slice(0, i) : item.text, i > 0 ? item.text.slice(i + 2) : "", ids, id ? originOfLine(id, shown.scope) : null);
   } else target = id ? lineTarget(id, item.text, originOfLine(id, shown.scope)) : { kind: "line", key: `old:${item.text}`, lineId: "", text: item.text };
   return refs.length > 0 && !ids.length ? { ...target, lost: true } : target;
+}
+
+/** A changes job that closed or reworded open questions: "Answered: <the question>", linking to the new lines. */
+function AnsweredQuestions({ a, shown }: { a: Activity; shown: Shown }) {
+  const list = shown.questions?.byJob.get(a.req.requestId) ?? [];
+  if (!list.length) return null;
+  return (
+    <ul className="plain answered" aria-label="Questions this job answered">
+      {list.map((q) => {
+        const lines = shown.editRefs(a, q.by === a ? q.lines ?? [] : [], null);
+        return (
+          <li key={q.id}>
+            <a href={to(questionAnchor(q.id))}>{q.by === a && q.state === "reworded" ? "Answered in part" : "Answered"}: {q.text}</a>
+            {lines.length > 0 && (
+              <span className="small">
+                {" "}
+                {lines.map((l, i) => (
+                  <span key={l.id}>
+                    {i > 0 && ", "}
+                    <a href={to(lineAnchor(l.id))}>new line {i + 1}</a>
+                  </span>
+                ))}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 /** Every change of a changes job, "Added" or "Not added", each with its reason; one not added for lack of a source can go back in the tray. */
@@ -200,7 +230,12 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                     {` · ${a.edit.data.lines.length} new line${a.edit.data.lines.length === 1 ? "" : "s"}`}
                   </p>
                 )}
-                {isChangesJob(a.req) && <ChangeItems a={a} shown={shown} />}
+                {isChangesJob(a.req) && (
+                  <>
+                    <ChangeItems a={a} shown={shown} />
+                    <AnsweredQuestions a={a} shown={shown} />
+                  </>
+                )}
                 {isSourceJob(a.req) && a.sources && (
                   <ul className="outcomes" aria-label="What each source gave">
                     {a.sources.sources.map((s, i) => {

@@ -52,7 +52,7 @@ describe("F15. Official accounts entries carry their text", () => {
   it("Overview renders accounts with the shared name, text and link layout", () => {
     const src = readFileSync("src/Record.tsx", "utf8");
     const block = src.slice(src.indexOf('<ul className="kf-accounts">'), src.indexOf('if (row.tokens.length)'));
-    expect(block).toContain("<ItemValue v={{ name: a.name, text: a.text");
+    expect(block).toContain("<ItemValue v={{ name: accountName(a.name, a.url), text: a.text");
   });
 });
 

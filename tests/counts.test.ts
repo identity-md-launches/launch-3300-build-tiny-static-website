@@ -110,7 +110,7 @@ describe("permanent line addresses", () => {
     expect(routeOf("#/docs").docs).toBe(true);
     expect(routeOf("#/w/0x0000000000000000000000000000000000000001").wallet).toBe("0x0000000000000000000000000000000000000001");
     expect(routeOf(`#/s/example.com/l/${J2}:L1`)).toMatchObject({ subject: "example.com", tab: "record", address: `${J2}:L1` });
-    expect(DOCS_SECTIONS[0]).toBe("What this is");
+    expect(DOCS_SECTIONS[0]).toBe("Three kinds of line");
     expect(DOCS_SECTIONS.at(-1)).toBe("For agents");
   });
 });

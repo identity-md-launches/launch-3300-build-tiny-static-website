@@ -1,3 +1,4 @@
+import { otherExplorerUrl } from "./addr";
 /**
  * A subject is one project, named by its registrable domain (lowercase, such as imd.fun or uniswap.org, never
  * app.uniswap.org) or, when it has none, by chain id and contract address (such as 1:0xabc…). Never by name, and never a person.
@@ -198,7 +199,7 @@ export function chainLabel(v: string): string {
  * "" when it is not an address.
  */
 export function explorerAddressUrl(address: string, chain = ""): string {
-  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return "";
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return otherExplorerUrl(address, chain);
   const id = chain ? anyChainIdOf(chain) : null;
   const base = id !== null ? EXPLORERS[id] : undefined;
   return base ? `${base}/address/${address}` : `https://blockscan.com/address/${address}`;

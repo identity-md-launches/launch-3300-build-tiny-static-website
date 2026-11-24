@@ -1,3 +1,4 @@
+import { isOtherAddress, OTHER_ADDRESS_IN } from "./addr";
 /**
  * Key facts address display, pure for tests: a value's text split into plain runs and addresses, each address with
  * the chain written right after it ("0x… on Ethereum", "0x…, Ethereum chain 1", "0x… Base"), which is taken out of
@@ -27,6 +28,8 @@ const NAME_RE = NAMES.map((n) => n.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")).join
 /** What may follow an address to name its chain: ", on Ethereum (chain 1)", " Base", " on chain 8453". */
 const AFTER = new RegExp(`^,?\\s*(?:on\\s+(?:the\\s+)?)?(?:(${NAME_RE})(?:\\s*,?\\s*(?:\\(\\s*(?:chain(?:\\s*id)?\\s*)?\\d+\\s*\\)|chain(?:\\s*id)?\\s*\\d+)(?![\\w]))?|\\(?chain(?:\\s*id)?\\s*(\\d+)\\)?)`, "i");
 const ADDRESS = /0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g;
+/** A 0x address or a non-0x one (Solana, Tron, Cosmos, TON), for the runs of a text. */
+const ANY_ADDRESS = new RegExp(`${ADDRESS.source}|${OTHER_ADDRESS_IN.source}`, "g");
 
 /** "Base" for "Base mainnet", "8453" or "base"; "" for nothing. */
 export const chainTag = (v: string) => (v ? chainLabel(v.replace(/\s+mainnet$/i, "")) : "");
@@ -35,7 +38,9 @@ export const chainTag = (v: string) => (v ? chainLabel(v.replace(/\s+mainnet$/i,
 export function addressRuns(text: string, fallback = ""): Run[] {
   const out: Run[] = [];
   let at = 0;
-  for (const m of text.matchAll(ADDRESS)) {
+  for (const m of text.matchAll(ANY_ADDRESS)) {
+    // A base58 run is an address only when it looks like a key (digits, capitals and small letters mixed).
+    if (!m[0].startsWith("0x") && !isOtherAddress(m[0])) continue;
     const start = m.index!;
     if (start > at) out.push({ kind: "text", text: text.slice(at, start) });
     let end = start + m[0].length;

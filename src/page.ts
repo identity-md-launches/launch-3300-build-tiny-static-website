@@ -1,3 +1,5 @@
+import { isAnyAddress } from "./addr";
+import { statusWord as liveStatus } from "./liveness";
 /** Turns untrusted page.json and lines.json into plain strings. Nothing here is ever rendered as HTML. */
 import { countLines, type Counts } from "./settle";
 import { registrableDomain, sameSite } from "./psl";
@@ -54,6 +56,8 @@ export interface Line {
   links: LineLink[];
   /** Older readings of the same check, as block and value; the line itself holds the newest. */
   history?: Reading[];
+  /** test or past when the line gives that status or its re-run is on a test network. */
+  status?: "test" | "past";
 }
 export interface Reading {
   block: string;
@@ -111,6 +115,8 @@ export interface ValueItem {
   shaped: boolean;
   /** A token's other chains: each {chain, address} the entry lists under "also" (its home chain is chain/address). */
   also?: { chain: string; address: string }[];
+  /** live, test or past when the entry gives a status. */
+  status?: "live" | "test" | "past";
 }
 
 const ENTRY_KEYS = new Set(["name", "text", "url", "address", "chain"]);
@@ -131,7 +137,7 @@ export function alsoOf(o: Record<string, unknown>): { key: string; list: { chain
       const e = x as Record<string, unknown>;
       const address = str(e.address ?? e.contract, 80).trim();
       const chain = str(e.chain ?? e.network ?? e.chain_id ?? e.chainId, 60).trim();
-      return /^0x[0-9a-fA-F]{40}$/.test(address) ? [{ chain, address }] : [];
+      return isAnyAddress(address) ? [{ chain, address }] : [];
     });
     if (list.length) return { key: k, list };
   }
@@ -166,9 +172,10 @@ export function valueItemOf(x: unknown): ValueItem | null {
   const ad = pick(ADDRESS_KEYS, 80);
   const ch = pick(CHAIN_KEYS, 60);
   const url = str(o.url, 400).trim();
-  const address = ad && /^0x[0-9a-fA-F]{40}$/.test(ad.v) ? ad.v : "";
+  const address = ad && isAnyAddress(ad.v) ? ad.v : "";
+  const status = liveStatus(o.status);
   const also = alsoOf(o);
-  const used = new Set([nm?.key, address ? ad?.key : "", ch?.key, "url", also?.key].filter(Boolean) as string[]);
+  const used = new Set([nm?.key, address ? ad?.key : "", ch?.key, "url", also?.key, status ? "status" : ""].filter(Boolean) as string[]);
   // text as given (a list of strings under text is joined in its order); then every other readable part of an entry
   // of another shape, in order, so nothing it says is lost.
   const extra = Object.entries(o)
@@ -180,7 +187,7 @@ export function valueItemOf(x: unknown): ValueItem | null {
   const text = [own, ...extra, ...badAddr].filter(Boolean).join(", ").slice(0, 300);
   const name = nm?.v ?? "";
   if (!name && !text && !url && !address) return null;
-  return { name, text, url, address, chain: ch?.v ?? "", shaped: true, ...(also ? { also: also.list } : {}) };
+  return { name, text, url, address, chain: ch?.v ?? "", shaped: true, ...(also ? { also: also.list } : {}), ...(status ? { status } : {}) };
 }
 
 /** An entry as one line of text: "UNI: governance token, 0x1f98… on Ethereum", "UNI: 1 billion". */
@@ -683,6 +690,8 @@ export function parsePage(text: string, domain = ""): Page {
         links: parseLinks(o.links),
         history: parseHistory(o.history),
       };
+      const st = liveStatus(o.status) ?? (TEST_NETWORK.test(`${line.fact?.chain ?? ""} ${rerun.slice(0, 80)}`) ? "test" : null);
+      if (st === "test" || st === "past") line.status = st;
       return applyLabel(line, channels, line.by, ids.map((s) => refOf.get(s) ?? ""), domain);
     })
     .filter((l) => l.text);
@@ -1182,8 +1191,32 @@ export interface ChangesResult {
   patches: Patch[];
   /** What the new lines contradict or outdate elsewhere in the record. */
   affects: Affect[];
+  /** The page's open questions this job closed or reworded (an "Answer to:" note). */
+  questions?: QuestionChange[];
   /** The new sources and lines, read like an added-source result, with proofs (re-run steps given) and links. */
   data: SourceLines;
+}
+export interface QuestionChange {
+  /** The question's exact text as the page gives it. */
+  target: string;
+  op: "close" | "reword";
+  /** The new wording, for reword. */
+  text: string;
+  lines: string[];
+}
+/** Every valid questions entry: a target and op close, or op reword with its new wording. */
+export function parseQuestionChanges(v: unknown): QuestionChange[] {
+  return bounded(v).list.flatMap((x): QuestionChange[] => {
+    const o = obj(x);
+    const target = str(o.target ?? o.question, 600).trim();
+    const op = str(o.op, 16).trim().toLowerCase();
+    const text = str(o.text ?? o.value, 600).trim();
+    const lines = arr(o.lines).map((l) => str(l, 64).trim()).filter(Boolean);
+    if (!target) return [];
+    if (op === "reword" && text) return [{ target, op, text, lines }];
+    if (op === "close" || op === "remove" || op === "answered" || (op === "reword" && !text)) return [{ target, op: "close", text: "", lines }];
+    return [];
+  });
 }
 export function parseChanges(text: string): ChangesResult {
   const j = obj(JSON.parse(text));
@@ -1208,6 +1241,7 @@ export function parseChanges(text: string): ChangesResult {
       }),
     affects: parseAffects(j.affects),
     patches: parsePatches(j.patches),
+    questions: parseQuestionChanges(j.questions),
     data: over ? { ...data, tooLarge: data.tooLarge ?? over } : data,
   };
 }

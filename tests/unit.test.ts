@@ -23,7 +23,7 @@ describe("bodies", () => {
   it("research objective adds summary, fact, the statement rule, read_via and differs level before Sections, and the new JSON keys", () => {
     const o = researchBody().objective;
     expect(o).toContain("if one needs an archive node say so in the rerun. Write summary: 3 to 5 plain sentences telling a newcomer what the subject is, how it works and what it costs, each listing the line ids it rests on; say nothing in summary that no line supports. For each proof line also fill fact with a short name, the value and the unit. A line is a statement only if its channel's tie is strong or weak. If you read a source through another host, put that host in read_via. In differs set level: conflict only when both lines cannot be true at once, otherwise question. Sections: what_it_does");
-    expect(o).toContain("subject{type,name,one_line,channels[{label,url,tie}],contracts[{address,chain,role,main}]}, summary[{text,lines[]}], lines[{id,section,text,kind,by,sources[],quote,rerun,fact{name,value,unit}}], differs[{lines[],why,level}], open_questions[], sources[{id,ref,type,read_at,could_open,read_via}], ignored_instructions[], notes.");
+    expect(o).toContain("subject{type,name,one_line,channels[{label,url,tie}],contracts[{address,chain,role,status,main}]}, summary[{text,lines[]}], lines[{id,section,text,kind,by,sources[],quote,rerun,fact{name,value,unit}}], differs[{lines[],why,level}], open_questions[], sources[{id,ref,type,read_at,could_open,read_via}], ignored_instructions[], notes.");
     expect(o.length).toBeLessThan(7500);
   });
   it("research objective keeps the brief's text and adds the newcomer, channel, claims, units and RPC rules before Sections", () => {

@@ -42,6 +42,8 @@ function inSubject(h: string): { tab: Tab; target: string | null } {
   if (h.startsWith("line-") || h === "dropped" || h === "unaccounted" || h.startsWith("panel-") || h === "panel-answers" || h === "other-channels")
     return { tab: "record", target: h };
   if (h.startsWith("source-")) return { tab: "sources", target: h };
+  // An open question's link (#/s/<subject>/q-<job id>-q<n>) opens the Record scrolled to it.
+  if (h.startsWith("q-")) return { tab: "record", target: h };
   return { tab: "overview", target: null };
 }
 

@@ -1,3 +1,4 @@
+import { questionsOf, type QuestionState } from "./questions";
 /**
  * What the site shows for one subject, derived from Activity.
  *
@@ -584,7 +585,7 @@ export function statusText(s: FirstPageStatus): string {
 export interface Digest {
   type: "digest";
   /** 7 since it keeps Home's example; older digests are read again. */
-  v: 8;
+  v: 9;
   id: string;
   /** The completed results it was taken from; a different list means newer results exist. */
   sig: string;
@@ -609,6 +610,10 @@ export interface Digest {
   pageReq: string | null;
   /** Three lines of this record that state one fact, for Home's example; null when it has none. */
   example: Example | null;
+  /** How many open questions the page shown lists (Home's Most open questions). */
+  open?: number;
+  /** The Launched fact as a time, or null when the page has none (Home's Launch date). */
+  launched?: number | null;
 }
 
 /** The completed page, sources, edit and changes results and panel answers of a subject, as one string: what a digest was taken from. */
@@ -632,7 +637,20 @@ export function digestOf(id: string, list: Activity[]): Digest | null {
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
   const example = core.page ? exampleOf(core.sections.flatMap((x) => x.rows.map((r) => r.line))) : null;
-  return { type: "digest", v: 8, example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
+  return { type: "digest", v: 9, open: core.page?.openQuestions.length ?? 0, launched: launchedOf(core.page), example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
+}
+
+/** The Launched fact of a page as a time: its first full date, month and year, or year; null without one. */
+export function launchedOf(page: { infobox: { label: string; value: string }[] } | null | undefined): number | null {
+  const v = page?.infobox.find((r) => /^launch(?:ed)?(?: date)?$/i.test(r.label.trim()))?.value ?? "";
+  if (!v) return null;
+  const iso = /\b((?:19|20)\d{2})-(\d{2})(?:-(\d{2}))?\b/.exec(v);
+  if (iso) return Date.UTC(+iso[1]!, +iso[2]! - 1, iso[3] ? +iso[3] : 1);
+  const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const md = /\b(?:(\d{1,2})\s+)?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(?:(\d{1,2}),?\s+)?((?:19|20)\d{2})\b/i.exec(v);
+  if (md) return Date.UTC(+md[4]!, MONTHS.indexOf(md[2]!.slice(0, 3).toLowerCase()), +(md[1] ?? md[3] ?? 1));
+  const y = /\b((?:19|20)\d{2})\b/.exec(v);
+  return y ? Date.UTC(+y[1]!, 0, 1) : null;
 }
 
 /** Results and panel answers still to fold into the page shown: the number the out-of-date note gives. */
@@ -793,6 +811,8 @@ export function subjectSummaries(items: Activity[], digests: Map<string, Digest>
 
 export interface RecordModel {
   subject: SubjectRef;
+  /** Open questions with ids that never change, and every question ever listed (questions.ts). */
+  questions: QuestionState;
   /** Each record line's permanent address, by the id the record shows it under (addresses.ts). */
   origins: Map<string, Origin>;
   /** Lines of earlier counted pages the page shown no longer carries, by their permanent address (lowercase). */
@@ -929,6 +949,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
   const historyReady = !needs.length || (history.key === needsKey && history.state === "done");
   const core = useMemo(() => coreOf(items ?? [], historyReady ? history.reads : undefined), [items, history, historyReady]);
   const { latest, page, unfolded, after, jobs, sections, counts, scope } = core;
+  const questions = useMemo(() => questionsOf(items ?? [], latest), [items, latest]);
   const pageHash = latest?.fileHash ?? null;
   const via = latest?.via ?? null;
   const error = latest && !page ? latest.sourcesError ?? "The page could not be read" : null;
@@ -1070,6 +1091,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
 
   const channels = channelTies(page);
   return {
+    questions,
     subject,
     origins: core.origins,
     historic: core.historic,

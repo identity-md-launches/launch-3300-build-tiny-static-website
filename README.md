@@ -745,7 +745,7 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-52b9d4be7f53.txt` and `changes-f6f33a2bae51.txt`; still served: `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-d3414e5807fc.txt` and `changes-e7afaac38d03.txt`; still served: `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
@@ -777,10 +777,10 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreicsxhkl472trexxs23edpbpjffm3bde2etbmndkq5aphbdygl4pta?filename=rebuild-52b9d4be7f53.txt`,
-  sha256 `52b9d4be7f53892f796b641bc2f494acd8464d12616346a8740f3847832f8f98`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreihw6m5cxlsrznhebvfenpjcld7anjjjgsuvt3bpbde3fnwlrd2ewm?filename=changes-f6f33a2bae51.txt`,
-  sha256 `f6f33a2bae51cb4e40d4a46bd2258fe06a52934a959ec2f08c9b2b6cb88f44b3`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreigtifhfqb74ppqn3xpk67yxel7m3is4p7jl3cudf7k4kqnt6tb5ji?filename=rebuild-d3414e5807fc.txt`,
+  sha256 `d3414e5807fc7be0ddddeaf7f1722fecda25c7fd2bd8a832fd5c541b3f4c3d4a`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreihhv6vmhdidt3xyspbxecvy55e3wi35xw5yqjvq6vdwgmvl64hczm?filename=changes-e7afaac38d03.txt`,
+  sha256 `e7afaac38d039eef893c3720ab8ef49bb237dbdbb8826b0f5476332abf70e2cb`
 <!-- instructions:end -->
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,

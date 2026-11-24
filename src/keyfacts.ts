@@ -107,12 +107,14 @@ export interface ShownItem {
   chain: string;
   /** The address's block explorer page, "" without an address. */
   explorer: string;
+  /** live, test or past when the entry gives one. */
+  status?: "live" | "test" | "past";
 }
 
 /** A values entry for display, its chain written readably and its address with an explorer link. Pure, for tests. */
 export function shownItemOf(e: ValueItem): ShownItem {
   const chain = e.chain ? chainLabel(e.chain) : "";
-  return { name: e.name, text: e.text, url: safeHref(e.url) ? e.url : "", address: e.address, chain, explorer: e.address ? explorerAddressUrl(e.address, e.chain) : "" };
+  return { name: e.name, text: e.text, url: safeHref(e.url) ? e.url : "", address: e.address, chain, explorer: e.address ? explorerAddressUrl(e.address, e.chain) : "", ...(e.status ? { status: e.status } : {}) };
 }
 
 /** A Tokens entry from a values object: symbol, purpose, address, chain and explorer link, each in full. */

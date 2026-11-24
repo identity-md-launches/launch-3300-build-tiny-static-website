@@ -16,6 +16,8 @@ import { HOME_HEADING } from "./config";
 import { LEADS_MAX, planLeads } from "./bodies";
 import type { Activity } from "./useActivity";
 import type { Example as Lines3 } from "./example";
+import { SaveStar, useSaved } from "./saved";
+import { SORTS, sortOf, sortProjects, figureOf, findMatches, sortFromHash, sortHash, type SortKey, type RowFacts } from "./sorting";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
@@ -80,7 +82,7 @@ function PlaceholderItem({ s, failed, retry }: { s: SubjectSummary; failed: stri
   );
 }
 
-function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading: boolean; failed: string; retry?: (id: string) => void }) {
+function SubjectItem({ s, reading, failed, retry, figure = "" }: { s: SubjectSummary; reading: boolean; failed: string; retry?: (id: string) => void; figure?: string }) {
   if (s.unread && !s.unreadable) return <PlaceholderItem s={s} failed={reading ? "" : failed} retry={retry} />;
   const status = s.status ? statusText(s.status) : "";
   return (
@@ -105,6 +107,7 @@ function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading
               ))}
             </>
           )}
+          {figure && <span className="row-figure">{figure}</span>}
           <span>Changed {when(s.changed)}</span>
           {s.pending > 0 && <span>{plural(s.pending, "request")} pending</span>}
           {s.stale && reading && <span>Reading newer results…</span>}
@@ -116,23 +119,49 @@ function SubjectItem({ s, reading, failed, retry }: { s: SubjectSummary; reading
         )}
         <ReaderNote o={s.outdated} href={subjectHref(s.id, "rebuild")} />
       </div>
+      <SaveStar id={s.id} name={s.name} />
     </li>
   );
 }
 
-/** All, or only the pages that need a rebuild. */
-function ListFilter({ all, needs, only, set, checking }: { all: number; needs: number; only: boolean; set: (v: boolean) => void; checking: boolean }) {
+type ListView = "all" | "stale" | "saved";
+/** All, only the pages that need a rebuild, or only the projects saved on this device. */
+function ListFilter({ all, needs, saved, view, set, checking }: { all: number; needs: number; saved: number; view: ListView; set: (v: ListView) => void; checking: boolean }) {
   return (
     <div className="filter" role="group" aria-label="Show projects">
-      <button type="button" className="btn btn-filter" aria-pressed={!only} onClick={() => set(false)}>
+      <button type="button" className="btn btn-filter" aria-pressed={view === "all"} onClick={() => set("all")}>
         All <span className="num">{all.toLocaleString("en-US")}</span>
       </button>
-      <button type="button" className="btn btn-filter" aria-pressed={only} onClick={() => set(true)}>
+      <button type="button" className="btn btn-filter" aria-pressed={view === "stale"} onClick={() => set("stale")}>
         Needs a rebuild {checking ? <span className="sr-only">(still checking)</span> : <span className="num">{needs.toLocaleString("en-US")}</span>}
+      </button>
+      <button type="button" className="btn btn-filter" aria-pressed={view === "saved"} onClick={() => set("saved")}>
+        Saved <span className="num">{saved.toLocaleString("en-US")}</span>
       </button>
     </div>
   );
 }
+/** "Find a project" (by name or domain) and "Sort by", above the list. */
+function ListTools({ find, setFind, sort, setSort }: { find: string; setFind: (v: string) => void; sort: SortKey; setSort: (k: SortKey) => void }) {
+  return (
+    <div className="list-tools">
+      <div className="field list-find">
+        <label htmlFor="find-project">Find a project</label>
+        <input id="find-project" type="search" autoComplete="off" spellCheck={false} placeholder="Name or domain" value={find} onChange={(e) => setFind(e.target.value)} />
+      </div>
+      <div className="field list-sort">
+        <label htmlFor="sort-projects">Sort by</label>
+        <select id="sort-projects" value={sort} onChange={(e) => setSort(sortOf(e.target.value))}>
+          {SORTS.map((o) => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+/** Rows drawn at first, and added by each "Show more". */
+export const PAGE_ROWS = 30;
 
 const listNote = (shown: number, all: number, q: string, only: boolean) =>
   q ? `${plural(shown, "project")} ${only ? "that need a rebuild " : ""}match “${q}”.` : only ? `${plural(shown, "project")} need${shown === 1 ? "s" : ""} a rebuild.` : "";
@@ -206,6 +235,13 @@ export const EXAMPLE_FALLBACK = {
   statement: "zora.co states a total supply of 10,000,000,000 ZORA.",
   claim: "A news site reports that ZORA has a supply of ten billion.",
 } as const;
+/** The page the fixed text is taken from: zora.co. */
+export const EXAMPLE_FALLBACK_FROM = "zora.co";
+const fallbackName = (d: Map<string, Pick<Digest, "name">> | undefined) => d?.get(EXAMPLE_FALLBACK_FROM)?.name || "Zora";
+const exampleLogo = (e: Example, d: Map<string, Digest> | undefined, logos: Map<string, string> | undefined) => {
+  const hash = e.from ? e.logoHash : d?.get(EXAMPLE_FALLBACK_FROM)?.logoHash ?? null;
+  return hash ? logos?.get(hash) ?? null : null;
+};
 /** The record the example comes from: its id, its name and its logo's hash; null for the fixed text. */
 type Example = Lines3 & { from: string | null; name: string | null; logoHash: string | null };
 /** The three cards, in this order: the icon, the name and what the kind means. */
@@ -319,9 +355,40 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
     return [...marked, ...[...unreadable].filter(([id]) => !have.has(id)).map(([id, n]) => unreadableSummary(id, n))];
   }, [items, digests, logos, unreadable]);
   const example = useMemo(() => pickExample(digests), [digests]);
-  const [onlyStale, setOnlyStale] = useState(false);
+  const [view, setView] = useState<ListView>("all");
+  const onlyStale = view === "stale";
+  const saved = useSaved();
+  const [find, setFind] = useState("");
+  const [sort, setSortState] = useState<SortKey>(() => (typeof location === "undefined" ? "changed" : sortFromHash(location.hash)));
+  const setSort = (k: SortKey) => {
+    setSortState(k);
+    setLimit(PAGE_ROWS);
+    // The choice is kept in the address, so a sorted view can be shared.
+    history.replaceState(null, "", sortHash(k));
+  };
+  const [limit, setLimit] = useState(PAGE_ROWS);
+  // What each row is sorted by: counted jobs and first request from the scan, the rest from the cached digest.
+  const facts = useMemo(() => {
+    const out = new Map<string, RowFacts>();
+    for (const a of items ?? []) {
+      const id = a.req.subject;
+      const f = out.get(id) ?? { edits: 0, added: null, open: null, launched: null };
+      if (a.state === "completed" && !a.notRead) f.edits += 1;
+      const t = a.time ?? a.doneTime;
+      if (t && (f.added === null || t < f.added)) f.added = t;
+      out.set(id, f);
+    }
+    for (const [id, f] of out) {
+      const d = digests?.get(id);
+      f.open = d?.open ?? null;
+      f.launched = d?.launched ?? null;
+    }
+    return out;
+  }, [items, digests]);
   const needs = all.filter((s) => s.outdated).length;
-  const shown = all.filter((s) => matchesQuery(s, q) && (!onlyStale || !!s.outdated));
+  const savedRows = all.filter((s) => saved.includes(s.id)).length;
+  const filtered = all.filter((s) => matchesQuery(s, q) && findMatches(s, find) && (view === "all" || (view === "stale" ? !!s.outdated : saved.includes(s.id))));
+  const shown = sortProjects(filtered, sort, facts);
   // Reads still under way can add a contract to the list or mark a page out of date.
   const pendingReads = !!busy || all.some((s) => s.unread && !failed?.has(s.id));
   // A list read from this browser's cache, or not read at all yet, cannot show that a project has no page: an unmatched
@@ -331,6 +398,8 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const SCAN_FAILED = "Ethereum could not be read, so the site cannot tell whether this project already has a page. Try again in a moment.";
   /** The totals are shown once every project's counts are read, never a part of them. */
   const countsReady = !pendingReads && all.every((s) => !!s.counts || !s.hasPage);
+  /** Some counts are known: while the rest load, the totals say "about". */
+  const someCounts = all.some((s) => !!s.counts);
   /** An address or domain looked up while reads were pending: answered once they finish. */
   const [checking, setChecking] = useState<string | null>(null);
 
@@ -497,16 +566,11 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
           ))}
         </ul>
         <p className="small example-from">
-          One fact, three ways.
-          {example.from && (
-            <>
-              {" "}From the page of{" "}
-              <a className="example-src" href={subjectHref(example.from)}>
-                <SubjectLogo name={example.name ?? example.from} logo={example.logoHash ? logos?.get(example.logoHash) : null} size={20} />
-                {example.name ?? example.from}
-              </a>
-            </>
-          )}
+          From the page of{" "}
+          <a className="example-src" href={subjectHref(example.from ?? EXAMPLE_FALLBACK_FROM)}>
+            <SubjectLogo name={example.name ?? fallbackName(digests)} logo={exampleLogo(example, digests, logos)} size={20} />
+            {example.name ?? fallbackName(digests)}
+          </a>
         </p>
       </section>
 
@@ -514,7 +578,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
 
       <div className="home-list">
         <h2 className="list-title">Projects</h2>
-        {items !== null && all.length > 0 && <p className="totals-line num" aria-live="polite">{countsReady ? <TotalsLine text={totalsText(all)} /> : "Reading project totals…"}</p>}
+        {items !== null && all.length > 0 && <p className="totals-line num" aria-live="polite">{countsReady ? <TotalsLine text={totalsText(all)} /> : someCounts ? <TotalsLine text={`About ${totalsText(all)}`} /> : "Reading project totals…"}</p>}
         {error && items !== null && (
           <p className="error">
             Unable to read the chain: {error}.{" "}
@@ -526,19 +590,28 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
         ) : shown.length ? (
           <>
             {cached && loading && <p className="small" role="status">Shown from this browser. Reading newer blocks…</p>}
-            <ListFilter all={all.length} needs={needs} only={onlyStale} set={setOnlyStale} checking={pendingReads} />
-            <p className="small list-note" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
+            <ListTools find={find} setFind={(v) => { setFind(v); setLimit(PAGE_ROWS); }} sort={sort} setSort={setSort} />
+            <ListFilter all={all.length} needs={needs} saved={savedRows} view={view} set={(v) => { setView(v); setLimit(PAGE_ROWS); }} checking={pendingReads} />
+            <p className="small list-note" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : find.trim() ? `${plural(shown.length, "project")} match “${find.trim()}”.` : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
             <ul className="subjects">
-              {shown.map((s) => (
-                <SubjectItem key={s.id} s={s} reading={!!reading?.has(s.id)} failed={failed?.get(s.id) ?? ""} retry={retry} />
+              {shown.slice(0, limit).map((s) => (
+                <SubjectItem key={s.id} s={s} reading={!!reading?.has(s.id)} failed={failed?.get(s.id) ?? ""} retry={retry} figure={figureOf(s, sort, facts.get(s.id))} />
               ))}
             </ul>
+            {shown.length > limit && (
+              <p className="show-more">
+                <button type="button" className="btn" onClick={() => setLimit((n) => n + PAGE_ROWS)}>
+                  Show more <span className="small">({(shown.length - limit).toLocaleString("en-US")} left)</span>
+                </button>
+              </p>
+            )}
           </>
-        ) : onlyStale && all.length ? (
+        ) : all.length ? (
           <>
-            <ListFilter all={all.length} needs={needs} only={onlyStale} set={setOnlyStale} checking={pendingReads} />
+            <ListTools find={find} setFind={setFind} sort={sort} setSort={setSort} />
+            <ListFilter all={all.length} needs={needs} saved={savedRows} view={view} set={setView} checking={pendingReads} />
             <p className="small" aria-live="polite">
-              {pendingReads ? "Checking which pages need a rebuild…" : q.trim() ? `No project that needs a rebuild matches “${q.trim()}”.` : "No page needs a rebuild."}
+              {view === "saved" && !find.trim() ? "Saved projects stay on this device." : find.trim() ? `No project matches “${find.trim()}”.` : pendingReads && onlyStale ? "Checking which pages need a rebuild…" : q.trim() ? `No project${onlyStale ? " that needs a rebuild" : ""} matches “${q.trim()}”.${onlyStale ? "" : " Press Look it up to add it."}` : onlyStale ? "No page needs a rebuild." : "No projects."}
             </p>
           </>
         ) : (

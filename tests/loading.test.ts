@@ -116,7 +116,7 @@ describe("storage", () => {
   });
 
   it("the home list shows a stored digest per subject without reading the page file again", () => {
-    const digest: Digest = { type: "digest", v: 8, example: null, unfolded: 0, pageReq: null, failedReads: 0, logo: "ok", id: "example.com", sig: "0x01", name: "Example", oneLine: "Does things", counts: { all: 3, proven: 2, stated: 1, claimed: 0, contradicted: 0, outdated: 0, checks: 1, confirmed: 1 }, logoHash: "ab", changed: 5, hasPage: true, main: "", contracts: [], status: null };
+    const digest: Digest = { type: "digest", v: 9, example: null, unfolded: 0, pageReq: null, failedReads: 0, logo: "ok", id: "example.com", sig: "0x01", name: "Example", oneLine: "Does things", counts: { all: 3, proven: 2, stated: 1, claimed: 0, contradicted: 0, outdated: 0, checks: 1, confirmed: 1 }, logoHash: "ab", changed: 5, hasPage: true, main: "", contracts: [], status: null };
     const { digests, logos } = splitDigests([digest, { type: "logo", hash: "ab", url: "data:image/png;base64,AAAA" }, { type: "logo", hash: "cd", url: "javascript:x" }]);
     expect(logos.size).toBe(1);
     const light = {

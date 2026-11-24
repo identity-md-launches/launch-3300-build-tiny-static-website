@@ -356,6 +356,19 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
       if (back instanceof HTMLElement && back.isConnected && back !== document.body) back.focus({ preventScroll: true });
     });
   };
+  // "Answer this" lands here with "Answer to: <the question>" filled in: the cursor goes to the next line.
+  useEffect(() => {
+    if (inline || !takeCaret()) return;
+    const put = () => {
+      const ta = ref.current?.querySelector<HTMLTextAreaElement>("textarea");
+      if (!ta) return;
+      ta.focus({ preventScroll: true });
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    };
+    put();
+    const t = window.setTimeout(put, 150);
+    return () => window.clearTimeout(t);
+  }, [inline]);
   useEffect(() => {
     if (!inline) return;
     ref.current?.querySelector<HTMLElement>("textarea")?.focus({ preventScroll: true });
@@ -515,6 +528,25 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
 export const OPEN_TARGET: ChangeTarget = { kind: "none", key: "open", lineId: "", text: "" };
 
 /** The Contribute form: "What's wrong or missing?" */
+let caretPending = false;
+const takeCaret = () => {
+  const v = caretPending;
+  caretPending = false;
+  return v;
+};
+/** The note "Answer this" fills in: the question on the first line, the cursor on the next. */
+export const answerNote = (question: string) => `Answer to: ${question.trim()}\n`;
+/**
+ * "Answer this" on an open question: the Contribute form's draft becomes "Answer to: <the question>" and a new line
+ * (any links already written are kept), and Contribute opens with the cursor on that line.
+ */
+export function startAnswer(s: Pick<SuggestState, "drafts" | "subject">, question: string, href: string) {
+  const cur = s.drafts.current.get(s.subject);
+  s.drafts.current.set(s.subject, { note: answerNote(question), links: cur?.links ?? "" });
+  caretPending = true;
+  location.hash = href;
+}
+
 export function NoteForm() {
   return <ChangePanel target={OPEN_TARGET} mode="open" />;
 }

@@ -1,3 +1,7 @@
+import { questionAnchor, type Question } from "./questions";
+import { SaveStar } from "./saved";
+
+import { liveFirst, livenessOf, LIVENESS_TAG, type Liveness } from "./liveness";
 /** The record's tabs: Overview (key facts, summary), Record (filter, sections, one facts table) and Sources. */
 import { disputedCount, rowPatchListsOf, sentenceDispute, type Dispute, type Disputes, type SentenceChange } from "./changeResult";
 import { Fragment, useEffect, useState } from "react";
@@ -10,7 +14,7 @@ import { decimalsOf, exactAmount, wholeFact } from "./amounts";
 import { itemEntries, keyFacts, sharedChain, splitAddresses, valueEntries, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
 import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
-import { BadgeMark, ToneMark } from "./KindIcon";
+import { BadgeMark, KindIcon, ToneMark } from "./KindIcon";
 import { findSubject, parseLookup, relatedSubject, rowMatches, type Findable, type Lookup } from "./lookup";
 import { countLines, countsParts, FILTER_WORDS, filtersFor, GROUP_TONE, passes, rowClass, settleAll, speakerText, type Filter, type Settle } from "./settle";
 import {
@@ -32,7 +36,7 @@ import { readDate } from "./dates";
 import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, type PageJobs, isInstructionsUnavailable, statusText, unreadableText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { OutdatedNote, ReaderNote, StillReading } from "./Home";
-import { ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest } from "./Suggest";
+import { ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest, startAnswer } from "./Suggest";
 import { formatNumbers } from "./numbers";
 import { keyFactTarget, lineTarget, sentenceTarget } from "./changes";
 import { originOfLine } from "./changeResult";
@@ -137,6 +141,16 @@ export function Copy({ value, label }: { value: string; label?: string }) {
 /** One address as Key facts shows every address: shortened and linked to its explorer, a copy icon, a chain tag. */
 export function Addr({ address, chain, url = "", tag = true }: { address: string; chain: string; url?: string; tag?: boolean }) {
   const href = safeHref(url) && url.toLowerCase().includes(address.toLowerCase()) ? url : explorerAddressUrl(address, chain);
+  if (!href)
+    return (
+      <span className="addr">
+        <span className="addr-main">
+          <span className="mono" title={address}>{shortHex(address)}</span>
+          <CopyIcon value={address} />
+        </span>
+        {chain && tag && <span className="tok-chain">{chain}</span>}
+      </span>
+    );
   return (
     <span className="addr">
       {/* The short address and its copy button stay together; the chain tag may take its own line. */}
@@ -186,26 +200,24 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
     return (
       <>
         {shared && <p className="kf-shared small">All on {shared}</p>}
-        <ul className="kf-values kf-items">
-          {row.items.flatMap((v) => itemEntries(row.label, v)).map((v, i) => (
+        <ShowSome className="kf-values kf-items" limit={listLimit(row.label)} items={liveFirst(row.items.flatMap((v, k) => itemEntries(row.label, v).map((e) => ({ e, st: livenessOf({ ...e, status: row.items![k]?.status ?? contractStatus(e.address) }) }))), (x) => x.st).map(({ e: v, st }, i) => (
             <li key={i}>
               {named && i === 0 && <strong className="kf-main-name">{row.mainName}</strong>}
               <ItemValue v={v} chain={chain} tag={!shared} />
+              <LiveTag s={st} />
             </li>
-          ))}
-        </ul>
+          ))} />
       </>
     );
   }
   if (row.values.length)
     return (
-      <ul className="kf-values">
-        {row.values.flatMap((v) => valueEntries(row.label, v)).map((v, i) => (
+      <ShowSome className="kf-values" limit={listLimit(row.label)} items={liveFirst(row.values.flatMap((v) => valueEntries(row.label, v)).map((v) => ({ v, st: livenessOf({ text: v }) })), (x) => x.st).map(({ v, st }, i) => (
           <li key={i}>
             <Runs text={v} chain={chain} />
+            <LiveTag s={st} />
           </li>
-        ))}
-      </ul>
+        ))} />
     );
   if (row.accounts.length)
     return (
@@ -213,7 +225,7 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
         {row.accounts.map((a, i) => (
           <li key={i}>
             {/* The shared values layout (name in bold, text, link), with the account's own badge on the same item. */}
-            <ItemValue v={{ name: a.name, text: a.text, url: safeHref(a.url) ? a.url : "", address: "", chain: "", explorer: "" }} chain="" />
+            <ItemValue v={{ name: accountName(a.name, a.url), text: a.text, url: safeHref(a.url) ? a.url : "", address: "", chain: "", explorer: "" }} chain="" />
             {row.perAccount && a.status && <AccountBadge b={a.status} />}
           </li>
         ))}
@@ -222,8 +234,7 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
   if (row.tokens.length) {
     // One entry per token: symbol, purpose, then each address it names as Addr with its chain tag.
     return (
-      <ul className="kf-tokens">
-        {row.tokens.map((t, i) => (
+      <ShowSome className="kf-tokens" limit={listLimit(row.label)} items={liveFirst(row.tokens.map((t, i) => ({ t, i, st: livenessOf({ name: t.symbol, text: t.purpose, chain: t.chain }) })), (x) => x.st).map(({ t, i, st }) => (
           <li key={i} className="tok-line">
             {t.symbol && <strong className="tok-symbol">{t.symbol}</strong>}
             {/* Its own words, then the home chain's address, then "also on" with each other chain's own address and tag. */}
@@ -242,9 +253,9 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
               </span>
             )}
             {!t.address && t.url && <span className="tok-addr"><ExtLink url={t.url} className="break item-link">{shortLink(t.url)}</ExtLink></span>}
+            <LiveTag s={st} />
           </li>
-        ))}
-      </ul>
+        ))} />
     );
   }
   const entries = valueEntries(row.label, row.value);
@@ -264,6 +275,126 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
       <ValueText text={row.value} url={row.url} chain={chain} />
       {row.note && <span className="small"> {row.note}</span>}
     </>
+  );
+}
+
+/** Supply and Tokens show at most 3 entries before "Show all N"; other lists show every entry. */
+const listLimit = (label: string) => (/^(?:supply|tokens?)$/i.test(label.trim()) ? 3 : Infinity);
+
+/** A list that shows its first `limit` entries, then "Show all N". */
+function ShowSome({ items, limit, className }: { items: JSX.Element[]; limit: number; className: string }) {
+  const [all, setAll] = useState(false);
+  const cut = !all && items.length > limit;
+  return (
+    <>
+      <ul className={className}>{cut ? items.slice(0, limit) : items}</ul>
+      {cut && (
+        <button type="button" className="linklike small kf-more" onClick={() => setAll(true)}>
+          Show all {items.length}
+        </button>
+      )}
+    </>
+  );
+}
+
+/** The small grey tag beside an entry or line that is a test or past: "test network" or "past". Nothing for live. */
+export function LiveTag({ s }: { s: Liveness | undefined | null }) {
+  return s === "test" || s === "past" ? <span className="live-tag">{LIVENESS_TAG[s]}</span> : null;
+}
+
+/** The status the page gives a contract at this address, if any (set while a page renders its Key facts). */
+let contractStatuses = new Map<string, Liveness>();
+export const setContractStatuses = (contracts: { address: string; status: string }[]) => {
+  contractStatuses = new Map(contracts.filter((c) => c.status === "test" || c.status === "past" || c.status === "live").map((c) => [c.address.toLowerCase(), c.status as Liveness]));
+};
+const contractStatus = (address: string): Liveness | null => (address ? contractStatuses.get(address.toLowerCase()) ?? null : null);
+
+/**
+ * An Official accounts entry's name. A Discord or Telegram invite whose name is only its invite code (or the invite
+ * link itself) reads "Discord server" or "Telegram group".
+ */
+export function accountName(name: string, url: string): string {
+  const n = name.trim();
+  const discord = /(?:discord\.gg|discord(?:app)?\.com\/invite)\/([\w-]+)/i.exec(url);
+  const tg = /(?:t\.me|telegram\.me)\/(?:joinchat\/|\+)([\w-]+)/i.exec(url);
+  const code = (discord ?? tg)?.[1] ?? "";
+  if (!code) return name;
+  // The name with any invite address, "@" and "on Discord" taken off: only the code left means no real name was given.
+  const bare = n
+    .replace(/^https?:\/\//i, "")
+    .replace(/^(?:discord\.gg|discord(?:app)?\.com\/invite|t\.me|telegram\.me)\/(?:joinchat\/|\+)?/i, "")
+    .replace(/^@/, "")
+    .replace(/\s+on\s+(?:discord|telegram)$/i, "")
+    .replace(/^(?:discord|telegram)(?:\s+invite)?:?\s*/i, "")
+    .trim();
+  if (n && bare.toLowerCase() !== code.toLowerCase() && !/^(?:discord|telegram)(?:\s+invite)?$/i.test(n)) return name;
+  return discord ? "Discord server" : "Telegram group";
+}
+
+/** "Answer this": Contribute opens with "Answer to: <the question>" on the first line and the cursor on the next. */
+export function AnswerLink({ q, m }: { q: Question; m: Pick<RecordModel, "subject"> }) {
+  const s = useSuggest();
+  const href = subjectHref(m.subject.id, "suggest-changes");
+  return (
+    <a
+      className="answer-link small"
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        startAnswer(s, q.text, href);
+      }}
+    >
+      Answer this<span className="sr-only">: {q.text}</span>
+    </a>
+  );
+}
+
+const qDate = (t: number | null | undefined) => (t ? new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
+
+/** One question with its permanent link: open with "Answer this", or marked Answered (or no longer open) with the date. */
+function QuestionItem({ q, m }: { q: Question; m: RecordModel }) {
+  const anchor = questionAnchor(q.id);
+  const next = q.next ? m.questions.all.get(q.next) : undefined;
+  return (
+    <li id={anchor} className={`question q-${q.state}`} tabIndex={-1}>
+      <span className="q-text">{q.text}</span>{" "}
+      {q.state === "open" ? (
+        <AnswerLink q={q} m={m} />
+      ) : (
+        <span className="small q-state">
+          <span className="live-tag">{q.state === "closed" ? "No longer open" : q.state === "reworded" ? "Answered in part" : "Answered"}</span>
+          {q.closedAt ? ` ${qDate(q.closedAt)}` : ""}
+          {next && <> · now asked as <a href={to(questionAnchor(next.id))}>{next.text}</a></>}
+          {q.by && q.lines?.length ? <> · {m.editRefs(q.by, q.lines, null).map((l, i) => <Fragment key={l.id}>{i > 0 && ", "}<a href={to(lineAnchor(l.id))}>{`line ${i + 1}`}</a></Fragment>)}</> : null}
+        </span>
+      )}{" "}
+      <a className="q-link small" href={to(anchor)} aria-label={`Link to this question`}>#</a>
+    </li>
+  );
+}
+
+/** Overview, under Key facts: the first 3 open questions, each with "Answer this", then "Show all N". */
+function OpenQuestions({ m }: { m: RecordModel }) {
+  const [all, setAll] = useState(false);
+  const list = m.questions.open;
+  if (!list.length) return null;
+  const shownQ = all ? list : list.slice(0, 3);
+  return (
+    <section className="open-questions" aria-labelledby="oq-title">
+      <h2 id="oq-title">Open questions</h2>
+      <ul className="plain questions">
+        {shownQ.map((q) => (
+          <li key={q.id} className="question">
+            <a className="q-text" href={to(questionAnchor(q.id))}>{q.text}</a> <AnswerLink q={q} m={m} />
+          </li>
+        ))}
+      </ul>
+      {list.length > 3 && !all && (
+        <button type="button" className="linklike small" onClick={() => setAll(true)}>
+          Show all {list.length}
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -540,6 +671,7 @@ const allLines = (m: Pick<RecordModel, "sections">) => m.sections.flatMap((s) =>
 export function useKeyFacts(m: RecordModel) {
   const all = m.sections.flatMap((s) => s.rows.map((r) => r.line));
   const sourceUrl = (l: Line) => (l.srcKeys[0] ? m.sourceList.find((s) => s.key === l.srcKeys[0])?.url ?? "" : "");
+  setContractStatuses(m.page?.contracts ?? []);
   const kf = keyFacts(m.page, m.resolve, all, sourceUrl);
   // Patches from changes jobs not yet folded in: the row's new value rests on the patch's lines, in that job's scope.
   const patches = new Map([...rowPatchListsOf(m.after)].map(([k, ps]) => [k, ps.map((p) => ({ value: p.patch.value, lines: m.editRefs(p.job, p.patch.lines, null), payer: p.payer, at: p.job.doneTime ?? null, op: p.patch.op, label: p.patch.target.trim() }))] as const));
@@ -577,7 +709,7 @@ export function SentenceDots({ lines, ui }: { lines: Line[]; ui: Ui }) {
               ui.openLines(of.map((l) => l.id));
             }}
           >
-            <span className="dot" aria-hidden="true" />
+            <KindIcon kind={k} size={13} />
           </a>
         );
       })}
@@ -726,13 +858,13 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
       )}
       <p className="small dot-key">
         <span className="dk">
-          <span className="dot kind-proof" aria-hidden="true" /> proven on chain
+          <span className="kind-proof dk-icon"><KindIcon kind="proof" size={13} /></span> proven on chain
         </span>
         <span className="dk">
-          <span className="dot kind-statement" aria-hidden="true" /> the project says
+          <span className="kind-statement dk-icon"><KindIcon kind="statement" size={13} /></span> the project says
         </span>
         <span className="dk">
-          <span className="dot kind-claim" aria-hidden="true" /> others say
+          <span className="kind-claim dk-icon"><KindIcon kind="claim" size={13} /></span> others say
         </span>
         <span className="dk-by">Summary written from the record by a research job.</span>
       </p>
@@ -1047,6 +1179,11 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
           {error && !latest && <p className="error">Unable to read the page: {error}</p>}
         </div>
       )}
+      {page && (
+        <p className="ov-save">
+          <SaveStar id={m.subject.id} name={page.name || m.subject.id} />
+        </p>
+      )}
       {(page || m.summary.length > 0) && (
         <div className="overview">
           <div className="summary-col">
@@ -1058,6 +1195,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
             )}
           </div>
           <KeyFacts m={m} ui={ui} />
+          <OpenQuestions m={m} />
         </div>
       )}
       {page && <Related m={m} subjects={subjects} />}
@@ -1651,6 +1789,7 @@ function LineRow({ row, ctx, facts }: { row: RecordRow; ctx: Ctx; facts: Set<str
           ) : (
             <span className="row-text">{formatNumbers(line.text)}</span>
           )}
+          <LiveTag s={line.status} />
           <span className="row-meta">
             {settled ? (
               <>
@@ -1985,7 +2124,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
       const every = sections.find((s) => s.section === section)?.rows ?? [];
       // Every proof keeps its own row, also when a settled row shows it as its evidence: in the facts table when it
       // has a fact, else here. Proven lists both kinds; each row says which it is.
-      const rows = every.filter((r) => !facts.has(r.line.id) && keep(r));
+      const rows = liveFirst(every.filter((r) => !facts.has(r.line.id) && keep(r)), (r) => r.line.status ?? "live");
       const table = section === "on_chain" ? shownFacts : [];
       const inSection = [...rows, ...table].map((r) => r.line);
       const hasOpen = inSection.some((l) => ui.openSet.has(l.id));
@@ -2039,7 +2178,7 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
             <div className="record-tools">
               <label htmlFor="record-search" className="sr-only">Search lines by text or speaker</label>
               <input id="record-search" type="search" placeholder="Search lines by text or speaker" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
-              {narrowing && <p className="small" aria-live="polite">{matched.toLocaleString("en-US")} line{matched === 1 ? "" : "s"} match.</p>}
+              {narrowing && <p className="small" aria-live="polite">{matched === 0 ? "No lines match." : `${matched.toLocaleString("en-US")} line${matched === 1 ? "" : "s"} match.`}</p>}
             </div>
           )}
           {shown.map(({ section, rows, table, counts: c, open }) => (
@@ -2081,17 +2220,28 @@ export function RecordTab({ m, ui }: { m: RecordModel; ui: Ui }) {
               )}
             </div>
           ))}
-          {counts.all > 0 && shown.length === 0 && <p className="small">{narrowing ? "No lines match." : `No ${FILTER_WORDS[filter].toLowerCase()} lines.`}</p>}
+          {/* With a search or filter on, the one message is the count line above ("No lines match."). */}
+          {counts.all > 0 && shown.length === 0 && !narrowing && <p className="small">No lines.</p>}
           <p className="add-row small">
-            Something missing? <a href={to("suggest-changes")}>Say it in your own words</a>.
+            Something missing? <a href={to("suggest-changes")}>Say it in your own words</a>
           </p>
           <OtherChannels m={m} />
-          {page && page.openQuestions.length > 0 && (
-            <div className="card">
+          {m.questions.open.length > 0 && (
+            <div className="card" id="not-known">
               <h2>Not known yet</h2>
-              <ul className="plain">
-                {page.openQuestions.map((q, i) => (
-                  <li key={i}>{q}</li>
+              <ul className="plain questions">
+                {m.questions.open.map((q) => (
+                  <QuestionItem key={q.id} q={q} m={m} />
+                ))}
+              </ul>
+            </div>
+          )}
+          {[...m.questions.all.values()].some((q) => q.state !== "open") && (
+            <div className="card" id="answered-questions">
+              <h2>Answered questions</h2>
+              <ul className="plain questions">
+                {[...m.questions.all.values()].filter((q) => q.state !== "open").map((q) => (
+                  <QuestionItem key={q.id} q={q} m={m} />
                 ))}
               </ul>
             </div>

@@ -1026,3 +1026,50 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
   .example .card-head { align-items: center; }
   .example-from { margin-top: var(--space-1); }
 }
+
+/* Revision 27: status tags, short lists, summary icons. */
+.live-tag { display: inline-block; margin-inline-start: 6px; padding: 0 6px; border-radius: 4px; background: var(--color-bg-hover); color: var(--gray-700); font-size: 13px; line-height: 20px; white-space: nowrap; vertical-align: baseline; font-weight: 400; }
+.kf-more { display: inline-block; margin-top: 4px; }
+.sdot .kicon { display: block; }
+.dot-key .dk-icon { display: inline-flex; }
+/* Open questions, saved star, list tools (revision 27). */
+.open-questions { margin-top: var(--space-4, 24px); }
+.questions .question { padding: 6px 0; border-top: 1px solid var(--color-border); }
+.questions .question:first-child { border-top: 0; }
+.answer-link { margin-inline-start: 6px; white-space: nowrap; }
+.q-link { color: var(--color-text-secondary); margin-inline-start: 4px; text-decoration: none; }
+.q-state { margin-inline-start: 4px; }
+.answered { margin: 4px 0 0; }
+.ov-save { display: flex; justify-content: flex-end; margin: 0 0 8px; }
+.save-star { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; min-width: 44px; padding: 0 8px; border: 0; background: transparent; color: var(--color-text-secondary); border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; }
+.save-star.is-on { color: var(--amber-800, #92400e); }
+.save-star:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+@media (hover: hover) { .save-star:hover { background: var(--color-bg-hover); } }
+.subject { position: relative; }
+.subject > .save-star { align-self: flex-start; flex: none; }
+.subject .save-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.list-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; margin: 8px 0 12px; }
+.list-tools .field { display: grid; gap: 4px; min-width: 0; }
+.list-tools label { font-size: 13px; color: var(--color-text-secondary); }
+.list-tools input, .list-tools select { min-height: 44px; width: 100%; box-sizing: border-box; }
+@media (max-width: 480px) { .list-tools { grid-template-columns: minmax(0, 1fr); } }
+.row-figure { font-weight: 600; }
+.show-more { margin-top: 12px; text-align: center; }
+/* Docs: two columns on wide screens, the menu as a row of links on narrow ones. */
+.doc-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.doc-body { max-width: 68ch; min-width: 0; }
+.doc-toc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.doc-toc a { display: inline-block; padding: 6px 0; }
+.doc-toc-title { font-weight: 600; margin: 0 0 4px; }
+.doc-toc-group { font-size: 13px; color: var(--color-text-secondary); margin: 8px 0 0; }
+.doc-group { margin-top: 8px; }
+.doc-divider { border: 0; border-top: 1px solid var(--color-border); margin: 32px 0 16px; }
+.doc-list { padding-inline-start: 20px; }
+.doc-mono { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; flex-wrap: wrap; }
+.doc-cards .label-card { height: 100%; }
+.doc-cards { align-items: stretch; }
+@media (min-width: 1000px) {
+  .doc-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+  .doc-toc { position: sticky; top: 16px; align-self: start; }
+  .doc-toc ul { display: block; }
+}
