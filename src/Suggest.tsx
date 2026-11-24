@@ -1,11 +1,10 @@
 /** Suggest changes where you read: the pencil, the inline panel, the tray bar at the bottom and its review. */
-import { createContext, Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createContext, Fragment, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ACTIONS } from "./config";
 import { artifactUrl, fitsObjective, MAX_OBJECTIVE } from "./bodies";
 import { InstructionsBlock } from "./Instructions";
 import {
   CHANGE_HINTS,
-  CHANGE_MAX_LINKS,
   CHANGE_WORDS,
   KEPT_RULE,
   NOTE_HEADING,
@@ -14,7 +13,6 @@ import {
   NOTE_STEPS,
   QUICK_LINE,
   QUICK_SENTENCE,
-  READ_MAX_LINKS,
   SOURCES_HINT,
   SOURCES_LABEL,
   sameSentence,
@@ -27,6 +25,7 @@ import {
   makeRefOf,
   addReady,
   noSourceSummary,
+  noteFit,
   wordDiff,
   newChangeId,
   noTarget,
@@ -84,6 +83,12 @@ interface SuggestState {
    * Record while writing finds the draft again. Cleared on Add to my changes. A ref, so typing re-renders nothing else.
    */
   drafts: React.MutableRefObject<Map<string, { note: string; links: string }>>;
+  /**
+   * The length of the objective of a changes job that carries this change alone, as Review would build it (the page
+   * as F1, earlier results, panel answers and channels): the budget the open form's Sources and Edit links use.
+   * Null when the record cannot be measured.
+   */
+  measure: (c: Change) => number | null;
 }
 const Ctx = createContext<SuggestState | null>(null);
 
@@ -108,14 +113,21 @@ export function liveTarget(rec: Pick<RecordModel, "scope" | "resolve">, t: Chang
   return { ...t, lineId: id, lineIds: [id, ...rest] };
 }
 
-export function SuggestProvider({ subject, rec, children }: { subject: string; rec: Pick<RecordModel, "scope" | "resolve" | "sections">; children: React.ReactNode }) {
+/** The objective length of a changes job with this one change, or null for a record without what a request needs. */
+export function measureChange(rec: Pick<RecordModel, "scope" | "resolve" | "sections"> & Partial<RecordModel>, c: Change): number | null {
+  if (!rec.subject || !rec.promptChannels || !rec.after || !rec.results || !rec.answers) return null;
+  return planChanges(rec as RecordModel, [c], new Map([[c.id, liveTarget(rec, c.target)]])).body.objective.length;
+}
+
+export function SuggestProvider({ subject, rec, children }: { subject: string; rec: Pick<RecordModel, "scope" | "resolve" | "sections"> & Partial<RecordModel>; children: React.ReactNode }) {
   const tray = useTray(subject);
   const [open, setOpen] = useState<string | null>(null);
   const drafts = useRef(new Map<string, { note: string; links: string }>());
   // rec.resolve is new on every render; the record's sections and scope are what it reads.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const live = useMemo(() => new Map(tray.list.map((c) => [c.id, liveTarget(rec, c.target)] as const)), [tray.list, rec.sections, rec.scope]);
-  const value = useMemo(() => ({ subject, tray, open, setOpen, live, drafts }), [subject, tray, open, live]);
+  const measure = useCallback((c: Change) => measureChange(rec, c), [rec]);
+  const value = useMemo(() => ({ subject, tray, open, setOpen, live, drafts, measure }), [subject, tray, open, live, measure]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -329,10 +341,18 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
   const [added, setAdded] = useState(0);
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
-  const plan = useMemo(() => planLinks(links, CHANGE_MAX_LINKS), [links]);
+  // Sources: as many links as fit in one request. The budget is the objective's length check, measured on this note
+  // as Review would send it.
+  const plan = useMemo(() => planLinks(links), [links]);
+  const suggestText = type === "wrong" && mode === "sentence" && cleanNote(corrected) ? cleanNote(corrected).slice(0, SUGGEST_MAX) : "";
+  const length = useMemo(
+    () => s.measure({ id: existing?.id ?? "draft", type, target: inline ? target : OPEN_TARGET, note: cleanNote(note), links: plan.links, ...(suggestText ? { suggest: suggestText } : {}) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [s.measure, type, note, plan.links, suggestText, inline, target.key],
+  );
   // The exact sentence of the result and the sentence as the page shows it: neither counts as a rewording.
   const current = type === "reword" ? [target.text, formatNumbers(target.text)] : "";
-  const ready = addReady(type, note, plan.links, plan.rejected.length, current);
+  const ready = addReady(type, note, plan.links, plan.rejected.length, current, length);
   // The pencil, sentence or Edit button that opened the panel: focus goes back there when it closes.
   const opener = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);
   const close = () => {
@@ -361,6 +381,7 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
     e.preventDefault();
     const found = validateChange(type, note, plan.links, current);
     if (plan.rejected.length && !found.links) found.links = `Fix or remove: ${plan.rejected[0]!.line.slice(0, 60)} (${plan.rejected[0]!.why}).`;
+    if (!found.note && !found.links && noteFit(length)) found.links = noteFit(length);
     setErrs(found);
     if (found.note) return document.getElementById(`${id}-note`)?.focus();
     if (found.links) return document.getElementById(`${id}-links`)?.focus();
@@ -370,7 +391,7 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
       target: inline ? target : noTarget(),
       note: cleanNote(note),
       links: plan.links,
-      ...(type === "wrong" && mode === "sentence" && cleanNote(corrected) ? { suggest: cleanNote(corrected).slice(0, SUGGEST_MAX) } : {}),
+      ...(suggestText ? { suggest: suggestText } : {}),
     };
     s.tray.put(c);
     if (inline) return close();
@@ -612,7 +633,6 @@ export function TrayBar({ rec, quote, onAsk }: { rec: RecordModel; quote: Quote;
  */
 function LinkEditor({ change }: { change: Change }) {
   const s = useSuggest();
-  const max = change.type === "links" ? READ_MAX_LINKS : CHANGE_MAX_LINKS;
   const [open, setOpen] = useState(!!change.retry && change.links.length > 0);
   const [v, setV] = useState(change.links.join("\n"));
   const [err, setErr] = useState("");
@@ -637,9 +657,12 @@ function LinkEditor({ change }: { change: Change }) {
       </button>
     );
   const save = () => {
-    const p = planLinks(v, max);
+    // As many links as fit in one request: the same objective length check as the open form.
+    const p = planLinks(v);
     if (p.rejected.length) return setErr(`Fix or remove: ${p.rejected[0]!.line.slice(0, 60)} (${p.rejected[0]!.why}).`);
     if (!p.links.length && (change.type === "backing" || change.type === "links" || (change.type === "note" && !change.note))) return setErr("Paste at least one https link.");
+    const over = noteFit(s.measure({ ...change, links: p.links, retry: undefined }));
+    if (over) return setErr(over);
     refocusLinks = change.id;
     s.tray.put({ ...change, links: p.links, retry: undefined });
     setErr("");
@@ -648,7 +671,7 @@ function LinkEditor({ change }: { change: Change }) {
   return (
     <span className="addlink block">
       <label htmlFor={id} className="small block">
-        {change.retry ? "Replace or remove the links it was sent with" : "Links"}, one per line (up to {max})
+        {change.retry ? "Replace or remove the links it was sent with" : "Links"}, one per line, as many as fit in one request
       </label>
       <textarea ref={box} id={id} rows={Math.min(Math.max(change.links.length, 2), 6)} spellCheck={false} autoCapitalize="none" autoComplete="off" placeholder="https://example.com/article" value={v} onChange={(e) => setV(e.target.value)} aria-invalid={!!err} aria-describedby={err ? `${id}-err` : undefined} />
       <span className="row-actions">

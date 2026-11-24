@@ -126,9 +126,10 @@ describe("D. small fixes", () => {
     const rec2 = read("src/Record.tsx");
     expect(rec2).toContain("The page could not be loaded.");
     expect(rec2).toMatch(/latest && error \?/);
-    expect(rec2).toContain("items !== null && (unreadable > 0 || latest) ?");
+    // Revision 23: the finished page-job state (pageJobsOf) decides both tabs; see tests/revision23.test.ts.
+    expect(rec2).toContain("items !== null && jobs.settled && (unreadable > 0 || latest || jobs.finished) ?");
     const app = read("src/App.tsx");
-    expect(app).toContain("if (!rec.page && (rec.latest || unreadable > 0))");
+    expect(app).toContain("if (!rec.page && (rec.latest || unreadable > 0 || jobs.loadFailed))");
   });
   it("11: other chains' addresses keep their own chain, never the home chain", () => {
     expect(otherAddresses(`governance; Polygon: ${OTHER}`).also).toEqual([{ address: OTHER, chain: "Polygon", note: "" }]);
@@ -154,7 +155,9 @@ describe("D. small fixes", () => {
   it("12: after a request is sent the dialog closes and the toast links the job", () => {
     const app = read("src/App.tsx");
     expect(app).toMatch(/onSent=\{\(note\) => \{\s*setAsk\(null\);/);
-    expect(app).toMatch(/Sent\.\{" "\}\s*<a href=\{sentHref\(sent\.hash, items, jobs\)\}[^>]*>\s*Follow it on the IMD explorer\./);
+    // Revision 23: the IMD explorer label only with the job's own link; Etherscan is "View the Ethereum transaction".
+    expect(app).toMatch(/Sent\.\{" "\}\s*<a href=\{link\.href\}[^>]*>\s*\{link\.text\}/);
+    expect(app).toContain('"Follow it on the IMD explorer"');
   });
 });
 

@@ -31,7 +31,7 @@ import { isChangesJob, readable, rememberSent, sentTxs, useActivity } from "./us
 import { holdFocus } from "./modal";
 import { followAdmission, rpcReceipt, waitForReceipt, type ReceiptRead } from "./receipt";
 import { Payment, type PayStep } from "./payFlow";
-import { leftOutText, pendingRebuildOf, upkeepText, planRebuild, subjectRefFor, subjectSummaries, unreadableBySubject, unreadableCount, useRecordModel, type RecordModel } from "./model";
+import { isInstructionsUnavailable, leftOutText, pageJobsOf, pendingRebuildOf, readSettled, upkeepText, type PageJobs, planRebuild, subjectRefFor, subjectSummaries, unreadableBySubject, unreadableCount, useRecordModel, type RecordModel } from "./model";
 import { InstructionsBlock } from "./Instructions";
 import { INSTRUCTIONS_UNREACHABLE, instructionsOf, instructionsReachable, type InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
@@ -170,8 +170,11 @@ function LeftOut({ rec }: { rec: RecordState }) {
   );
 }
 
-function RebuildCard({ onAsk, rec, price, onRefresh, refreshing, known = true, unreadable = 0 }: { onAsk: (a: Ask) => void; rec: RecordState; price: string; onRefresh: () => void; refreshing: boolean; known?: boolean; unreadable?: number }) {
-  const ask = rebuildAsk(rec.prior, rec.subject, !!rec.page, rec.promptChannels.list, rec.promptChannels.more);
+function RebuildCard({ onAsk, rec, price, onRefresh, refreshing, known = true, unreadable = 0, jobs = { finished: false, loadFailed: false, settled: true } }: { onAsk: (a: Ask) => void; rec: RecordState; price: string; onRefresh: () => void; refreshing: boolean; known?: boolean; unreadable?: number; jobs?: PageJobs }) {
+  // "Create the page" only for a subject with no finished page job; after one (also one that found no project) the
+  // permitted retry is "Rebuild the page".
+  const rebuild = !!rec.page || jobs.finished;
+  const ask = rebuildAsk(rec.prior, rec.subject, rebuild, rec.promptChannels.list, rec.promptChannels.more);
   const prior = priorText(rec.prior);
   // Never opened for payment over the limit: the objective must fit in 7,900 characters.
   // One rebuild at a time: while one for this subject is pending, its button is replaced by where to follow it.
@@ -186,11 +189,11 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing, known = true, u
         <p className="small" role="status">Reading the record from Ethereum…</p>
       </div>
     );
-  if (!rec.page && (rec.latest || unreadable > 0))
+  if (!rec.page && (rec.latest || unreadable > 0 || jobs.loadFailed))
     return (
       <div className="card" id="rebuild-card">
         <p className="why" role="status">
-          {rec.error || !rec.latest ? "The page could not be loaded." : "Reading the page…"}{" "}
+          {rec.error || !rec.latest || jobs.loadFailed ? "The page could not be loaded." : "Reading the page…"}{" "}
           <button type="button" className="linklike" onClick={onRefresh} disabled={refreshing}>
             {refreshing ? "Trying again…" : "Try again."}
           </button>
@@ -214,7 +217,12 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing, known = true, u
           </a>
         </p>
       )}
-      <h3>{rec.page ? "Rebuild the page" : "Create the page"}</h3>
+      <h3>{rebuild ? "Rebuild the page" : "Create the page"}</h3>
+      {!rec.page && rec.rejected?.rejected && (
+        <p className="small break">
+          {isInstructionsUnavailable(rec.rejected.rejected) ? "The last page job could not verify its instructions." : `The last page job found no project: ${rec.rejected.rejected.trim().replace(/[.\s]*$/, ".")}`} A rebuild can try again.
+        </p>
+      )}
       <p className="break">Merges repeated lines, folds in the listed results, and looks for what’s new.</p>
       {rec.snapshot.ok ? (
         <>
@@ -248,7 +256,7 @@ function RebuildCard({ onAsk, rec, price, onRefresh, refreshing, known = true, u
       ) : (
       <div className="row-actions">
         <button className="btn" onClick={() => (ready ? onAsk(ask) : undefined)} disabled={!ready}>
-          {ready || ask.warning ? (rec.page ? "Rebuild the page" : "Create the page") : rec.snapshot.loading ? "Reading the record…" : "Record not read"}
+          {ready || ask.warning ? (rebuild ? "Rebuild the page" : "Create the page") : rec.snapshot.loading ? "Reading the record…" : "Record not read"}
         </button>
         <span className="price mono">{price}</span>
       </div>
@@ -445,11 +453,12 @@ function ConfirmCard({ onAsk, rec }: { onAsk: (a: Ask) => void; rec: RecordState
  */
 export const PANEL_CHECKS = false;
 
-function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing, items, unreadable }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState; onRefresh: () => void; refreshing: boolean; items: unknown[] | null; unreadable: number }) {
+export function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing, items, unreadable, jobs }: { onAsk: (a: Ask) => void; researchPrice: string; rec: RecordState; onRefresh: () => void; refreshing: boolean; items: unknown[] | null; unreadable: number; jobs: PageJobs }) {
   // Page upkeep is closed by default; it starts open only once the chain and the files have answered and show no page,
   // no finished page job and no unreadable result, so "Create the page" is not hidden from a subject that has nothing else.
-  const known = items !== null;
-  const firstPage = known && !rec.page && !rec.latest && unreadable === 0;
+  // A scan read from the browser's cache cannot show that no page job finished since: known waits for the current scan.
+  const known = items !== null && jobs.settled;
+  const firstPage = known && !jobs.finished && !rec.page && !rec.latest && unreadable === 0;
   return (
     <section className="tab" aria-labelledby="actions-title">
       <h1 id="actions-title" className="tab-title" tabIndex={-1}>
@@ -463,7 +472,7 @@ function ContributeTab({ onAsk, researchPrice, rec, onRefresh, refreshing, items
         <p className="small pay-line">Every request is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
         <details className="upkeep" id="rebuild" open={firstPage || undefined}>
           <summary>Page upkeep</summary>
-          <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} known={known} unreadable={unreadable} />
+          <RebuildCard onAsk={onAsk} rec={rec} price={researchPrice} onRefresh={onRefresh} refreshing={refreshing} known={known} unreadable={unreadable} jobs={jobs} />
         </details>
       </div>
     </section>
@@ -730,20 +739,46 @@ export const sentHref = (hash: string, items: Activity[] | null, jobs: SentJobs 
   return jobLink(jobs[hash.toLowerCase()] ?? a?.jobId ?? null, hash);
 };
 
-/** The small confirmation at the bottom of the page, for about 8 seconds after a request is sent. */
+/** The IMD job id of a sent request once admission (or IMD's list) names it, else null. */
+export const sentJobId = (hash: string, items: Activity[] | null, jobs: SentJobs = {}): string | null => {
+  const a = (items ?? []).find((x) => x.req.transactionHash.toLowerCase() === hash.toLowerCase());
+  return jobs[hash.toLowerCase()] ?? a?.jobId ?? null;
+};
+
+/**
+ * What the confirmation links to. "Follow it on the IMD explorer" only with the job's own IMD explorer link; while
+ * the job is being assigned, "View the Ethereum transaction" on Etherscan.
+ */
+export function sentLink(hash: string, items: Activity[] | null, jobs: SentJobs = {}): { href: string; text: string; job: boolean } {
+  const id = sentJobId(hash, items, jobs);
+  return id ? { href: jobLink(id, hash), text: "Follow it on the IMD explorer", job: true } : { href: jobLink(null, hash), text: "View the Ethereum transaction", job: false };
+}
+
+/**
+ * The small confirmation at the bottom of the page after a request is sent. It stays while IMD assigns the job, then
+ * for about 8 seconds with the IMD explorer link.
+ */
 function SentToast({ sent, items, jobs, onDone }: { sent: SentNote; items: Activity[] | null; jobs: SentJobs; onDone: () => void }) {
+  const link = sentLink(sent.hash, items, jobs);
   useEffect(() => {
+    if (!link.job) return;
     const t = window.setTimeout(onDone, 8000);
     return () => window.clearTimeout(t);
-  }, [sent.hash, onDone]);
+  }, [sent.hash, onDone, link.job]);
   return (
     <p className="toast toast-sent" role="status">
       <span>
         Sent.{" "}
-        <a href={sentHref(sent.hash, items, jobs)} target="_blank" rel="noopener noreferrer">
-          Follow it on the IMD explorer.
+        <a href={link.href} target="_blank" rel="noopener noreferrer">
+          {link.text}
         </a>
+        {link.job ? "" : " IMD is assigning the job…"}
       </span>
+      {!link.job && (
+        <button type="button" className="x" aria-label="Dismiss" onClick={onDone}>
+          ×
+        </button>
+      )}
     </p>
   );
 }
@@ -899,6 +934,7 @@ function SubjectView({ subject, items, allItems, activity, route, onAsk, researc
   }, [name]);
 
   const refresh = () => void activity.reload();
+  const pageJobs = useMemo(() => pageJobsOf(allItems, activity.cached), [allItems, activity.cached]);
   return (
     <SuggestProvider subject={subject} rec={rec}>
       <nav aria-label={`${name} tabs`} className="tabs">
@@ -909,11 +945,11 @@ function SubjectView({ subject, items, allItems, activity, route, onAsk, researc
         ))}
       </nav>
       <PendingBar subject={subject} items={activity.items} sent={sent} jobs={jobs} />
-      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} onRetry={refresh} subjects={subjects} chainError={activity.error} retrying={activity.retrying} readingFiles={readingFiles} unreadable={unreadableCount(allItems ?? [])} />}
+      {route.tab === "overview" && <OverviewTab m={rec} ui={ui} items={items} price={researchPrice} onRetry={refresh} subjects={subjects} chainError={activity.error} retrying={activity.retrying} readingFiles={readingFiles} unreadable={unreadableCount(allItems ?? [])} jobs={pageJobs} />}
       {route.tab === "record" && <RecordTab m={rec} ui={ui} />}
       {route.tab === "sources" && <SourcesTab m={rec} />}
       {route.tab === "activity" && <ActivityList {...activity} items={allItems} shown={rec} subject={subject} />}
-      {route.tab === "contribute" && <ContributeTab onAsk={onAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} items={items} unreadable={unreadableCount(allItems ?? [])} />}
+      {route.tab === "contribute" && <ContributeTab onAsk={onAsk} researchPrice={researchPrice} rec={rec} onRefresh={refresh} refreshing={activity.loading} items={items} unreadable={unreadableCount(allItems ?? [])} jobs={pageJobs} />}
       <TrayBar rec={rec} quote={researchQuote} onAsk={onAsk} />
     </SuggestProvider>
   );
@@ -980,7 +1016,8 @@ export default function App() {
   const allItems = useMemo(() => {
     if (activity.items === null || !subject) return activity.items;
     const mine = activity.items.filter((a) => a.req.subject === subject);
-    return mine.every((a) => a.filesRead !== false || a.notRead) ? mine : null;
+    // A result whose listing or file failed to load has settled too: the page says so and offers Try again.
+    return mine.every(readSettled) ? mine : null;
   }, [activity.items, subject]);
   const items = useMemo(() => (allItems ? readable(allItems) : allItems), [allItems]);
   const unreadable = useMemo(() => unreadableBySubject(activity.items ?? []), [activity.items]);

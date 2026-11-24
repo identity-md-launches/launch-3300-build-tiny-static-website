@@ -85,12 +85,14 @@ describe("D11. a token's other chains carry their own chain", () => {
 describe("D10. Create the page only once the chain shows no page job", () => {
   it("Overview footer and Contribute wait for the record and count unreadable results", () => {
     const r = read("src/Record.tsx");
-    expect(r).toContain(") : items !== null && !latest && unreadable === 0 ? (");
+    // Revision 23: noJobs also waits for the current scan (jobs.settled) and any finished page job (jobs.finished).
+    expect(r).toContain("const noJobs = items !== null && jobs.settled && !jobs.finished && !latest && unreadable === 0;");
+    expect(r).toContain(") : noJobs ? (");
     const app = read("src/App.tsx");
-    expect(app).toContain("const firstPage = known && !rec.page && !rec.latest && unreadable === 0;");
-    expect(app).toContain("if (!rec.page && (rec.latest || unreadable > 0))");
+    expect(app).toContain("const firstPage = known && !jobs.finished && !rec.page && !rec.latest && unreadable === 0;");
+    expect(app).toContain("if (!rec.page && (rec.latest || unreadable > 0 || jobs.loadFailed))");
     expect(app).toContain("Reading the record from Ethereum…");
-    expect(app).toContain("unreadable={unreadableCount(allItems ?? [])} />}");
+    expect(app).toContain("unreadable={unreadableCount(allItems ?? [])} jobs={pageJobs} />}");
   });
 });
 

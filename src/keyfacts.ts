@@ -124,6 +124,35 @@ export function tokenOfItem(e: ValueItem): TokenItem {
 }
 
 /**
+ * The tokens of a values list. A plain string entry that is only a chain and an address ("Polygon 0x…") is the
+ * previous token on another chain: it is folded into that token's "also on", never shown as a token of its own.
+ */
+export function tokensOfItems(items: ValueItem[]): TokenItem[] {
+  const out: TokenItem[] = [];
+  for (const e of items) {
+    const only = !e.shaped && out.length ? chainOnlyPiece(e.text) : null;
+    if (only) {
+      const prev = out[out.length - 1]!;
+      const { also: was = [], ...rest } = prev;
+      out[out.length - 1] = withAlso(rest, [...was.map((x) => ({ chain: x.chain, address: x.address })), only]);
+    } else out.push(tokenOfItem(e));
+  }
+  return out;
+}
+
+/**
+ * A flat legacy Tokens value (no values list) read as one token with its other chains: its first item names an
+ * address and every other item is only a chain and an address ("Polygon 0x…"). Anything else stays one text value
+ * (an empty list), never split into several tokens.
+ */
+export function flatTokens(value: string, rowUrl = ""): TokenItem[] {
+  const parts = tokenParts(value);
+  if (parts.length < 2 || !ADDR.test(parts[0]!) || chainOnlyPiece(parts[0]!) || !parts.slice(1).every((p) => chainOnlyPiece(p))) return [];
+  const out = tokensOf(value, rowUrl);
+  return out.length === 1 ? out : [];
+}
+
+/**
  * Rows that list tokens one per line: the Tokens row only. A legacy singular Token row keeps the plain linked value
  * (its symbol linked to the row's explorer URL), as pages built before the Tokens format wrote it.
  */
@@ -621,9 +650,12 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       // Accounts with different labels each show their own badge beside them; the row then shows none.
       const perAccount = isAcc && !stale && new Set(listed.map((a) => a.status?.tone)).size > 1;
       const badge = tied ? null : badgeOf(lines, all, sourceUrl);
-      // Tokens one per line only when the result gave them as a list (values); a text value stays one text value.
+      // Tokens one per line when the result gave them as a list (values). A flat legacy text is one text value,
+      // except one token followed by its other chains ("ENS 0x… on Ethereum; Polygon 0x…"): that token then shows
+      // its home address first and each other chain under "also on" (flatTokens).
       const isTokens = TOKEN_ROWS.test(r.label.trim());
-      const tokens = isTokens && r.items?.length ? r.items.map(tokenOfItem) : isTokens && r.values?.length ? tokensOf(r.value, safeHref(r.url) ? r.url : "", r.values) : [];
+      const rowHref = safeHref(r.url) ? r.url : "";
+      const tokens = isTokens && r.items?.length ? tokensOfItems(r.items) : isTokens && r.values?.length ? tokensOf(r.value, rowHref, r.values) : isTokens ? flatTokens(r.value, rowHref) : [];
       // Every token with an address links to its block explorer, on its own chain or the single chain named.
       const oneChain = singleChain ? chainsRow!.values?.[0] ?? chainsRow!.value : "";
       for (const t of tokens) if (t.address && !t.url) t.url = explorerAddressUrl(t.address, t.chain || oneChain);

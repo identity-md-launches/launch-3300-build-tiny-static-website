@@ -801,6 +801,7 @@ body.has-tray main { padding-bottom: 9rem; }
 
 /* After paying: a small confirmation at the bottom of the page, and the pending state under the tabs. */
 .toast-sent a { color: var(--gray-0); text-decoration: underline; text-underline-offset: 2px; }
+.toast-sent .x { margin-inline-start: auto; flex: none; }
 .pending-bar { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); background: var(--color-accent-subtle); font-size: var(--text-small); }
 .pending-bar p { margin: 0; overflow-wrap: anywhere; }
 .pending-dot { display: inline-block; width: 8px; height: 8px; margin-inline-end: var(--space-2); border-radius: 50%; background: var(--color-accent-solid); vertical-align: 1px; }

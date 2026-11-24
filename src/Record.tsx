@@ -27,7 +27,7 @@ import {
   type ChannelStatus,
   isFactRow, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
 import { readDate } from "./dates";
-import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, isInstructionsUnavailable, statusText, unreadableText, type FirstPageStatus, type RecordModel } from "./model";
+import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, type PageJobs, isInstructionsUnavailable, statusText, unreadableText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { OutdatedNote, ReaderNote, StillReading } from "./Home";
 import { ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest } from "./Suggest";
@@ -793,6 +793,11 @@ export function relatedCards(related: { name: string; id: string; relation: stri
 const CHAIN_SITES = new Set(["ethereum.org", "base.org", "polygon.technology", "optimism.io", "arbitrum.io", "arbitrum.foundation", "solana.com", "unichain.org", "bnbchain.org", "avax.network", "zksync.io", "linea.build", "blast.io", "scroll.io", "zora.energy", "bitcoin.org"]);
 /** Chain names that are also ordinary words, so a project's host label ("mode.app", "abstract.money") is not read as a chain. */
 const GENERIC_LABELS = new Set(["mode", "ink", "op", "sonic", "abstract", "near", "ton", "celo", "gnosis", "mantle", "ronin", "taiko"]);
+/**
+ * Standards and protocols named as if they were projects: DNS (whose entry may give ICANN's domain), DNSSEC, HTTP,
+ * TLS and the like. An entry naming the organisation itself (ICANN, IETF, W3C) is not a standard and stays eligible.
+ */
+const STANDARD_NAMES = new Set(["dns", "dnssec", "domain name system", "http", "https", "tls", "ssl", "tcp/ip", "smtp", "oauth", "openid", "openid connect", "json", "json-rpc", "unicode", "x.509", "pgp", "openpgp", "webauthn", "passkeys", "ipv4", "ipv6", "url", "uri", "utf-8", "rss", "atom", "activitypub"]);
 /** Common tokens named as if they were projects. */
 const TOKEN_SYMBOLS = new Set(["eth", "weth", "steth", "wsteth", "reth", "btc", "wbtc", "cbbtc", "usdc", "usdt", "dai", "usds", "usde", "eurc", "pyusd", "frax", "lusd", "gho", "crvusd"]);
 
@@ -812,7 +817,7 @@ export function ownDomainEntry(r: { name: string; id: string; relation: string }
   // A chain: by its name, its site, or its site's main label (ethereum.org, base.org, solana.com).
   if (isChainName(name) || CHAIN_SITES.has(host) || CHAIN_SITES.has(id) || (isChainName(label) && !GENERIC_LABELS.has(label))) return false;
   // A standard: ERC-20, EIP-1559, "Token standard".
-  if (/^(?:erc|eip)[- ]?\d+$/i.test(name) || /\bstandard$/i.test(name)) return false;
+  if (/^(?:erc|eip|bip|slip|caip|ensip|rfc)[- ]?\d+$/i.test(name) || /\bstandard$/i.test(name) || STANDARD_NAMES.has(name.toLowerCase().replace(/\s*\([^)]*\)\s*$/, ""))) return false;
   // A token: a $ symbol, a name ending in "token", a common token's symbol, or an address for a name.
   const bare = name.replace(/^\$/, "").toLowerCase();
   if (/^\$/.test(name) || /\btoken$/i.test(name) || TOKEN_SYMBOLS.has(bare) || TOKEN_SYMBOLS.has(label) || /0x[0-9a-f]{40}/i.test(name)) return false;
@@ -905,8 +910,10 @@ export function PageRetry({ onRetry, retrying = false }: { onRetry?: () => void;
   );
 }
 
-export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false, unreadable = 0, onRetry }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean; unreadable?: number; onRetry?: () => void }) {
+export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false, unreadable = 0, onRetry, jobs = { finished: false, loadFailed: false, settled: true } }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean; unreadable?: number; onRetry?: () => void; jobs?: PageJobs }) {
   const { page, latest, error } = m;
+  // D10: "No page yet" and "Create the page" only once the current scan shows no finished page job.
+  const noJobs = items !== null && jobs.settled && !jobs.finished && !latest && unreadable === 0;
   const name = page?.name || m.subject.id;
   // The same first-page status Home shows for this subject: in progress, refused, failed or no project found.
   const first: FirstPageStatus | null = !page && items !== null ? firstPageStatus(items) : null;
@@ -936,7 +943,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
           <p className="why">{first?.kind === "not-found" ? statusText(first) : `No project found: ${m.rejected!.rejected}`}</p>
           <p>The research job for {m.subject.id} found no single real project, so this site shows no page for it.</p>
           <p className="small">
-            See <a href={to("activity")}>Activity</a> for the job. A rebuild with a clearer description can still create the page.
+            See <a href={to("activity")}>Activity</a> for the job. A rebuild with a clearer description can still try again.
           </p>
         </div>
       )}
@@ -944,6 +951,17 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
         <div className="card empty" id="first-page">
           {items === null ? (
             readingFiles ? <h2>Reading the page…</h2> : <StillReading error={chainError} retrying={retrying} />
+          ) : !jobs.settled ? (
+            // Shown from this browser's cache while Ethereum is read for newer blocks: never "No page yet" yet.
+            <>
+              <h2>Reading the page…</h2>
+              <StillReading error={chainError} retrying={retrying} />
+            </>
+          ) : jobs.loadFailed && !latest ? (
+            <>
+              <h2>Page not loaded</h2>
+              <PageRetry onRetry={onRetry} retrying={retrying} />
+            </>
           ) : unreadable > 0 && !latest ? (
             <>
               <h2>No result could be read</h2>
@@ -976,6 +994,12 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
                 See <a href={to("activity")}>Activity</a> for the request. You can try again with <a href={to("rebuild")}>a rebuild</a>.
               </p>
             </>
+          ) : !noJobs ? (
+            // A finished page job with nothing to show and no reason read: Activity says what happened.
+            <>
+              <h2>Page not loaded</h2>
+              <PageRetry onRetry={onRetry} retrying={retrying} />
+            </>
           ) : (
             <>
               <h2>No page yet</h2>
@@ -1006,14 +1030,14 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
             Something wrong or missing? Use the pencil on any row, click a sentence, or <a href={to("suggest-changes")}>say it in your own words</a>.
           </p>
         </div>
-      ) : items !== null && (unreadable > 0 || latest) ? (
+      ) : items !== null && jobs.settled && (unreadable > 0 || latest || jobs.finished) ? (
         // Finished page jobs exist but the page could not be read: Activity says why; creating the page is never offered.
         <div className="ov-foot">
           <p className="foot-links">
             <a href={to("activity")}>See why in Activity</a>
           </p>
         </div>
-      ) : items !== null && !latest && unreadable === 0 ? (
+      ) : noJobs ? (
         // Only once the chain has answered and shows no finished page job; while it is read, nothing is offered.
         <div className="ov-foot">
           <p className="foot-links">

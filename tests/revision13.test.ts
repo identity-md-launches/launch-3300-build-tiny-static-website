@@ -221,7 +221,7 @@ describe("C. pay dialog", () => {
     expect(src).toContain("<summary>Show the full request</summary>");
     expect(src).toContain("Waiting for your wallet…");
     expect(src).toContain("Approved. Now confirm the request.");
-    expect(src).toContain("Follow it on the IMD explorer.");
+    expect(src).toContain("Follow it on the IMD explorer");
     expect(src).toContain('"Try again"');
     expect(src).not.toMatch(/>Done</);
     expect(src).not.toMatch(/minutes|usually takes/i);

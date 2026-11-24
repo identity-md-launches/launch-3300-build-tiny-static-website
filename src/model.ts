@@ -1213,3 +1213,29 @@ export function firstRecordedOf(ref: string, files: { n: number; hash: string }[
   }
   return best;
 }
+
+/**
+ * Whether a subject has finished page jobs, and whether the last one's result could not be read, from every request
+ * of the subject (also those not read). `cached`: the requests come from the browser's cache and the scan for newer
+ * blocks has not ended; an older scan cannot show that no page job finished, so `settled` is false until it ends.
+ * D10: a subject with a finished page job never offers "Create the page"; one whose result listing or file failed
+ * to load says "The page could not be loaded. Try again."
+ */
+export interface PageJobs {
+  /** At least one page job of the subject completed (found a project or not, read or not). */
+  finished: boolean;
+  /** The newest completed page job's result listing or file could not be read here. */
+  loadFailed: boolean;
+  /** Whether "no finished page job" can be trusted: the current scan has ended (or one already finished). */
+  settled: boolean;
+}
+export function pageJobsOf(all: Activity[] | null, cached = false): PageJobs {
+  const done = (all ?? []).filter((a) => isPageJob(a.req) && a.state === "completed").sort((a, b) => (a.req.blockNumber < b.req.blockNumber ? -1 : a.req.blockNumber > b.req.blockNumber ? 1 : 0));
+  const last = done.at(-1);
+  const finished = done.length > 0;
+  const loadFailed = !!last && !last.notRead && !last.page && !last.rejected && !!last.sourcesError;
+  return { finished, loadFailed, settled: all !== null && (finished || !cached) };
+}
+
+/** A subject's request whose result read has settled: read, not to be read, or failed (its lookup gave an error). */
+export const readSettled = (a: Activity) => a.filesRead !== false || !!a.notRead || !!a.sourcesError;

@@ -25,8 +25,9 @@ export const CHANGE_WORDS: Record<ChangeType, string> = {
   context: "Add context",
   backing: "Back this up",
   reword: "Reword it",
-  new_line: "Add a line that is missing",
-  links: "Add links to read",
+  // Saved before the open form: shown as notes, their type, text and links kept as they were.
+  new_line: "Note",
+  links: "Note",
 };
 export const CHANGE_HINTS: Partial<Record<ChangeType, string>> = {
   wrong: "I have evidence against it.",
@@ -54,9 +55,20 @@ export const QUICK_SENTENCE: ChangeType[] = ["wrong", "context", "backing", "rew
 export const KEPT_RULE = "Your wording is kept if those lines, or a link you add, support it.";
 
 export const NOTE_MAX = 1000;
-/** Links one change may carry: as many as fit in the objective; this is only a ceiling. */
-export const CHANGE_MAX_LINKS = 40;
-export const READ_MAX_LINKS = 20;
+/**
+ * Links one change may carry: as many as fit in the request. There is no fixed count; the budget is the objective's
+ * own length check (fitsObjective, 7,900 characters), measured on the serialized request (see noteFit).
+ */
+export const CHANGE_MAX_LINKS = Number.POSITIVE_INFINITY;
+
+/**
+ * Why a change cannot join the tray because its request would be too long, or "" when it fits. `length` is the
+ * objective of a changes job carrying this change alone (null when it cannot be measured here).
+ */
+export function noteFit(length: number | null): string {
+  if (length === null || fitsObjective(length)) return "";
+  return `This note does not fit in one request: it would be ${length.toLocaleString("en-US")} characters, over the ${MAX_OBJECTIVE.toLocaleString("en-US")} this site allows. Remove some links or shorten the note.`;
+}
 
 /** What a change is about. A record line (by its id in the record shown), a key facts row, a summary sentence, or nothing. */
 export interface ChangeTarget {
@@ -113,7 +125,7 @@ export const noTarget = (): ChangeTarget => ({ kind: "none", key: `new:${Date.no
 /* ---------- Checking one change ---------- */
 
 /** Splits pasted links (one per line, or separated by spaces) into usable https links and why others were left out. */
-export function planLinks(text: string, max: number): { links: string[]; rejected: { line: string; why: string }[] } {
+export function planLinks(text: string, max: number = CHANGE_MAX_LINKS): { links: string[]; rejected: { line: string; why: string }[] } {
   const links: string[] = [];
   const seen = new Set<string>();
   const rejected: { line: string; why: string }[] = [];
@@ -170,9 +182,9 @@ export function validateChange(type: ChangeType, note: string, links: string[], 
  * Whether "Add to my changes" is enabled, and if not, the one short reason shown beside it. Links that cannot be
  * used (not https, repeated, past the limit) also hold it back.
  */
-export function addReady(type: ChangeType, note: string, links: string[], rejected: number, current: string | string[] = ""): { ok: boolean; need: string } {
+export function addReady(type: ChangeType, note: string, links: string[], rejected: number, current: string | string[] = "", length: number | null = null): { ok: boolean; need: string } {
   const e = validateChange(type, note, links, current);
-  const need = e.note ?? e.links ?? (rejected ? "Fix or remove the links that cannot be used." : "");
+  const need = e.note ?? e.links ?? (rejected ? "Fix or remove the links that cannot be used." : noteFit(length));
   return { ok: !need, need };
 }
 
