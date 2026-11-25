@@ -99,12 +99,6 @@ a { color: inherit; text-underline-offset: 0.15em; text-decoration-thickness: fr
 .top-row { max-width: var(--page-max); margin: 0 auto; padding: var(--space-2) var(--page-pad); display: flex; align-items: center; gap: var(--space-4); row-gap: var(--space-1); min-width: 0; }
 /* Only on another chain (Switch beside the chip) may the wallet controls take a second line. */
 .top-row:has(.acct-wrap) { flex-wrap: wrap; }
-/* Phones: the name with its beta tag, How it works and Connect (or the connected wallet) do not fit on one row. The
-   name and the wallet keep the first row and How it works takes the second, so nothing scrolls sideways. */
-@media (max-width: 30rem) {
-  .top-row { flex-wrap: wrap; column-gap: var(--space-2); }
-  .top-row > .top-link { order: 3; flex: 1 1 100%; }
-}
 .brand { font-weight: 600; text-decoration: none; margin-inline-end: auto; min-height: 44px; display: inline-flex; align-items: center; }
 /* The tabs wrap to a second row when the five labels cannot fit (320 wide), so no label is ever clipped. */
 .tabs { max-width: 60rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 0 var(--space-1); }
@@ -209,7 +203,6 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .lookup-msg { width: 100%; text-align: start; }
 /* The prompt, visible in full above the box (the placeholder repeats it but is clipped on narrow fields). */
 .lookup { flex-wrap: wrap; }
-.lookup-label { flex: 1 1 100%; font-size: var(--text-small); color: var(--color-text-secondary); }
 .offer { width: 100%; display: grid; gap: var(--space-3); text-align: start; background: var(--color-bg-subtle); border-radius: var(--radius-card); padding: var(--space-4); }
 .unsure-links { display: flex; flex-wrap: wrap; gap: 0 var(--space-4); align-items: center; }
 .unsure-links a { display: inline-flex; align-items: center; min-height: 44px; }
@@ -299,15 +292,22 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .related { display: grid; gap: var(--space-2); min-width: 0; }
 .related h2 { font-size: var(--text-heading); }
 .related-list { display: grid; gap: 0; border-top: 1px solid var(--color-border); }
-/* One entry per line: the name, its relation in the same text flow, and the small Add link attached to the entry.
-   A long entry wraps by words like a sentence; nothing reserves a column, so a short entry stays on one line. */
-.rel-row { display: block; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); min-width: 0; overflow-wrap: anywhere; }
+/* One entry per line: the name and its relation in one text flow, wrapping by words like a sentence, and at the right
+   end of the row a small "+" (44 px target) for an entry that can be added. The last row has no rule of its own: the
+   divider above "About this page" is the only line between the two sections. */
+.rel-row { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border); min-width: 0; overflow-wrap: anywhere; }
+.rel-row:last-child { border-bottom: 0; }
+.rel-text { flex: 1 1 auto; min-width: 0; padding-block: var(--space-1); }
 .rel-name { font-weight: 600; }
 a.rel-name { color: var(--color-accent-solid); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .rel-what { margin-inline-start: var(--space-2); color: var(--color-text-secondary); }
 .rel-one + .rel-one::before { content: " · "; }
-.rel-add { margin-inline-start: var(--space-2); white-space: nowrap; color: var(--color-accent-solid); }
+.rel-add { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-inline-end: calc(-1 * var(--space-3)); border-radius: 999px; color: var(--color-accent-solid); }
+@media (hover: hover) { .rel-add:hover { background: var(--color-bg-hover); } }
 .rel-name:focus-visible, .rel-add:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.rel-tip { position: absolute; z-index: 5; bottom: calc(100% + 4px); right: 0; padding: var(--space-1) var(--space-2); border-radius: 6px; background: var(--color-text); color: var(--color-bg); font-size: var(--text-small); white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 120ms ease-out, visibility 120ms; }
+.rel-add:hover .rel-tip, .rel-add:focus-visible .rel-tip { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .rel-tip { transition: none; } }
 
 /* Record: closed sections with counts, the search and the settled filter. */
 .record-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
@@ -486,7 +486,20 @@ a.chip:hover { background: var(--color-border); }
 .tie { font-size: var(--text-small); color: var(--color-text-secondary); }
 .tie-verified { color: var(--green-800); }
 .tie-own, .tie-linked { color: var(--blue-800); }
-.tie-key { max-width: 70ch; }
+.tie-key { max-width: 70ch; margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.tie-legend { margin: 0; max-width: 70ch; color: var(--color-text-secondary); }
+/* Sources: one closed-or-open group per label, its heading carrying the count. */
+.channel-group { border-top: 1px solid var(--color-border); }
+.channel-group > summary { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; cursor: pointer; list-style: none; }
+.channel-group > summary::-webkit-details-marker { display: none; }
+.channel-group > summary::before { content: ""; flex: none; width: 8px; height: 8px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 150ms ease-out; color: var(--color-text-secondary); }
+.channel-group[open] > summary::before { transform: rotate(45deg); }
+.channel-group > summary:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.channel-group-title { margin: 0; font-size: var(--text-body); font-weight: 600; }
+.channel-count { margin-inline-start: var(--space-1); font-weight: 400; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.channel-group .channels { padding-bottom: var(--space-3); }
+.channel-none { margin: 0 0 var(--space-3); }
+@media (prefers-reduced-motion: reduce) { .channel-group > summary::before { transition: none; } }
 .plain { margin: 0; padding-inline-start: 1.25em; display: grid; gap: var(--space-2); }
 .sources { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
 .sources li { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-3); }
@@ -520,6 +533,13 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .act { gap: var(--space-1); }
 .act-top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
 .act-what { font-weight: 600; overflow-wrap: anywhere; }
+/* Two or more folded rebuilds in a row: one line, "3 earlier rebuilds", that opens to show them. */
+.act-fold-toggle { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); width: 100%; min-height: 44px; padding: var(--space-2) var(--space-4); border: 1px dashed var(--color-border); border-radius: var(--radius-card); background: none; color: var(--color-text); font: inherit; font-weight: 600; text-align: start; cursor: pointer; }
+.act-fold-toggle .chev { align-self: center; margin-top: 0; }
+@media (hover: hover) { .act-fold-toggle:hover { background: var(--color-bg-subtle); } }
+.act-fold-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.act-fold-note { font-weight: 400; color: var(--color-text-secondary); }
+.act-fold-rows { padding-inline-start: var(--space-4); border-inline-start: 2px solid var(--color-border); }
 .why { color: var(--color-error); font-size: var(--text-small); overflow-wrap: anywhere; }
 .outcomes { list-style: none; margin: var(--space-1) 0; padding: 0; display: grid; gap: var(--space-1); font-size: var(--text-small); }
 .outcomes li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 var(--space-3); }
@@ -1019,10 +1039,7 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
  */
 @media (min-width: 23.4375rem) and (max-width: 30rem) {
   :root { --text-display: 1.75rem; /* 28px: the display size on these phones, still one of six sizes */ }
-  .top-row { flex-wrap: nowrap; column-gap: var(--space-1); }
-  .top-row > .top-link { order: 0; flex: none; font-size: var(--text-small); }
-  .top-row > .acct-wrap > .btn, .top-row > .btn { padding-inline: var(--space-2); }
-  .top-row:has(.acct-wrap) { flex-wrap: wrap; }
+  .top-row > .acct-wrap > .btn, .top-row > .btn { padding-inline: var(--space-3); }
   .home { gap: var(--space-4); }
   .hero { gap: var(--space-3); padding-top: var(--space-2); }
   .home-list { gap: var(--space-2); }
@@ -1176,14 +1193,24 @@ html.kbd h1[tabindex="-1"]:focus-visible, html.kbd h2[tabindex="-1"]:focus-visib
 .hsearch-create .hsearch-text { word-break: break-all; font-size: var(--text-small); }
 .hsearch-domain { margin-inline-start: auto; color: var(--color-text-secondary); white-space: nowrap; }
 .hsearch-none { padding: var(--space-2); color: var(--color-text-secondary); }
-/* Below 768 px: a search icon; pressed, the field opens across the header at full width. The two site links take a
-   second row so the name, the icon and Connect keep the first. */
+/* The menu button and its panel: hidden from 768 px up, where the two site links sit in the row. */
+.site-menu { display: none; position: relative; }
+.site-menu-toggle { display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: none; color: var(--color-text); cursor: pointer; }
+@media (hover: hover) { .site-menu-toggle:hover { background: var(--color-bg-hover); } }
+.site-menu-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.site-menu-panel { position: absolute; z-index: 22; top: calc(100% + 4px); right: 0; display: grid; min-width: 12rem; padding: var(--space-1); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: 0 8px 24px rgb(20 23 28 / 0.12); }
+.site-menu-panel .top-link { padding: 0 var(--space-3); border-radius: 6px; font-size: var(--text-body); color: var(--color-text); text-decoration: none; }
+.site-menu-panel .top-link[aria-current="page"] { font-weight: 600; }
+@media (hover: hover) { .site-menu-panel .top-link:hover { background: var(--color-bg-hover); } }
+/* Below 768 px the header is one row: site name, search icon, Connect, and the menu button holding How it works and
+   Contributors. Pressed, the search icon opens the field across the header at full width, under the row. */
 @media (max-width: 47.99rem) {
-  .top-row, .top-row:has(.acct-wrap) { flex-wrap: wrap; column-gap: var(--space-1); }
-  .hsearch { flex: none; order: 1; position: static; }
-  .top-row > .acct-wrap, .top-row > .btn, .top-row > .acct-skeleton { order: 2; }
-  .top-nav { order: 3; flex: 1 1 100%; gap: var(--space-4); }
-  .top-nav .top-link { font-size: var(--text-small); min-height: 36px; }
+  .top-row, .top-row:has(.acct-wrap) { flex-wrap: nowrap; column-gap: 0; }
+  .top-row > .acct-wrap, .top-row > .btn, .top-row > .acct-skeleton { margin-inline-start: var(--space-1); }
+  .brand { min-width: 0; white-space: nowrap; }
+  .hsearch { flex: none; position: static; }
+  .top-nav { display: none; }
+  .site-menu { display: block; flex: none; }
   .hsearch-toggle { display: inline-flex; }
   .hsearch-field { display: none; }
   .hsearch-open .hsearch-field { display: block; position: absolute; z-index: 21; inset-inline: var(--page-pad); top: calc(100% - 4px); background: var(--color-bg); padding-bottom: var(--space-2); }
@@ -1193,11 +1220,15 @@ html.kbd h1[tabindex="-1"]:focus-visible, html.kbd h2[tabindex="-1"]:focus-visib
 
 /* About this page and the contributors table. */
 .about-page { display: grid; gap: var(--space-3); padding-top: var(--space-6); border-top: 1px solid var(--color-border); min-width: 0; }
+/* 56 px from the end of Related to the divider above "About this page": the tab's 16 px gap and 40 px more. */
+.related + .about-page { margin-top: 40px; }
+.about-built { margin: 0; color: var(--color-text-secondary); }
 .about-page h2 { margin: 0; font-size: var(--text-title); }
 .about-page h3 { margin: 0 0 var(--space-2); font-size: var(--text-heading); }
 .about-page-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
 @media (min-width: 60rem) { .about-page-cols { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
-.funders { display: grid; gap: var(--space-1); }
+/* No list indent: the names line up with the "Funded by" heading. */
+.funders { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
 .funders li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); min-height: 28px; }
 .table-scroll { overflow-x: auto; max-width: 100%; }
 .contrib-table { width: 100%; border-collapse: collapse; font-size: var(--text-body); }

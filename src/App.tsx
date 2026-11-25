@@ -26,7 +26,7 @@ import {
 } from "./bodies";
 import { HeaderSearch, type SearchEntry } from "./HeaderSearch";
 import { Contributors } from "./Contributors";
-import { CONTRIBUTORS_TITLE } from "./contributorStats";
+import { SiteMenu } from "./SiteMenu";
 import { OverviewTab, PayerLink, RecordTab, SourcesTab, type Filter, type Ui } from "./Record";
 import { ActivityList } from "./ActivityList";
 import { Connect, loadWallet, useWalletAccount } from "./walletLazy";
@@ -43,7 +43,7 @@ import { jobLink, lineAnchor, payerName } from "./format";
 import { lineForAddress } from "./addresses";
 import { localDateTime } from "./dates";
 import { ContributeQuestions } from "./Record";
-import { CONTRIBUTORS_HREF, DOCS_HREF, TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, to } from "./route";
+import { TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, to } from "./route";
 import { Docs } from "./Docs";
 import { Profile } from "./Profile";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
@@ -1131,11 +1131,8 @@ export default function App() {
         <div className="top-row">
           <a className="brand" href="#/">Swarmpedia <span className="brand-beta">beta</span></a>
           <HeaderSearch entries={searchEntries} home={!subject && !route.docs && !route.wallet && !route.contributors} />
-          <nav className="top-nav" aria-label="Site">
-            <a className="top-link" href={DOCS_HREF} aria-current={route.docs ? "page" : undefined}>How it works</a>
-            <a className="top-link" href={CONTRIBUTORS_HREF} aria-current={route.contributors ? "page" : undefined}>{CONTRIBUTORS_TITLE}</a>
-          </nav>
           <Connect />
+          <SiteMenu docs={!!route.docs} contributors={!!route.contributors} />
         </div>
       </header>
       <main id="root-main" tabIndex={-1}>

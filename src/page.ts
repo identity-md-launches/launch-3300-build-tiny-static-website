@@ -541,6 +541,58 @@ export const STATUS_HELP: Record<ChannelStatus, string> = {
   linked: "Linked from own site: an account on another site that the project's own domain links to as its official account.",
   unverified: "Not verified: none of these.",
 };
+/** The four groups on Sources, in this order. */
+export const STATUS_ORDER: ChannelStatus[] = ["own", "verified", "linked", "unverified"];
+/** The address two channel entries are compared by: host without "www." and path, case and trailing slash aside. */
+export function channelKey(url: string): string {
+  const n = norm(url.trim());
+  return n ? `${n.host}${n.path}` : url.trim().toLowerCase().replace(/\/+$/, "");
+}
+export interface ShownChannel extends Channel {
+  status: ChannelStatus;
+}
+/**
+ * The channels Sources lists: entries that point to the same address (channelKey) are shown once, under the shorter
+ * name, with the strongest label any of them earned. Order of first appearance is kept. Pure.
+ */
+export function dedupeChannels(channels: Channel[], domain: string): ShownChannel[] {
+  const out: ShownChannel[] = [];
+  const by = new Map<string, ShownChannel>();
+  for (const c of channels) {
+    const status = channelStatus(c, domain);
+    const key = channelKey(c.url);
+    const have = by.get(key);
+    if (!have) {
+      const x = { ...c, status };
+      by.set(key, x);
+      out.push(x);
+      continue;
+    }
+    const name = (x: Channel) => (x.label || x.url).trim();
+    if (name(c).length < name(have).length) {
+      have.label = c.label;
+      have.url = c.url;
+    }
+    if (STATUS_ORDER.indexOf(status) < STATUS_ORDER.indexOf(have.status)) {
+      have.status = status;
+      have.tie = c.tie;
+    }
+  }
+  return out;
+}
+/** Sources' four groups with their channels, every group present even when empty. Pure. */
+export function channelGroups(channels: Channel[], domain: string): { status: ChannelStatus; channels: ShownChannel[] }[] {
+  const shown = dedupeChannels(channels, domain);
+  return STATUS_ORDER.map((status) => ({ status, channels: shown.filter((c) => c.status === status) }));
+}
+/** What each group holds, one line each, without the group's own name (the heading carries it). */
+export const STATUS_LINES: Record<ChannelStatus, string> = {
+  own: "on the subject's domain or a subdomain of it.",
+  verified: "a contract, ENS record or deployer wallet points to it.",
+  linked: "an account on another site that the project's own domain links to as its official account.",
+  unverified: "none of these.",
+};
+
 /** The legend under the channels on Sources. */
 export const STATUS_LEGEND = "Lines published on Own domain, Verified on chain or Linked from own site channels show as statements; everything else is a claim.";
 export const statusWord = (c: Pick<Channel, "url" | "tie">, domain: string) => STATUS_WORDS[channelStatus(c, domain)];

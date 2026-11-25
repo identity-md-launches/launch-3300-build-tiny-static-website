@@ -102,7 +102,7 @@ describe("C. counts read at a glance", () => {
     expect(filtersFor(c)).toEqual(["all", "proven", "stated", "claimed", "contradicted"]);
     const plain = countLines([L("P9", "proof"), L("S9", "statement")]);
     expect(plain).toMatchObject({ proven: 1, checks: 1, confirmed: 0 });
-    expect(countsWords(plain)).toBe("1 proven, 1 stated, 0 claimed");
+    expect(countsWords(plain)).toBe("1 proven, 1 stated");
   });
   it("the Proven filter shows both kinds", () => {
     const s = settleAll(LINES);

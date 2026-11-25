@@ -9,7 +9,7 @@ import { countedBy, isCurrent, readerNoteText, upkeepText, statusText, subjectSu
 import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesNameOrDomain, parseLookup, type Lookup } from "./lookup";
-import { noMatchText, SEARCH_PLACEHOLDER } from "./HeaderSearch";
+import { NARROW_QUERY, noMatchText, SEARCH_PLACEHOLDER, SEARCH_PLACEHOLDER_SHORT, useMedia } from "./HeaderSearch";
 import { SubjectLogo } from "./Logo";
 import { KindIcon, ToneMark } from "./KindIcon";
 import imdLogo from "./assets/imd-logo.png";
@@ -456,6 +456,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   prefill?: string;
 }) {
   const [q, setQ] = useState(prefill ?? "");
+  const narrow = useMedia(NARROW_QUERY);
   const [submitted, setSubmitted] = useState<{ raw: string; q: Lookup } | null>(null);
   /** A contract lookup the known records cannot settle: shown instead of the offer until the visitor says it is none of them. */
   const [unsure, setUnsure] = useState<{ raw: string; q: Lookup } | null>(null);
@@ -628,7 +629,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             look(q);
           }}
         >
-          <label htmlFor="lookup" className="lookup-label">{SEARCH_PLACEHOLDER}</label>
+          <label htmlFor="lookup" className="sr-only">{SEARCH_PLACEHOLDER}</label>
           <input
             id="lookup"
             ref={input}
@@ -638,7 +639,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
-            placeholder={SEARCH_PLACEHOLDER}
+            placeholder={narrow ? SEARCH_PLACEHOLDER_SHORT : SEARCH_PLACEHOLDER}
             value={q}
             onChange={(e) => {
               setQ(e.target.value);

@@ -27,6 +27,10 @@ import {
   SECTION_TITLES,
   SECTIONS,
   STATUS_HELP,
+  STATUS_LINES,
+  STATUS_ORDER,
+  channelGroups,
+  channelKey,
   STATUS_LEGEND,
   STATUS_WORDS,
   statusWord,
@@ -1030,24 +1034,22 @@ function Related({ m, subjects }: { m: RecordModel; subjects: Findable[] }) {
       <ul className="plain related-list">
         {shown.map((c) => (
           <li key={c.key} className="rel-row">
-            {c.found ? (
-              <a className="rel-name" href={subjectHref(c.found)}>{c.name}</a>
-            ) : (
-              <span className="rel-name">{c.name}</span>
-            )}
-            <span className="rel-what">
-              {c.relations.map((r, i) => (
-                <span key={i} className="rel-one">
-                  {c.relations.length > 1 && r.name !== c.name ? `${r.name}: ` : ""}
-                  {r.relation}
-                </span>
-              ))}
+            <span className="rel-text">
+              {c.found ? (
+                <a className="rel-name" href={subjectHref(c.found)}>{c.name}</a>
+              ) : (
+                <span className="rel-name" id={`rel-${c.key}`}>{c.name}</span>
+              )}
+              <span className="rel-what">
+                {c.relations.map((r, i) => (
+                  <span key={i} className="rel-one">
+                    {c.relations.length > 1 && r.name !== c.name ? `${r.name}: ` : ""}
+                    {r.relation}
+                  </span>
+                ))}
+              </span>
             </span>
-            {!c.found && c.addable && (
-              <a className="rel-add small" href={addHref(c.addable)} aria-label={`Add this project: ${c.name}`}>
-                Add this project
-              </a>
-            )}
+            {!c.found && c.addable && <RelatedAdd href={addHref(c.addable)} nameId={`rel-${c.key}`} />}
           </li>
         ))}
       </ul>
@@ -1057,6 +1059,25 @@ function Related({ m, subjects }: { m: RecordModel; subjects: Findable[] }) {
         </button>
       )}
     </section>
+  );
+}
+
+/** The label of Related's "+" button: read by screen readers and shown as its tooltip. */
+export const ADD_PROJECT_LABEL = "Add this project";
+
+/**
+ * Related's add control: a small "+" at the right end of the row with a 44 pixel target. Its label is read by screen
+ * readers and appears as a tooltip on hover and on keyboard focus. It opens Home with the box filled in and the add
+ * offer shown, as the text link did.
+ */
+function RelatedAdd({ href, nameId }: { href: string; nameId: string }) {
+  return (
+    <a className="rel-add" href={href} aria-label={ADD_PROJECT_LABEL} aria-describedby={nameId}>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+        <path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+      <span className="rel-tip" aria-hidden="true">{ADD_PROJECT_LABEL}</span>
+    </a>
   );
 }
 
@@ -1093,25 +1114,48 @@ export function PageRetry({ onRetry, retrying = false }: { onRetry?: () => void;
 
 /** Rows shown in "Page contributors" before "Show all N". */
 export const PAGE_CONTRIBUTORS_SHOWN = 5;
+/** "Last built 24 Nov 2026" from the page job shown: its completion's block time, else its request's. Pure. */
+export function lastBuiltText(latest: Pick<Activity, "doneTime" | "time"> | undefined): string | null {
+  const t = latest?.doneTime ?? latest?.time ?? null;
+  return t ? `Last built ${localDate(t)}` : null;
+}
+/** True when the page shown was built with older instructions than the current ones. Pure. */
+export const builtWithOlder = (o: RecordModel["outdated"]): boolean => !!o && (o.kind === "format" || !!o.format);
+export const OLDER_BUILD = "Built with older instructions";
+
 /**
- * "About this page", at the bottom of Overview after Related (never inside Key facts): the people who added to this
- * page and the wallets that paid for its jobs, each linked to its profile. Computed from the page's counted jobs.
+ * "About this page", at the bottom of Overview after Related (never inside Key facts): when the page was last built
+ * (and, when older instructions built it, a Rebuild link to Page upkeep), the people who added to this page and the
+ * wallets that paid for its jobs, each linked to its profile. Computed from the page's counted jobs.
  */
-export function AboutThisPage({ items, subject }: { items: Activity[]; subject: string }) {
+export function AboutThisPage({ items, subject, latest, outdated = null }: { items: Activity[]; subject: string; latest?: Pick<Activity, "doneTime" | "time">; outdated?: RecordModel["outdated"] }) {
   const people = useMemo(() => contributorsOf(items.filter((a) => a.req.subject === subject)), [items, subject]);
   const funders = useMemo(() => fundersOf(items, subject), [items, subject]);
   const [all, setAll] = useState(false);
-  if (!people.length && !funders.length) return null;
+  const built = lastBuiltText(latest);
+  const older = builtWithOlder(outdated);
+  if (!people.length && !funders.length && !built) return null;
   const shown = all ? people : people.slice(0, PAGE_CONTRIBUTORS_SHOWN);
   return (
     <section className="about-page" aria-labelledby="about-page-title">
       <h2 id="about-page-title">About this page</h2>
+      {(built || older) && (
+        <p className="about-built small">
+          {built}
+          {built && older && " · "}
+          {older && (
+            <>
+              {OLDER_BUILD} <a href={to("rebuild")}>Rebuild</a>
+            </>
+          )}
+        </p>
+      )}
       <div className="about-page-cols">
         <div>
-          <h3>Page contributors</h3>
+          <h3 id="page-contributors-title">Page contributors</h3>
           {people.length ? (
             <>
-              <ContributorTable rows={shown} caption="Page contributors" />
+              <ContributorTable rows={shown} labelledBy="page-contributors-title" pages={false} />
               {people.length > PAGE_CONTRIBUTORS_SHOWN && !all && (
                 <button type="button" className="linklike small" onClick={() => setAll(true)}>Show all {people.length.toLocaleString("en-US")}</button>
               )}
@@ -1120,35 +1164,40 @@ export function AboutThisPage({ items, subject }: { items: Activity[]; subject: 
             <p className="small">No changes have been added to this page yet.</p>
           )}
         </div>
-        <div>
-          <h3>Funded by</h3>
-          <ul className="plain funders">
-            {funders.map((f) => (
-              <li key={f.address}>
-                <a href={walletHref(f.address)} className={f.name.startsWith("0x") ? "mono" : undefined}>{f.name}</a>{" "}
-                <span className="small num">{f.jobs === 1 ? "1 job" : `${f.jobs.toLocaleString("en-US")} jobs`}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {funders.length > 0 && (
+          <div>
+            <h3>Funded by</h3>
+            <ul className="funders">
+              {funders.map((f) => (
+                <li key={f.address}>
+                  <a href={walletHref(f.address)} className={f.name.startsWith("0x") ? "mono" : undefined}>{f.name}</a>{" "}
+                  <span className="small num">{f.jobs === 1 ? "1 job" : `${f.jobs.toLocaleString("en-US")} jobs`}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </section>
   );
 }
 
 /** The contributors table, the same on #/contributors and under "About this page". */
-export function ContributorTable({ rows, caption, ranked = false }: { rows: ContributorStat[]; caption: string; ranked?: boolean }) {
+/**
+ * The table is named by the heading above it (labelledBy), never by a caption of its own, so its title shows once.
+ * "Pages touched" is left out on a project page (pages={false}), where it would always say 1.
+ */
+export function ContributorTable({ rows, labelledBy, ranked = false, pages = true }: { rows: ContributorStat[]; labelledBy: string; ranked?: boolean; pages?: boolean }) {
   return (
     <div className="table-scroll">
-      <table className="contrib-table">
-        <caption className="sr-only">{caption}</caption>
+      <table className="contrib-table" aria-labelledby={labelledBy}>
         <thead>
           <tr>
             {ranked && <th scope="col" className="num">#</th>}
             <th scope="col">Name</th>
             <th scope="col">Notes added</th>
             <th scope="col">Questions answered</th>
-            <th scope="col">Pages touched</th>
+            {pages && <th scope="col">Pages touched</th>}
           </tr>
         </thead>
         <tbody>
@@ -1158,7 +1207,7 @@ export function ContributorTable({ rows, caption, ranked = false }: { rows: Cont
               <td><a href={walletHref(r.address)} className={r.name.startsWith("0x") ? "mono" : undefined}>{r.name}</a></td>
               <td className="num">{addedOf(r)}</td>
               <td className="num">{r.answered.toLocaleString("en-US")}</td>
-              <td className="num">{r.pages.toLocaleString("en-US")}</td>
+              {pages && <td className="num">{r.pages.toLocaleString("en-US")}</td>}
             </tr>
           ))}
         </tbody>
@@ -1281,7 +1330,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
         </div>
       )}
       {page && <Related m={m} subjects={subjects} />}
-      {page && items && <AboutThisPage items={items} subject={m.subject.id} />}
+      {page && items && <AboutThisPage items={items} subject={m.subject.id} latest={latest} outdated={m.outdated} />}
 
       {page ? (
         <div className="ov-foot" id="suggest">
@@ -2369,10 +2418,52 @@ function OtherChannels({ m }: { m: RecordModel }) {
 
 /* ---------- Sources ---------- */
 
-/** A channel's label: Own domain, Verified on chain or Not verified. */
+/** A channel's label: Own domain, Verified on chain, Linked from own site or Not verified. */
 function ChannelLabel({ c, domain }: { c: Channel; domain: string }) {
   const s = channelStatus(c, domain);
   return <span className={`tie tie-${s}`}>{STATUS_WORDS[s]}</span>;
+}
+
+/**
+ * Sources' channels under four headings, each with its count: Own domain, Verified on chain, Linked from own site and
+ * Not verified (closed by default). What each means sits above them, one line each. Two entries that point to the
+ * same address show once, under the shorter name.
+ */
+export function ChannelGroups({ channels, domain }: { channels: Channel[]; domain: string }) {
+  const groups = channelGroups(channels, domain);
+  return (
+    <div className="channels-block">
+      <h2>Channels</h2>
+      <ul className="tie-key small">
+        {STATUS_ORDER.map((st) => (
+          <li key={st}>
+            <span className={`tie tie-${st}`}>{STATUS_WORDS[st]}</span>: {STATUS_LINES[st]}
+          </li>
+        ))}
+      </ul>
+      <p className="small tie-legend">{STATUS_LEGEND}</p>
+      {groups.map((g) => (
+        <details key={g.status} className="channel-group" open={g.status !== "unverified" || undefined}>
+          <summary>
+            <h3 className="channel-group-title">
+              {STATUS_WORDS[g.status]} <span className="channel-count small">{g.channels.length.toLocaleString("en-US")}</span>
+            </h3>
+          </summary>
+          {g.channels.length > 0 ? (
+            <ul className="channels">
+              {g.channels.map((c) => (
+                <li key={channelKey(c.url)}>
+                  <ExtLink url={c.url}>{c.label || c.url}</ExtLink>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="small channel-none">None.</p>
+          )}
+        </details>
+      ))}
+    </div>
+  );
 }
 
 export function SourcesTab({ m }: { m: RecordModel }) {
@@ -2381,22 +2472,7 @@ export function SourcesTab({ m }: { m: RecordModel }) {
   return (
     <section className="tab" aria-labelledby="sources-title">
       <h1 id="sources-title" tabIndex={-1} className="tab-title">Sources</h1>
-      {page && page.channels.length > 0 && (
-        <div className="channels-block">
-          <h2>Channels</h2>
-          <ul className="channels">
-            {page.channels.map((c, i) => (
-              <li key={i}>
-                <ExtLink url={c.url}>{c.label || c.url}</ExtLink>
-                <ChannelLabel c={c} domain={domain} />
-              </li>
-            ))}
-          </ul>
-          <p className="small tie-key">
-            {STATUS_HELP.own} {STATUS_HELP.verified} {STATUS_HELP.linked} {STATUS_HELP.unverified} {STATUS_LEGEND}
-          </p>
-        </div>
-      )}
+      {page && page.channels.length > 0 && <ChannelGroups channels={page.channels} domain={domain} />}
       {list.length > 0 ? (
         <div className="card">
           <h2>Every source, numbered</h2>

@@ -14,7 +14,7 @@ import { CHANGE_WORDS, keyFactTarget, lineTarget, newChangeId, noTarget, parseIt
 import { originOfLine, resolveChangeTarget } from "./changeResult";
 import { changesOutcome } from "./outcome";
 import { useSuggest } from "./Suggest";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 function what(a: Activity) {
   // A panel request is named by its question type, never by a record kind (Proof, Statement, Claim).
@@ -157,7 +157,46 @@ export function standing(a: Activity, shown: Pick<Shown, "standing">): string {
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
+/** True for a page rebuild (never a changes, sources or edit job) that Activity marks "Folded into the page shown". */
+export function foldedRebuild(a: Activity, shown: Pick<Shown, "standing">): boolean {
+  return !a.notRead && isPageJob(a.req) && !isChangesJob(a.req) && !isSourceJob(a.req) && !isEditJob(a.req) && shown.standing(a) === "folded";
+}
+
+export type ActivityEntry = { kind: "one"; a: Activity } | { kind: "fold"; key: string; items: Activity[] };
+/**
+ * Activity's rows, newest first: two or more folded page rebuilds in a row become one fold entry ("3 earlier
+ * rebuilds"); the rebuild shown now, every changes job and anything else stays a row of its own. Pure.
+ */
+export function foldRebuilds(items: Activity[], shown: Pick<Shown, "standing">): ActivityEntry[] {
+  const out: ActivityEntry[] = [];
+  let run: Activity[] = [];
+  const flush = () => {
+    if (run.length >= 2) out.push({ kind: "fold", key: `fold-${run[0]!.req.requestId}`, items: run });
+    else for (const a of run) out.push({ kind: "one", a });
+    run = [];
+  };
+  for (const a of items) {
+    if (foldedRebuild(a, shown)) run.push(a);
+    else {
+      flush();
+      out.push({ kind: "one", a });
+    }
+  }
+  flush();
+  return out;
+}
+export const foldText = (n: number) => `${n.toLocaleString("en-US")} earlier rebuilds`;
+
 export function ActivityList({ items, error, loading, reload, shown }: ReturnType<typeof useActivity> & { shown: Shown; subject?: string }) {
+  const [openFolds, setOpenFolds] = useState<Set<string>>(() => new Set());
+  const entries = items ? foldRebuilds(items, shown) : [];
+  const toggle = (key: string) =>
+    setOpenFolds((xs) => {
+      const next = new Set(xs);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   return (
     <section id="activity" className="tab" aria-labelledby="activity-title">
       <div className="section-head">
@@ -169,7 +208,32 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
       {items === null && <div className="card"><p>Reading requests from Ethereum…</p></div>}
       {items && items.length > 0 && (
         <ul className="activity">
-          {items.map((a) => {
+          {entries.map((e) => {
+            if (e.kind === "one") return row(e.a);
+            const open = openFolds.has(e.key);
+            return (
+              <Fragment key={e.key}>
+                <li className="act-fold">
+                  <button type="button" className="act-fold-toggle" aria-expanded={open} aria-controls={`${e.key}-rows`} onClick={() => toggle(e.key)}>
+                    <span className="chev" aria-hidden="true" />
+                    {foldText(e.items.length)}
+                    <span className="small act-fold-note">{STANDING_WORDS.folded}</span>
+                  </button>
+                </li>
+                {open && (
+                  <li className="act-fold-rows" id={`${e.key}-rows`}>
+                    <ul className="activity" aria-label={foldText(e.items.length)}>{e.items.map(row)}</ul>
+                  </li>
+                )}
+              </Fragment>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+
+  function row(a: Activity) {
             const st = a.notRead ? "" : standing(a, shown);
             const onTop = shown.after.some((x) => x.req.requestId === a.req.requestId);
             return (
@@ -269,9 +333,5 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
                 </p>
               </li>
             );
-          })}
-        </ul>
-      )}
-    </section>
-  );
+  }
 }

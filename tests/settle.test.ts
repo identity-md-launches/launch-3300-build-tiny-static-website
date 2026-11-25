@@ -56,7 +56,7 @@ describe("settled lines", () => {
     // keeps its own row (in the facts table or its section) and counts there once.
     expect(c).toEqual({ all: 7, proven: 4, stated: 0, claimed: 2, contradicted: 1, outdated: 0, checks: 2, confirmed: 2 });
     expect(countKinds(mergeRecord(p, []))).toEqual(c);
-    expect(countsWords(c)).toBe("4 proven, 0 stated, 2 claimed, 1 contradicted");
+    expect(countsWords(c)).toBe("4 proven, 2 claimed, 1 contradicted");
     // A partly-confirmed line keeps its own kind and is still only said.
     expect(rowClass(byId("C3"), s.by.get("C3"))).toBe("claim");
   });

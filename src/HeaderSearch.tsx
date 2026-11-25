@@ -12,6 +12,25 @@ import { addHref, subjectHref } from "./route";
 import type { SubjectSummary } from "./model";
 
 export const SEARCH_PLACEHOLDER = "Search projects, or enter a website or contract address";
+/** Home's placeholder below 480 pixels, where the full one does not fit the box. */
+export const SEARCH_PLACEHOLDER_SHORT = "Search, or enter a website";
+/** Below 480 pixels, the width at which Home's search box takes the short placeholder. */
+export const NARROW_QUERY = "(max-width: 29.99rem)";
+
+/** True while the media query matches; follows resizes and rotation. */
+export function useMedia(query: string): boolean {
+  const get = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches;
+  const [on, setOn] = useState(get);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(query);
+    const change = () => setOn(mq.matches);
+    change();
+    mq.addEventListener("change", change);
+    return () => mq.removeEventListener("change", change);
+  }, [query]);
+  return on;
+}
 /** Matches shown in the dropdown. */
 export const HEADER_MATCHES = 6;
 

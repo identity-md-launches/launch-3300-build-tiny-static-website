@@ -1,5 +1,22 @@
 # Validation
 
+## This build: revision 32, layout (2026-11-25)
+
+See README "Revision 32: layout" for the command results table. Summary: typecheck and production build passed; 610 of 610 unit tests passed; the design-critic probe passed all 16 checks at 320, 390 and 1440 (screenshots were taken in `test/scratch/taste/shots/`, not committed); a Playwright run on the export confirmed the one-row header, the menu, the hidden label and the short placeholder at 320 and 390. Subject pages were not observed in a browser this round (the live log scan did not finish within the sandbox's time limit); that is a stated limitation, not a pass.
+
+### Better Interface review of revision 32
+
+Coverage: the six domains were checked without a browser against the source; the rendered checks named below were made with Playwright where stated, the rest are unperformed.
+
+- Accessibility. Menu button has `aria-label="Menu"`, `aria-expanded`, `aria-controls`, Escape returns focus to it (`src/SiteMenu.tsx:50`). Related "+" has `aria-label="Add this project"` and `aria-describedby` naming the project (`src/Record.tsx:1073`); the visible tooltip is `aria-hidden` so the name is not read twice. The contributors tables are named by their headings via `aria-labelledby` instead of a second caption (`src/Record.tsx:1131`), which also fixes the doubled "Page contributors". Channel groups and the Activity fold are native `<details>` / a button with `aria-expanded` (`src/Record.tsx:2432`, `src/ActivityList.tsx:170`). All new targets are 44 px. Home's label remains for screen readers (`src/Home.tsx:632`).
+- Layout. Header cannot wrap below 768 px (`src/styles.css:1207`); measured at 320: name 16 to 149, Connect 153 to 260, menu 260 to 304, no horizontal scroll. Related-to-About spacing on the 4 px grid (56 = 16 + 40, `src/styles.css:1224`).
+- Writing. Labels are the requester's words ("Contributors", "Add this project", "3 earlier rebuilds", "Last built 24 Nov 2026", "Built with older instructions", "Rebuild"). Zero counts are left out (`src/settle.ts:175`).
+- Typography. No new sizes: group titles and the fold use body size, counts and notes small size (probe: at most 6 sizes, one family, two weights).
+- Colours. Only existing tokens; tooltip is ink on white (contrast above 4.5:1 by the tokens; the probe measured all visible text as passing, the tooltip was not visible during the probe).
+- UI. Duplicate channels collapsed by address (`src/page.ts:558`); the not-verified group starts closed.
+
+Findings fixed: doubled "Page contributors" (caption showing next to the heading); indented "Funded by" list (`.plain` padding); two rules between Related and About; header taking two rows on phones; stale header rules for `.top-row > .top-link` removed. Remaining: the tooltip, the open menu panel on a subject page and the subject tabs were not rendered in a browser this round.
+
 ## This build: suggest-a-change polish (job 10, 2026-11-20)
 
 Run on this machine after the last source change.

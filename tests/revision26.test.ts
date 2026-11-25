@@ -74,9 +74,9 @@ describe("phones and the share image (f238f973, 9bc121a7)", () => {
   it("keeps the header inside 375 px and the totals to their counts", () => {
     const block = css.slice(css.indexOf("@media (min-width: 23.4375rem) and (max-width: 30rem)"));
     expect(block).toContain("--text-display: 1.75rem");
-    expect(block).toContain("column-gap: var(--space-1)");
-    expect(block).toMatch(/\.top-link \{[^}]*font-size: var\(--text-small\)/);
-    expect(block).toContain("padding-inline: var(--space-2)");
+    // Revision 32: below 768 px the header is one row (name, search icon, Connect, menu); the site links sit in the menu.
+    expect(css).toMatch(/@media \(max-width: 47\.99rem\) \{[^@]*\.top-row, \.top-row:has\(\.acct-wrap\) \{ flex-wrap: nowrap;[^@]*\.top-nav \{ display: none; \}/);
+    expect(block).toContain("padding-inline: var(--space-3)");
     expect(css).toMatch(/\.totals-more \{ display: none; \}/);
   });
   it("og.html carries the headline and the three line icons", () => {

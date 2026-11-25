@@ -304,3 +304,15 @@ No tracked capitals, no eyebrows above headings.
 - **Dates**: every moment (block time, job time, "Added" on Home) in the visitor's time zone, date and time from one
   clock (`src/dates.ts`); a Launched fact is a calendar date and is shown as written.
 
+
+## Revision 32: layout (from the final source)
+
+Tokens, type scale and colours are unchanged; every new rule uses the existing variables (`--space-*`, `--text-small`/`--text-body`, `--color-*`, `--radius-card`).
+
+- **Header** (`src/SiteMenu.tsx`, `src/styles.css:1207`). From 768 px: name, search field, "How it works", "Contributors", Connect in one row. Below 768 px (`max-width: 47.99rem`): one row, no wrapping: name, search icon (44 px), Connect, menu button (44 px, `.site-menu-toggle`). The menu panel (`.site-menu-panel`) is a 12rem card under the button, right-aligned, links 44 px tall at body size; the current page's link is semibold.
+- **Home search** (`src/Home.tsx:632`). Label `sr-only`. Placeholder: full text from 480 px, "Search, or enter a website" below (`useMedia("(max-width: 29.99rem)")`).
+- **Related row** (`src/styles.css:305`). Flex row: text (name semibold, relation secondary) then `.rel-add`, a 44 x 44 round target with a 16 px "+" in the accent colour, pulled 12 px into the gutter so the glyph aligns with the row's end. Tooltip `.rel-tip` (`:308`): ink background, white small text, 6 px radius, above the button, shown on `:hover` and `:focus-visible`, 120 ms fade (none with reduced motion). The last row has no bottom rule.
+- **About this page** (`src/styles.css:1224`). 40 px margin plus the tab's 16 px gap: 56 px from Related to its single top divider, then 24 px to the heading. Under the heading a small secondary line: "Last built …" and, when needed, "Built with older instructions Rebuild". Two columns from 60rem (2fr / 1fr): "Page contributors" table (Name, Notes added, Questions answered) and "Funded by" (an unindented list, `:1231`).
+- **Sources channels** (`src/styles.css:492`). The four explanations as a four-line small list, the statement/claim legend under it, then four `<details>` groups, each with a top rule, a 44 px summary (rotating chevron, semibold body-size title, count in secondary tabular numerals). Not verified starts closed. Empty groups say "None.".
+- **Activity fold** (`src/styles.css:537`). A full-width 44 px button with a dashed border and card radius: chevron, "N earlier rebuilds", and "Folded into the page shown" in small secondary text. Opened, the rebuilds follow in a list indented 16 px behind a 2 px rule.
+- **Record section headers**: counts list only the kinds above zero.

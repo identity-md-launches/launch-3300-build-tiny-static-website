@@ -100,7 +100,7 @@ describe("C12, C13: contributor figures come from what was sent and what was app
     const [row] = contributorsOf([pg, ch]);
     expect(row).toMatchObject({ sent: 2, added: 1, answered: 0, pages: 1 });
     expect(addedOf(row!)).toBe("1 added of 2");
-    const h = renderToStaticMarkup(createElement(ContributorTable, { rows: [row!], caption: "x" }));
+    const h = renderToStaticMarkup(createElement(ContributorTable, { rows: [row!], labelledBy: "x" }));
     expect(h).toContain("1 added of 2");
   });
   it("a close that answers an open question counts once", () => {
@@ -146,8 +146,9 @@ describe("B8, B9: one search", () => {
     expect(src("src/HeaderSearch.tsx")).toContain('<span className="hsearch-text mono">{create}</span>');
     expect(src("src/styles.css")).toContain(".hsearch-create .hsearch-text { word-break: break-all;");
   });
-  it("the prompt is visible in full above the big box", () => {
-    expect(src("src/Home.tsx")).toContain('<label htmlFor="lookup" className="lookup-label">{SEARCH_PLACEHOLDER}</label>');
+  it("the prompt is the box's label for screen readers only (revision 32 A3)", () => {
+    expect(src("src/Home.tsx")).toContain('<label htmlFor="lookup" className="sr-only">{SEARCH_PLACEHOLDER}</label>');
+    expect(src("src/Home.tsx")).not.toContain("lookup-label");
   });
   it("contracts wrap per cell, not by a viewport breakpoint", () => {
     const css = src("src/styles.css");

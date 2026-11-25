@@ -79,7 +79,9 @@ describe("A. Overview order", () => {
   it("Related (revision 18): a compact list, name and relation on one line, a link when the project has a page, a small Add link otherwise; no dots", () => {
     const rel = html.slice(html.indexOf('class="related"'), html.indexOf('class="ov-foot"'));
     expect(rel).toContain('<a class="rel-name" href="#/s/base.org">Base</a><span class="rel-what"><span class="rel-one">runs on</span></span>');
-    expect(rel).toMatch(/<span class="rel-name">Other<\/span><span class="rel-what">.*?<\/span><a class="rel-add small" href="#\/add\//);
+    // Revision 32: the add control is a "+" at the row's end, labelled "Add this project" for screen readers and its tooltip.
+    expect(rel).toMatch(/<span class="rel-name" id="rel-[^"]+">Other<\/span><span class="rel-what">.*?<\/span><\/span><a class="rel-add" href="#\/add\/[^"]*" aria-label="Add this project" aria-describedby="rel-[^"]+"><svg[^>]*>.*?<\/svg><span class="rel-tip" aria-hidden="true">Add this project<\/span><\/a>/);
+    expect(rel).not.toMatch(/>Add this project<\/a>/);
     expect(rel).not.toMatch(/sdot|badge/);
   });
   it("is stacked at every width: no side column, the summary at a reading width, Key facts full width (revision 15)", () => {

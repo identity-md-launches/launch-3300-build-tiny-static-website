@@ -40,6 +40,31 @@ the export works under an IPFS gateway subpath or an ENS name. Routing is by has
 - Old links open imd.fun: `#record`, `#actions`, `#add-sources`, `#activity`, `#line-…` and `#source-N` go to the
   same place under `#/s/imd.fun/…`.
 
+## Revision 32: layout (2026-11-25)
+
+Layout only; no instruction file changed (`public/instructions/` and `src/instructions*.json` are untouched).
+
+- **Header.** The link reads "Contributors"; the page it opens keeps "Top contributors" and its line. Below 768 px the header is one row: site name, search icon (off Home's first screen), Connect, and a 44 px menu button (`src/SiteMenu.tsx`) that opens "How it works" and "Contributors" in a small panel (Escape, an outside click or navigation close it).
+- **Home.** The search box's label is screen-reader only; below 480 px its placeholder is "Search, or enter a website".
+- **Overview.** 56 px from Related to the single divider above "About this page" (the last Related row has no rule). "Page contributors" shows once (the table is named by the heading, no caption); a project page has no "Pages touched" column; "Funded by" names line up with the heading. A line under the heading says "Last built 24 Nov 2026" (completion time of the page job shown) and, when older instructions built it, "Built with older instructions" with a "Rebuild" link to Page upkeep.
+- **Related.** The text link became a "+" at the right end of the row, 44 px target, `aria-label="Add this project"` and a tooltip on hover and keyboard focus; it opens the same `#/add/<domain>` offer. Rows with a page keep their name as the link; rows that cannot be added show nothing.
+- **Sources.** Channels sit under four headings with counts (Own domain, Verified on chain, Linked from own site, Not verified, the last closed by default), the four explained above in one line each. Two entries that point to the same address (host without www, path, case and trailing slash aside) show once under the shorter name, with the stronger label.
+- **Activity.** Two or more page rebuilds in a row marked "Folded into the page shown" collapse into one line, "3 earlier rebuilds", which opens to show them. The rebuild shown now and every changes job stay rows of their own.
+- **Record.** Section headers leave out a kind with a zero count ("18 stated, 3 claimed").
+
+### Checks run for revision 32 (results as observed)
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck` (`tsc --noEmit`) | passed, no errors |
+| `npm run build` (`tsc --noEmit && vite build`) | passed; `dist/index.html` with relative `./assets/` URLs |
+| `npm test` (vitest) | 43 files, 610 tests passed (599 before; new `tests/revision32.test.ts`, 6 older tests updated for the new wording) |
+| Playwright on `dist/` (scratch script, Chromium headless, Ethereum reads routed to an RPC) | Home at 320 and 390: header one row (name, Connect, menu all at the same top, header 61 px tall), menu opens with both links and closes on Escape, no horizontal scroll, label not visible, short placeholder shown |
+| same, subject pages | **not completed**: the full Intake log scan did not finish inside the run's time limit in this sandbox, so subject pages, Sources, Activity and Record were not observed in a browser this round |
+| design-critic `taste.mjs` probe on the export | all 16 checks passed (render, layout, targets, contrast, casing, tracking, eyebrows, type-sizes, type-faces, glyphs, slogans, repetition, copy-budget, chrome, motion, share) |
+
+Limitations: the "all seven subjects still show their pages / no new Not read" requirement is covered by the unchanged reading code (no change to `src/model.ts`, `src/useActivity.ts`, `src/reads.ts`, `src/requests/` or the instruction files) and by the existing fixture tests (`tests/subjects.test.ts`, `tests/loading.test.ts`), which pass; it was not re-observed live in a browser this round.
+
 ## Subjects
 
 A subject id is the project's **registrable domain** in lowercase (`imd.fun`, `uniswap.org`), or, for a project

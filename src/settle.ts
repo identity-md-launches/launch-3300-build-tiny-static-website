@@ -165,13 +165,13 @@ export function speakerText(line: Pick<Line, "kind" | "by" | "channel">): string
   return "";
 }
 
-/** "5 proven, 2 stated, 3 claimed", then contradicted and superseded only when there are any. */
+/** "5 proven, 2 stated, 3 claimed": only the kinds with lines, contradicted and superseded last. */
 export function countsWords(c: Counts): string {
   return countsParts(c)
     .map((p) => p.text)
     .join(", ");
 }
-/** countsWords one group at a time ("5 proven"), so each count can carry its kind's icon. */
+/** countsWords one group at a time ("5 proven"), so each count can carry its kind's icon. A kind with no lines is left out ("18 stated, 3 claimed"). */
 export function countsParts(c: Counts) {
-  return shownGroups(c).map((g) => ({ group: g, text: `${c[g].toLocaleString("en-US")} ${g === "outdated" ? "superseded" : g}` }));
+  return shownGroups(c).filter((g) => c[g] > 0).map((g) => ({ group: g, text: `${c[g].toLocaleString("en-US")} ${g === "outdated" ? "superseded" : g}` }));
 }

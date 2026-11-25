@@ -226,6 +226,6 @@ describe("line details and Related chips (8ea292e5, 116d7508)", () => {
     const rec = readFileSync("src/Record.tsx", "utf8");
     expect(rec).not.toContain('<span className="rel-chip">');
     // Revision 21: only an entry with a domain of its own offers it.
-    expect(rec).toMatch(/\{!c\.found && c\.addable && \(/);
+    expect(rec).toMatch(/\{!c\.found && c\.addable && <RelatedAdd /);
   });
 });

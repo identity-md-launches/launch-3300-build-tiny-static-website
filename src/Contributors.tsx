@@ -38,7 +38,7 @@ export function Contributors({ activity }: { activity: ActivityState }) {
       {full === null ? (
         <div className="card"><p role="status">{counted === null ? "Reading requests from Ethereum…" : "Reading the changes results…"}</p></div>
       ) : rows.length ? (
-        <ContributorTable rows={rows} caption={CONTRIBUTORS_TITLE} ranked />
+        <ContributorTable rows={rows} labelledBy="contributors-title" ranked />
       ) : (
         <div className="card empty"><p>No counted changes yet.</p></div>
       )}
