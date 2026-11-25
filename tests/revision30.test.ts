@@ -213,12 +213,12 @@ describe("F: small fixes", () => {
     expect(css).toContain('html.kbd h1[tabindex="-1"]:focus-visible');
     expect(src("src/main.tsx")).toContain('html.classList.add("kbd")');
   });
-  it("Find a project and Sort by have screen-reader labels and share a row with the filters", () => {
+  it("Sort by has a visible label and shares one row with the filters (revision 31: Find a project removed)", () => {
     const home = src("src/Home.tsx");
-    expect(home).toContain('<label htmlFor="find-project" className="sr-only">Find a project</label>');
-    expect(home).toContain('<label htmlFor="sort-projects" className="sr-only">Sort by</label>');
+    expect(home).not.toContain("find-project");
+    expect(home).toContain('<label htmlFor="sort-projects">Sort by</label>');
     expect(home).toContain('<div className="list-bar">');
-    expect(src("src/styles.css")).toMatch(/@media \(min-width: 60rem\) \{\s*\.list-bar \{ display: flex;/);
+    expect(src("src/styles.css")).toMatch(/\.list-bar \{ display: flex; flex-wrap: wrap;/);
   });
   it("Launch date follows a correction of the Launched fact", () => {
     const p = { infobox: [{ label: "Launched", value: "2021-05-04" }] };

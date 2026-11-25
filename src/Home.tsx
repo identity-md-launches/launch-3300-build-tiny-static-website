@@ -9,7 +9,7 @@ import { countedBy, isCurrent, readerNoteText, upkeepText, statusText, subjectSu
 import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesNameOrDomain, parseLookup, type Lookup } from "./lookup";
-import { SEARCH_PLACEHOLDER } from "./HeaderSearch";
+import { noMatchText, SEARCH_PLACEHOLDER } from "./HeaderSearch";
 import { SubjectLogo } from "./Logo";
 import { KindIcon, ToneMark } from "./KindIcon";
 import imdLogo from "./assets/imd-logo.png";
@@ -167,7 +167,8 @@ function ListFilter({ all, needs, saved, view, set, checking }: { all: number; n
         All <span className="num">{all.toLocaleString("en-US")}</span>
       </button>
       <button type="button" className="btn btn-filter" aria-pressed={view === "stale"} onClick={() => set("stale")}>
-        Needs a rebuild {checking ? <span className="sr-only">(still checking)</span> : <span className="num">{needs.toLocaleString("en-US")}</span>}
+        <span className="wide-only">Needs a rebuild</span>
+        <span className="narrow-only">Rebuild</span> {checking ? <span className="sr-only">(still checking)</span> : <span className="num">{needs.toLocaleString("en-US")}</span>}
       </button>
       <button type="button" className="btn btn-filter" aria-pressed={view === "saved"} onClick={() => set("saved")}>
         Saved <span className="num">{saved.toLocaleString("en-US")}</span>
@@ -627,7 +628,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             look(q);
           }}
         >
-          <label htmlFor="lookup" className="sr-only">{SEARCH_PLACEHOLDER}</label>
+          <label htmlFor="lookup" className="lookup-label">{SEARCH_PLACEHOLDER}</label>
           <input
             id="lookup"
             ref={input}
@@ -707,12 +708,12 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
               </>
             ) : (
               <p className="small list-note" aria-live="polite">
-                {view === "saved" && !q.trim() ? "Saved projects stay on this device." : pendingReads && onlyStale ? "Checking which pages need a rebuild…" : q.trim() ? `No project${onlyStale ? " that needs a rebuild" : ""} matches “${q.trim()}”.${onlyStale ? "" : " Press Look it up to add it."}` : onlyStale ? "No page needs a rebuild." : "No projects."}
+                {view === "saved" && !q.trim() ? "Saved projects stay on this device." : pendingReads && onlyStale ? "Checking which pages need a rebuild…" : q.trim() ? noMatchText(q, onlyStale) : onlyStale ? "No page needs a rebuild." : "No projects."}
               </p>
             )}
           </>
         ) : (
-          <p className="small" aria-live="polite">{q.trim() ? `No project matches “${q.trim()}”. Press Look it up to add it.` : "No projects yet. Add the first one with the box above."}</p>
+          <p className="small" aria-live="polite">{q.trim() ? noMatchText(q) : "No projects yet. Add the first one with the box above."}</p>
         )}
       </div>
 

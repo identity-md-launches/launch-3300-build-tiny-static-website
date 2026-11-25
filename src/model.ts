@@ -982,7 +982,7 @@ export interface RecordModel {
   /** A line's earlier origin ("F2:L14") in words: the job that wrote it, its payer and date. No ids. */
   fromOrigin: (ref: string) => string;
   /** The wallet whose changes request first wrote a line carried over from these origins ("F2:L14"), if any. */
-  changesPayerOf: (from: string[]) => { name: string; address: string } | null;
+  changesPayerOf: (from: string[], written?: { jobId: string | null } | null) => { name: string; address: string } | null;
   /** When the job that wrote an earlier line ("F2:L14") completed (unix seconds), or null when unknown. */
   fromTime: (ref: string) => number | null;
   /** The newest page job for this subject that has not completed yet: while it runs, Rebuild is not offered. */
@@ -1128,12 +1128,14 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     return `carried over from ${what} paid by ${payerName(a)}${a.doneTime ? `, ${readDate(String(a.doneTime))}` : ""}`;
   };
 
-  const changesPayerOf = (from: string[]): { name: string; address: string } | null => {
+  const changesPayerOf = (from: string[], written?: { jobId: string | null } | null): { name: string; address: string } | null => {
+    // The line's permanent origin (originsOf) names the job that first wrote it; when it resolves, it decides.
+    const first = written?.jobId ? (items ?? []).find((x) => x.jobId?.toLowerCase() === written.jobId!.toLowerCase()) : undefined;
+    if (first) return isChangesJob(first.req) ? { name: payerName(first), address: first.req.payer } : null;
+    // Else its from references, followed through each earlier page's own prior files (C15: after any number of rebuilds).
     for (const ref of from) {
-      const m = /^\s*F(\d+):/i.exec(ref);
-      const f = m ? given.files.find((x) => x.n === Number(m[1])) : undefined;
-      const a = f?.hash ? (items ?? []).find((x) => x.fileHash === f.hash) : undefined;
-      if (a && isChangesJob(a.req)) return { name: payerName(a), address: a.req.payer };
+      const a = changesOriginOf(ref, given.files, items ?? []);
+      if (a) return { name: payerName(a), address: a.req.payer };
     }
     return null;
   };
@@ -1363,6 +1365,26 @@ export function firstRecordedOf(ref: string, files: { n: number; hash: string }[
     }
   }
   return best;
+}
+
+/**
+ * The counted changes job that first wrote a carried-over line ("F<n>:<line id>"), followed back through each earlier
+ * page's own <PRIOR> files as firstRecordedOf does; null when the chain reaches no changes job. Pure, for tests.
+ */
+export function changesOriginOf(ref: string, files: { n: number; hash: string }[], items: Activity[], depth = 0): Activity | null {
+  const m = /^\s*F(\d+):(.+)$/i.exec(ref);
+  const f = m ? files.find((x) => x.n === Number(m[1])) : undefined;
+  const a = f?.hash ? items.find((x) => x.fileHash === f.hash) : undefined;
+  if (!a) return null;
+  if (isChangesJob(a.req)) return a;
+  const line = a.page?.lines.find((l) => l.id === m![2]!.trim());
+  if (!line?.from.length || depth >= 32) return null;
+  const prior = parsePrior(a.req.bodyJson?.objective).files;
+  for (const r of line.from) {
+    const found = changesOriginOf(r, prior, items, depth + 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**

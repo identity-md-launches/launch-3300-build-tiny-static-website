@@ -26,7 +26,7 @@ import {
 } from "./bodies";
 import { HeaderSearch, type SearchEntry } from "./HeaderSearch";
 import { Contributors } from "./Contributors";
-import { CONTRIBUTORS_TITLE } from "./contributors";
+import { CONTRIBUTORS_TITLE } from "./contributorStats";
 import { OverviewTab, PayerLink, RecordTab, SourcesTab, type Filter, type Ui } from "./Record";
 import { ActivityList } from "./ActivityList";
 import { Connect, loadWallet, useWalletAccount } from "./walletLazy";

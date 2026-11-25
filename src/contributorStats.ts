@@ -5,7 +5,9 @@
  * (its reverse record, Activity.ens) or by its short address; never by a real name. Pure, for tests.
  */
 import { shortHex } from "./format";
-import { isChangesJob, type Activity } from "./useActivity";
+import { parseItems } from "./changes";
+import { isChangesJob, isPageJob, type Activity } from "./useActivity";
+import { completionOrder, questionsOf } from "./questions";
 
 export interface ContributorStat {
   /** The wallet, lowercase. */
@@ -40,19 +42,45 @@ export function walletName(address: string, items: Pick<Activity, "ens" | "req">
 const readChanges = (a: Activity) => isChangesJob(a.req) && a.state === "completed" && !a.notRead && !a.rejected && !!a.changes;
 
 /**
+ * One counted changes job's figures. Sent: the numbered notes its objective carries (what the wallet sent), else the
+ * distinct item numbers its result names. Added: the distinct sent notes the result kept. Answered: the closes the
+ * page's question state applied to a question open at that moment (questionsOf), so a close aimed at a question the
+ * page never had, or one already answered, credits nothing.
+ */
+export function jobFigures(a: Activity, applied: Map<string, number>): { sent: number; added: number; answered: number } {
+  const objective = parseItems(a.req.bodyJson?.objective).map((x) => x.n);
+  const verdicts = a.changes!.items;
+  const sentNs = new Set(objective.length ? objective : verdicts.map((v) => v.n));
+  const added = new Set(verdicts.filter((v) => v.kept && sentNs.has(v.n)).map((v) => v.n)).size;
+  return { sent: sentNs.size, added, answered: applied.get(a.req.requestId) ?? 0 };
+}
+
+/** Per changes job, the answers each subject's question state applied, from that subject's counted jobs. */
+function appliedAnswers(items: Activity[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const subject of new Set(items.map((a) => a.req.subject))) {
+    const mine = items.filter((a) => a.req.subject === subject);
+    const latest = mine.filter((a) => isPageJob(a.req) && a.page && a.state === "completed").sort(completionOrder).at(-1);
+    for (const [id, acts] of questionsOf(mine, latest).byJob) out.set(id, acts.filter((x) => x.op === "close" && x.answered).length);
+  }
+  return out;
+}
+
+/**
  * Every wallet that sent counted changes, ranked by notes added, then notes sent, then questions answered, then
- * address. `items` are counted jobs; pass one subject's jobs for a page's own list.
+ * address. `items` are counted jobs (pages included, so questions resolve); pass one subject's jobs for a page's list.
  */
 export function contributorsOf(items: Activity[]): ContributorStat[] {
+  const applied = appliedAnswers(items);
   const by = new Map<string, { added: number; sent: number; answered: number; pages: Set<string> }>();
   for (const a of items) {
     if (!readChanges(a)) continue;
     const k = a.req.payer.toLowerCase();
     const s = by.get(k) ?? { added: 0, sent: 0, answered: 0, pages: new Set<string>() };
-    const list = a.changes!.items;
-    s.sent += list.length;
-    s.added += list.filter((i) => i.kept).length;
-    s.answered += (a.changes!.questions ?? []).filter((q) => q.op === "close").length;
+    const f = jobFigures(a, applied);
+    s.sent += f.sent;
+    s.added += f.added;
+    s.answered += f.answered;
     s.pages.add(a.req.subject);
     by.set(k, s);
   }

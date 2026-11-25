@@ -4,7 +4,7 @@
  * full once, as a wallet's profile reads its subjects, so every result's verdicts are known.
  */
 import { useEffect, useMemo, useState } from "react";
-import { changesSubjects, contributorsOf, CONTRIBUTORS_LINE, CONTRIBUTORS_TITLE } from "./contributors";
+import { changesSubjects, contributorsOf, CONTRIBUTORS_LINE, CONTRIBUTORS_TITLE } from "./contributorStats";
 import { ContributorTable } from "./Record";
 import { SITE_NAME } from "./config";
 import { readable, type Activity, type ActivityState } from "./useActivity";

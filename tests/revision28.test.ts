@@ -62,17 +62,19 @@ describe("digests (bb454360)", () => {
     expect(digests.get("a.org")!.open).toBeUndefined();
     expect(digests.get("a.org")!.launched).toBeUndefined();
   });
-  it("the home page reads no record unasked: only Try again plans reads", () => {
+  it("the home page reads a record only when asked or when its row is behind a newer counted result (revision 31, D17)", () => {
     const src = readFileSync("src/digest.ts", "utf8");
-    expect(src).toContain(".filter((id) => wanted.current.has(id))");
+    expect(src).toContain("wanted.current.has(id) || (known.has(id) && !isCurrent(known.get(id)!, its.filter((a) => a.req.subject === id)))");
   });
 });
 
 describe("Find a project keeps focus (5b1a2a89)", () => {
-  it("Home renders one ListTools and one ListFilter above both list states", () => {
+  it("Home renders one ListFilter and one ListSort, and no Find a project box (revision 31, B8)", () => {
     const src = readFileSync("src/Home.tsx", "utf8");
-    expect(src.match(/<ListTools /g)!.length).toBe(1);
+    expect(src).not.toContain("<ListTools ");
+    expect(src).not.toContain("find-project");
     expect(src.match(/<ListFilter /g)!.length).toBe(1);
+    expect(src.match(/<ListSort /g)!.length).toBe(1);
   });
 });
 

@@ -41,6 +41,8 @@ export interface QuestionAct {
   op: "close" | "reword";
   text: string;
   lines: string[];
+  /** A close that answered a question open when it was applied (a page contributor's "question answered"). */
+  answered?: boolean;
 }
 export interface QuestionState {
   /** The open questions, in the page's order. */
@@ -161,7 +163,7 @@ export function questionsOf(items: Activity[], latest: Activity | undefined): Qu
       if (!q) continue;
       if (x.op === "reword" && !x.text.trim()) continue;
       const list = byJob.get(a.req.requestId) ?? [];
-      list.push({ question: q, op: x.op, text: q.text, lines: x.lines });
+      list.push({ question: q, op: x.op, text: q.text, lines: x.lines, ...(x.op === "close" ? { answered: q.state === "open" } : {}) });
       byJob.set(a.req.requestId, list);
       if (x.op === "close") {
         q.state = "answered";

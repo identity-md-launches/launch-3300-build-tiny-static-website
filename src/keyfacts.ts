@@ -855,8 +855,15 @@ export function shownEntries(row: KeyRow, of: StatusOf = () => null): ShownEntri
     const chains = chainsOfRow(row);
     if (chains.length) return { chains };
   }
-  if (row.items?.length) return { items: sorted(row.items.flatMap((v) => itemEntries(row.label, v).map((e) => ({ v: e, st: st({ ...e, status: v.status }) })))) };
-  if (row.values.length) return { values: sorted(row.values.flatMap((v) => valueEntries(row.label, v)).map((v) => ({ v, st: st({ text: v }), last: false }))) };
+  const supply = SUPPLY_ROW.test(row.label.trim());
+  if (row.items?.length) {
+    const list = supply ? supplyItems(row.items) : row.items.flatMap((v) => itemEntries(row.label, v));
+    return { items: sorted(list.map((e) => ({ v: e, st: st(e) }))) };
+  }
+  if (row.values.length) {
+    const list = row.values.flatMap((v) => valueEntries(row.label, v));
+    return { values: sorted((supply ? supplyValues(list) : list).map((v) => ({ v, st: st({ text: v }), last: false }))) };
+  }
   if (row.accounts.length) return { accounts: sorted(row.accounts.map((v) => ({ v, st: v.live ?? (TEST_ROW.test(row.label.trim()) ? ("test" as const) : ("live" as const)) }))) };
   if (row.tokens.length) return { tokens: sorted(row.tokens.map((v, i) => ({ v, first: i === 0, st: st({ status: v.status, name: v.symbol, text: v.purpose, chain: v.chain, address: v.address }) }))) };
   const parts = valueEntries(row.label, row.value);
@@ -942,7 +949,15 @@ export function liveOnlyRows(rows: KeyRow[], page: Pick<Page, "contracts">, all:
     }
     let kept: KeyRow | null = r;
     if (r.items?.length) {
-      const st = r.items.map((i) => entryStatus([i.name, i.text, i.address, i.url].join(" "), i.chain, page.contracts));
+      // An entry's own declared status wins (A2, A3): a chain marked as a test network moves to Test networks with
+      // its tag, whatever its words say; one marked live stays.
+      const chainsRow = CHAINS_ROW.test(r.label.trim());
+      const st = r.items.map((i): { status: Liveness; net: string } => {
+        const e = entryStatus([i.name, i.text, i.address, i.url].join(" "), i.chain, page.contracts);
+        if (i.status === "live" || i.status === "past") return { status: i.status, net: "" };
+        if (i.status === "test") return { status: "test", net: e.status === "test" && e.net ? e.net : chainsRow ? i.name || i.chain || i.text : i.chain || i.name };
+        return e;
+      });
       const keep = st.map((x) => x.status === "live");
       if (keep.some((k) => !k)) {
         const items = r.items.filter((_, i) => keep[i]);
@@ -977,10 +992,13 @@ export function liveOnlyRows(rows: KeyRow[], page: Pick<Page, "contracts">, all:
   const own = result.findIndex((r) => TEST_ROW.test(r.label.trim()));
   if (own >= 0) {
     const r = result[own]!;
-    const listed = (r.values.length ? r.values : partsOf(r.value)).map((v) => netKey(netName(v)));
+    const listed = [...(r.values.length ? r.values : partsOf(r.value)), ...(r.items ?? []).map((i) => i.name || i.chain || i.text)].map((v) => netKey(netName(v)));
     const missing = [...nets].filter(([k]) => !listed.includes(k)).map(([, n]) => n);
     if (!missing.length) return result;
-    const merged: KeyRow = r.values.length ? { ...r, values: [...r.values, ...missing], value: [...r.values, ...missing].join("; ") } : { ...r, value: [r.value, ...missing].filter((x) => x.trim()).join(", ") };
+    // A row given as a list shows its items: each moved network becomes an item of its own, tagged test like the rest.
+    const moved: ShownItem[] = missing.map((name) => ({ name, text: "", url: "", address: "", chain: "", explorer: "", status: "test" }));
+    const items = r.items?.length ? { items: [...r.items, ...moved] } : {};
+    const merged: KeyRow = r.values.length || r.items?.length ? { ...r, ...items, values: r.values.length ? [...r.values, ...missing] : r.values, value: [...(r.values.length ? r.values : partsOf(r.value)), ...missing].join("; ") } : { ...r, value: [r.value, ...missing].filter((x) => x.trim()).join(", ") };
     return result.map((x, i) => (i === own ? { ...merged, lines: [...new Set([...r.lines, ...lines])] } : x));
   }
   const badge = badgeOf(lines, all, sourceUrl);
@@ -1020,6 +1038,70 @@ export function valueEntries(label: string, value: string): string[] {
     else out[out.length - 1] = `${out[out.length - 1]}; ${p}`;
   }
   return out.length > 1 ? out : [value];
+}
+/**
+ * The token a Supply entry is about: a ticker in capitals ("ZORA on Base", "UNI (Ethereum)", "$IMD: …"), else the
+ * unit an amount is given in ("1 billion UNI"); "" when it names none.
+ */
+export function supplyToken(name: string, text = ""): string {
+  const head = /^\$?([A-Z][A-Z0-9.]{1,11})(?![\w.])/.exec(name.trim()) ?? (!name.trim() ? /^\$?([A-Z][A-Z0-9.]{1,11}):/.exec(text.trim()) : null);
+  if (head) return head[1]!;
+  const unit = /\d(?:[\d,.]*)\s*(?:(?:thousand|million|billion|trillion)\s+)?\$?([A-Z][A-Z0-9.]{1,11})\b/.exec(text);
+  return unit ? unit[1]! : "";
+}
+/** "ZORA on Base" without its token: "on Base"; "UNI (Arbitrum One)": "Arbitrum One"; the bare token: "". */
+const afterToken = (name: string, token: string) =>
+  name.trim().replace(new RegExp(`^\\$?${token.replace(/\./g, "\\.")}\\s*:?\\s*`), "").replace(/^\((.*)\)$/, "$1").trim();
+/**
+ * Supply is one entry per token (A1): entries about the same token (its home total and each bridged balance) are one
+ * entry, the token's name once and then each part's own words and amount as written, the first entry's first. Nothing is
+ * summed or reworded, so a bridged balance is never shown as supply of its own. Entries that name no token stay apart.
+ */
+export function supplyItems(items: ShownItem[]): ShownItem[] {
+  const groups = new Map<string, ShownItem[]>();
+  const order: (string | ShownItem)[] = [];
+  for (const v of items) {
+    const t = v.address ? "" : supplyToken(v.name, v.text);
+    if (!t) {
+      order.push(v);
+      continue;
+    }
+    if (!groups.has(t)) order.push(t), groups.set(t, []);
+    groups.get(t)!.push(v);
+  }
+  return order.map((o) => {
+    if (typeof o !== "string") return o;
+    const g = groups.get(o)!;
+    if (g.length === 1) return g[0]!;
+    const text = g
+      .map((v) => {
+        const where = afterToken(v.name, o);
+        const body = !v.name.trim() ? v.text.trim().replace(new RegExp(`^\\$?${o.replace(/\./g, "\\.")}:\\s*`), "") : v.text.trim();
+        return where && body ? `${where}: ${body}` : where || body;
+      })
+      .filter(Boolean)
+      .join("; ");
+    const status = liveFirst(g.map((v) => v.status ?? "live"), (x) => x)[0];
+    return { name: o, text, url: g.find((v) => v.url)?.url ?? "", address: "", chain: "", explorer: "", ...(status && g.some((v) => v.status) ? { status } : {}) };
+  });
+}
+/** The same for a Supply value given as a list of texts ("ZORA on Base: 10 billion"): the first text of a token as
+ * written, each later one after it without the repeated token name. */
+export function supplyValues(values: string[]): string[] {
+  const groups = new Map<string, string[]>();
+  const order: string[] = [];
+  values.forEach((v, i) => {
+    const t = supplyToken(/^([^:]{1,72}):/.exec(v.trim())?.[1] ?? "", v);
+    const k = t || `#${i}`;
+    if (!groups.has(k)) order.push(k), groups.set(k, []);
+    groups.get(k)!.push(v.trim());
+  });
+  return order.map((k) => {
+    const g = groups.get(k)!;
+    if (k.startsWith("#") || g.length === 1) return g[0]!;
+    const rest = g.slice(1).map((v) => v.replace(new RegExp(`^\\$?${k.replace(/\./g, "\\.")}(?:\\s*:)?\\s*`), "").replace(/^\((.*?)\)/, "$1"));
+    return [g[0]!, ...rest].join("; ");
+  });
 }
 /** A list entry with a name of its own is one token: shown once, its text as written, never split. */
 export function itemEntries(_label: string, v: ShownItem): ShownItem[] {

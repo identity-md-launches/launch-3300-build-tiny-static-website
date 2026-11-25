@@ -60,14 +60,19 @@ A subject is one project, never a person and never a name:
   such as \`1:0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7\`. Any chain id: when an address has no page yet, the
   home bar's chain picker names six chains and takes any other as a number under "Other chain ID" (such as \`137:0x…\`).
 
-**The home bar** is one input, "A project's website or a contract address", with one button, "Look it up". Typing filters the list
-of projects. On submit it opens the subject whose id is that domain, or whose id or listed contracts include that
-address (on the chain given as \`<chain id>:0x…\`, or on any chain when none is given; an address recorded on
-another chain never matches). A pasted link is reduced to its host, even an explorer link with an address in its
-path. An unmatched lookup waits until the current scan of Ethereum has settled. With no match it then shows "No page yet
-for <input>" with the price, a chain picker when the input is an address, "Research to start from" (leads, below) and
-"Add this project", which reads Ethereum and the price again and then opens the first-page dialog. There is
-no separate search box or add form. A subject's **Related** entries link to its page when one exists (matched the
+**One search.** **The home bar** is one input, "Search projects, or enter a website or contract address" (the same words
+shown above it), with one button, "Look it up". Typing filters the list of projects below by name or domain. On submit
+it opens the subject whose id is that domain, or whose id or listed contracts include that address (on the chain
+given as \`<chain id>:0x…\`, or on any chain when none is given; an address recorded on another chain never matches).
+A pasted link is reduced to its host, even an explorer link with an address in its path. An unmatched lookup waits
+until the current scan of Ethereum has settled. With no match, a domain or an address then shows "No page yet for
+<input>" with the price, a chain picker when the input is an address, "Research to start from" (leads, below) and
+"Add this project", which reads Ethereum and the price again and then opens the first-page dialog; plain text that is
+neither is asked for another name or a website or contract address. Every other page has a compact search field in
+the header between the site name and "How it works" (below 768 pixels, a search icon that opens it at full width; on
+Home it appears once the big box has scrolled out of view): matches show in a dropdown (logo, name, domain), Enter
+opens the first, and with no match a domain or address is offered as "Create the page for <text>", which opens Home
+with the bar filled in. A subject's **Related** entries link to its page when one exists (matched the
 same way), else "Add this project" opens the home bar filled in with the related id.
 
 **First page.** A subject with no page shows, on Home and on its own Overview alike: "First page in progress" while
@@ -579,6 +584,22 @@ The reasons Activity gives, word for word after "Not read: ":
 
 A result completed later than a request (a later block, or later in the same block) is never one of that request's
 earlier results.
+
+## Page contributors and funders
+
+Credits are computed in the browser from counted jobs only (above); there is no request kind for them and no wallet is
+needed to view them. **Top contributors** (\`#/contributors\`, "People who added to Swarmpedia pages.") lists every
+wallet that sent a counted, completed changes job whose result was read, ranked by notes added. For each job:
+**notes sent** are the numbered notes its objective carries (\`The changes: 1. … 2. …\`); **notes added** are the
+distinct sent notes whose verdict in the result is kept; **open questions answered** are the result's \`close\`
+operations that the page's question state applied to a question that was open at that moment (a close aimed at a
+question the page never had, or one already answered, credits nothing); **pages touched** are the distinct subjects.
+Each project's Overview ends with **About this page**: its top 5 page contributors with the same figures and "Show
+all", and **Funded by**, the wallets that paid for the page's counted jobs with the number of jobs each. An opened
+line in the Record shows "Added by <name>" when its first origin, followed back through every earlier page file, is a
+counted changes job. A wallet is named only by the ENS name it set for itself (its reverse record) or its address.
+Key facts shows the project's own team row \`Contributors\` under the label "Project contributors"; the field name in
+results and instruction files stays \`Contributors\`.
 
 ## Reading the record from your own code
 

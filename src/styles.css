@@ -207,6 +207,9 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .lookup input[aria-invalid="true"] { border-color: var(--color-error); }
 .lookup .btn-lookup { flex: none; height: 56px; border-radius: var(--radius-bar); padding: 0 var(--space-6); font-size: var(--text-heading); }
 .lookup-msg { width: 100%; text-align: start; }
+/* The prompt, visible in full above the box (the placeholder repeats it but is clipped on narrow fields). */
+.lookup { flex-wrap: wrap; }
+.lookup-label { flex: 1 1 100%; font-size: var(--text-small); color: var(--color-text-secondary); }
 .offer { width: 100%; display: grid; gap: var(--space-3); text-align: start; background: var(--color-bg-subtle); border-radius: var(--radius-card); padding: var(--space-4); }
 .unsure-links { display: flex; flex-wrap: wrap; gap: 0 var(--space-4); align-items: center; }
 .unsure-links a { display: inline-flex; align-items: center; min-height: 44px; }
@@ -1060,6 +1063,19 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
 .list-sort { display: flex; align-items: center; gap: var(--space-2); margin-inline-start: auto; min-width: 0; }
 .list-sort label { font-size: var(--text-small); color: var(--color-text-secondary); white-space: nowrap; }
 .list-sort select { min-height: 44px; }
+.narrow-only { display: none; }
+/* Phones: one band. Compact filter labels ("Rebuild"), and "Sort by" stacked over a narrower select with every option. */
+@media (max-width: 29.99rem) {
+  .list-bar { flex-wrap: nowrap; align-items: flex-end; column-gap: var(--space-2); }
+  .home-list .list-bar .filter { flex-wrap: nowrap; gap: 6px; }
+  .list-bar .btn-filter { padding: 0 10px; font-size: var(--text-small); min-height: 44px; white-space: nowrap; }
+  .list-bar .wide-only { display: none; }
+  .list-bar .narrow-only { display: inline; }
+  .list-sort { flex-direction: column; align-items: stretch; gap: 0; flex: 0 1 8.5rem; min-width: 5.5rem; }
+  .list-sort label { font-size: var(--text-small); line-height: 1.2; }
+  .list-sort select { width: 100%; min-width: 0; font-size: var(--text-small); text-overflow: ellipsis; }
+}
+@media (max-width: 22.49rem) { .list-bar { flex-wrap: wrap; } }
 .row-figure { font-weight: 600; }
 .show-more { margin-top: 12px; text-align: center; }
 /* Docs: two columns on wide screens, the menu as a row of links on narrow ones. */
@@ -1126,14 +1142,12 @@ html.kbd h1[tabindex="-1"]:focus-visible, html.kbd h2[tabindex="-1"]:focus-visib
 
 /* ---------- Revision 31: Contracts entries, one search, contributors ---------- */
 /* Contracts: name and its tag in the first column, the address in the second, the same for every entry. */
-.kf-contracts li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: baseline; }
-.kf-contracts .kf-c-name { min-width: 0; }
-.kf-contracts .kf-c-addr { justify-self: end; }
+/* Each entry is a wrapping pair measured in its own cell, not by the viewport: the address group stays on the name's
+   line whenever both fit, and moves whole to the next line, right-aligned, when they do not. */
+.kf-contracts li { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-3); row-gap: 2px; }
+.kf-contracts .kf-c-name { flex: 0 1 auto; min-width: 0; }
+.kf-contracts .kf-c-addr { flex: none; margin-inline-start: auto; }
 .keyfacts .kf-value .kf-contracts .addr { display: inline-flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: var(--space-1); white-space: nowrap; }
-@media (max-width: 22.99rem) {
-  .kf-contracts li { grid-template-columns: minmax(0, 1fr); }
-  .kf-contracts .kf-c-addr { justify-self: start; }
-}
 
 /* 64 px between the three cards and the "Projects" heading (Home's own gap plus this margin). */
 .home > .example { margin-bottom: var(--space-8); }
@@ -1156,6 +1170,10 @@ html.kbd h1[tabindex="-1"]:focus-visible, html.kbd h2[tabindex="-1"]:focus-visib
 .hsearch-list li[aria-selected="true"] a { background: var(--color-bg-hover); }
 .hsearch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .hsearch-text { font-weight: 400; overflow-wrap: anywhere; }
+/* "Create the page for" and the full text on its own line, which may break anywhere, so the whole address is visible. */
+.hsearch-list li a:has(.hsearch-create) { padding-block: var(--space-2); }
+.hsearch-create { display: grid; gap: 2px; min-width: 0; font-weight: 600; white-space: normal; }
+.hsearch-create .hsearch-text { word-break: break-all; font-size: var(--text-small); }
 .hsearch-domain { margin-inline-start: auto; color: var(--color-text-secondary); white-space: nowrap; }
 .hsearch-none { padding: var(--space-2); color: var(--color-text-secondary); }
 /* Below 768 px: a search icon; pressed, the field opens across the header at full width. The two site links take a

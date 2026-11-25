@@ -27,6 +27,18 @@ export function searchOptions(entries: SearchEntry[], raw: string): { matches: S
   return { matches, create: q.kind === "domain" ? q.domain : q.kind === "address" ? (q.chainId !== null ? `${q.chainId}:${q.address}` : q.address) : null };
 }
 
+/**
+ * What an unmatched search says: a domain or address can be created with "Look it up"; plain text cannot, so it asks
+ * for another name or a website or contract address instead. Pure.
+ */
+export function noMatchText(raw: string, alsoStale = false): string {
+  const t = raw.trim();
+  const head = `No project${alsoStale ? " that needs a rebuild" : ""} matches “${t}”.`;
+  if (alsoStale) return head;
+  const q = parseLookup(t);
+  return q.kind === "domain" || q.kind === "address" ? `${head} Press Look it up to add it.` : `${head} Try another name or enter a website or contract address.`;
+}
+
 /** True while the element with this id is on screen (and the page is Home). */
 function useOnScreen(id: string, active: boolean): boolean {
   const [on, setOn] = useState(active);
@@ -185,7 +197,10 @@ export function HeaderSearch({ entries, home }: { entries: SearchEntry[]; home: 
             {!matches.length && create && (
               <li id={`${id}-o0`} role="option" aria-selected>
                 <a href={addHref(create)} tabIndex={-1} onClick={(e) => { e.preventDefault(); go(0); }}>
-                  <span className="hsearch-name">Create the page for <span className="hsearch-text">{create}</span></span>
+                  <span className="hsearch-create">
+                    <span>Create the page for</span>
+                    <span className="hsearch-text mono">{create}</span>
+                  </span>
                 </a>
               </li>
             )}

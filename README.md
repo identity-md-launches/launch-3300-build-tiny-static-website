@@ -30,6 +30,8 @@ npx vite-node scripts/published.ts   # rewrite src/published.json from the Intak
 `dist/` is committed and is what gets hosted. Vite's `base` is `./`, so every asset URL is relative and
 the export works under an IPFS gateway subpath or an ENS name. Routing is by hash, so it needs no rewrites:
 
+- `#/contributors` is **Top contributors**, linked in the header: the wallets that sent counted changes, ranked by
+  notes added (see "Page contributors" below).
 - `#/` is **Home**: the headline, the one **Look it up** bar that both searches and adds, the three label cards,
   the list of subjects found on chain and "How it works". `#/add/<id>` opens Home with the bar filled in (used by
   "Add this project" under Related).
@@ -63,10 +65,22 @@ normalises what a visitor types (a bare host or a URL) and validates it.
   incremental scan); drafts saved under the old id's tray key are merged into the canonical tray once, kept by
   draft id, with drafts already under the canonical id kept (`migrateTrays` in `src/changes.ts`).
 
-**The Look it up bar** (`src/Home.tsx`, rules in `src/lookup.ts`) is one 56px input, "A domain or a 0x
-address", and one button, "Look it up". There is no separate search box or add form.
+**One search.** **The Look it up bar** (`src/Home.tsx`, rules in `src/lookup.ts`) is one 56px input with the placeholder
+"Search projects, or enter a website or contract address" (the same words are shown as a visible label above it, as
+the placeholder is clipped on narrow fields), and one button, "Look it up". There is no separate "Find a project" box.
 
-- **Typing** filters the list below by id, name, one-line text and every contract the page lists.
+- **Typing** filters the project list below by name or domain (`matchesNameOrDomain`). With no match, plain text says
+  "No project matches “…”. Try another name or enter a website or contract address."; a domain or address says
+  "Press Look it up to add it." (`noMatchText` in `src/HeaderSearch.tsx`).
+- **Header search** (`src/HeaderSearch.tsx`): every other page has a compact field between the site name and "How it
+  works". Matches show in a dropdown (logo, name, domain, at most 6); Enter opens the highlighted or first; with no
+  match a domain or address is offered as "Create the page for <text>" (the text on its own line, wrapping anywhere,
+  so a full address is readable), which opens `#/add/<text>`. On Home the field stays hidden while the big box is on
+  screen (IntersectionObserver) and appears once it has scrolled out of view. Below 768 px the header shows a search
+  icon that opens the field at full width.
+- **Above the list**: one row, the filters (All, Needs a rebuild, Saved) on the left and "Sort by" on the right.
+  Below 480 px the filter reads "Rebuild" and "Sort by" sits over a narrower select with every option, so both stay
+  in one band at 390 px.
 - **A pasted link** is reduced to its host (`https://www.example.com/docs` is `example.com`). This holds for every
   link, including an explorer link with `/address/0x…` in its path: the host names the site, not the project.
   Raw `0x…` addresses and `<chain id>:0x…` are read as contracts.
@@ -756,7 +770,7 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-59cb466af103.txt` and `changes-a7ea2f0a9c20.txt`; still served: `rebuild-d3414e5807fc.txt`, `changes-e7afaac38d03.txt`, `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-1cb3032ca031.txt` and `changes-76bb018d8c8b.txt`; still served: `rebuild-59cb466af103.txt`, `changes-a7ea2f0a9c20.txt`, `rebuild-d3414e5807fc.txt`, `changes-e7afaac38d03.txt`, `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
@@ -788,10 +802,10 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreiczzndgv4idqjtv3iscusclmntvtx2udgjab4veufgjkm4kdmkv6i?filename=rebuild-59cb466af103.txt`,
-  sha256 `59cb466af10382675da242a484b636759df54199200f2a4a14c95338a1b155f2`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreifh5ixqvhbay3nw73iuqimcbwbykb3so4oegmzybat5oxuwmqomjm?filename=changes-a7ea2f0a9c20.txt`,
-  sha256 `a7ea2f0a9c20c6db6fed14821820d83850772771c4333380827d75e96641cc4b`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreia4wmbszibryfacnffed6smmd2eqbxzr5e3upxhfduuj4gwj5oje4?filename=rebuild-1cb3032ca031.txt`,
+  sha256 `1cb3032ca031c1402694a41fa4c60f44806f98f49ba3ee728e944f0d64f5c927`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreidwxmay3delakvtgwex4v5yd4sd6e6rutoqdo6hta7c5dtwhhb7ym?filename=changes-76bb018d8c8b.txt`,
+  sha256 `76bb018d8c8b02ab335897e57b81f243f13d1a4dd01bbc7983e2e8e7639c3fc3`
 <!-- instructions:end -->
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,

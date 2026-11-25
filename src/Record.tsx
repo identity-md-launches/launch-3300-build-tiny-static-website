@@ -11,7 +11,7 @@ import { addressText, historicFor, shortJobId } from "./addresses";
 import { explorerAddressUrl } from "./subject";
 import { addressRuns, chainOfAddress, chainTag, chainText, isChainName, takeAddress } from "./addrDisplay";
 import { decimalsOf, exactAmount, wholeFact } from "./amounts";
-import { addedOf, contributorsOf, fundersOf, shownLabel, type ContributorStat } from "./contributors";
+import { addedOf, contributorsOf, fundersOf, shownLabel, type ContributorStat } from "./contributorStats";
 import { inviteName, keyFacts, liveRowsFirst, sharedChain, shownEntries, splitAddresses, statusOfContract, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem, type StatusOf } from "./keyfacts";
 import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
@@ -1422,7 +1422,7 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
   // Where the line was first written: the job and its line id, a permanent address (addresses.ts).
   const written = ctx.m.origins.get(line.id);
   // A line a visitor's changes request added, directly or carried into a later page: "Added by <name>".
-  const addedBy = origin?.raised ? { name: origin.payer, address: origin.payerAddr } : ctx.m.changesPayerOf(line.from);
+  const addedBy = origin?.raised ? { name: origin.payer, address: origin.payerAddr } : ctx.m.changesPayerOf(line.from, ctx.m.origins.get(line.id));
   return (
     <div className="details" id={id}>
       {addedBy && (

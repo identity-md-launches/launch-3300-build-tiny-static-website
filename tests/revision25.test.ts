@@ -172,10 +172,11 @@ describe("key facts (59c67cba)", () => {
     expect(t([{ text: "Ethereum" }, { text: "Sepolia testnet" }])).toEqual(["Ethereum", "Sepolia testnet"]);
     expect(t([{ text: "Base app payment" }])).toEqual(["Base: app payment"]);
   });
-  it("one supply entry per line, and the shared chain once", () => {
-    expect(valueEntries("Supply", "IMD: Base home total 7,079,539; Ethereum bridged 4,214,499; Robinhood Chain bridged 68,959")).toEqual(["IMD: Base home total 7,079,539", "IMD: Ethereum bridged 4,214,499", "IMD: Robinhood Chain bridged 68,959"]);
+  it("one supply entry per token (revision 31, A1), and the shared chain once", () => {
+    // One token is one entry, its name once and its text as written (A1 replaces the per-amount split).
+    expect(valueEntries("Supply", "IMD: Base home total 7,079,539; Ethereum bridged 4,214,499; Robinhood Chain bridged 68,959")).toEqual(["IMD: Base home total 7,079,539; Ethereum bridged 4,214,499; Robinhood Chain bridged 68,959"]);
     const ens = { name: "ENS", text: "100 million on Ethereum, about 2,420 on Polygon PoS", url: "", address: "", chain: "", explorer: "" };
-    expect(itemEntries("Supply", ens).map((x) => `${x.name}: ${x.text}`)).toEqual(["ENS: 100 million on Ethereum", "ENS: about 2,420 on Polygon PoS"]);
+    expect(itemEntries("Supply", ens).map((x) => `${x.name}: ${x.text}`)).toEqual(["ENS: 100 million on Ethereum, about 2,420 on Polygon PoS"]);
     expect(valueEntries("Size", "About $3.27 billion locked; DefiLlama, November 24, 2026")).toHaveLength(1);
     const c = (chain: string) => ({ name: "x", text: "", url: "", address: A, chain, explorer: "" });
     expect(sharedChain({ label: "Contracts", items: [c("Ethereum"), c("Ethereum")] })).toBe("Ethereum");
