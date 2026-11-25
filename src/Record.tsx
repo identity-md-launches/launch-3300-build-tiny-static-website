@@ -32,7 +32,8 @@ import {
   type Channel,
   type ChannelStatus,
   isFactRow, type Kind, type Line, type ListedSource, type RecordRow, type SourceLine } from "./page";
-import { readDate } from "./dates";
+import { localDate, readDate } from "./dates";
+import { cleanQuestion } from "./questions";
 import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, type PageJobs, isInstructionsUnavailable, statusText, unreadableText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity } from "./useActivity";
 import { OutdatedNote, ReaderNote, StillReading } from "./Home";
@@ -304,24 +305,26 @@ export const setContractStatuses = (contracts: { address: string; status: string
 export const accountName = (name: string, url: string): string => inviteName(name, url) ?? name;
 
 /** "Answer this": Contribute opens with "Answer to: <the question>" on the first line and the cursor on the next. */
-export function AnswerLink({ q, m }: { q: Question; m: Pick<RecordModel, "subject"> }) {
+export function AnswerLink({ q, m, describedBy }: { q: Question; m: Pick<RecordModel, "subject">; describedBy?: string }) {
   const s = useSuggest();
   const href = subjectHref(m.subject.id, "suggest-changes");
+  // The question is shown once, beside the link; screen readers hear it as the link's description.
   return (
     <a
       className="answer-link small"
       href={href}
+      aria-describedby={describedBy}
       onClick={(e) => {
         e.preventDefault();
-        startAnswer(s, q.text, href);
+        startAnswer(s, cleanQuestion(q.text), href);
       }}
     >
-      Answer this<span className="sr-only">: {q.text}</span>
+      Answer this
     </a>
   );
 }
 
-const qDate = (t: number | null | undefined) => (t ? new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
+const qDate = (t: number | null | undefined) => (t ? localDate(t) : "");
 
 /** One question with its permanent link: open with "Answer this", or marked Answered (or no longer open) with the date. */
 function QuestionItem({ q, m }: { q: Question; m: RecordModel }) {
@@ -329,14 +332,14 @@ function QuestionItem({ q, m }: { q: Question; m: RecordModel }) {
   const narrowed = q.history?.at(-1);
   return (
     <li id={anchor} className={`question q-${q.state}`} tabIndex={-1}>
-      <span className="q-text">{q.text}</span>{" "}
+      <span className="q-text" id={`${anchor}-t`}>{cleanQuestion(q.text)}</span>{" "}
       {q.state === "open" ? (
         <>
-          <AnswerLink q={q} m={m} />
+          <AnswerLink q={q} m={m} describedBy={`${anchor}-t`} />
           {narrowed && (
             <span className="small q-state">
               {" "}
-              · Answered in part{narrowed.at ? ` ${qDate(narrowed.at)}` : ""}; first asked as “{q.history![0]!.text}”
+              · Answered in part{narrowed.at ? ` ${qDate(narrowed.at)}` : ""}; first asked as “{cleanQuestion(q.history![0]!.text)}”
               {narrowed.lines.length ? <> · {m.editRefs(narrowed.by, narrowed.lines, null).map((l, i) => <Fragment key={l.id}>{i > 0 && ", "}<a href={to(lineAnchor(l.id))}>{`line ${i + 1}`}</a></Fragment>)}</> : null}
             </span>
           )}
@@ -353,27 +356,34 @@ function QuestionItem({ q, m }: { q: Question; m: RecordModel }) {
   );
 }
 
-/** Overview, under Key facts: the first 3 open questions, each with "Answer this", then "Show all N". */
-function OpenQuestions({ m }: { m: RecordModel }) {
-  const [all, setAll] = useState(false);
+/**
+ * Contribute, under the form: "Open questions (N)", closed until its toggle opens it. Each question shows once, with
+ * "Answer this", which fills the form above with the question and scrolls to it.
+ */
+export function ContributeQuestions({ m }: { m: Pick<RecordModel, "questions" | "subject"> }) {
+  const [open, setOpen] = useState(false);
   const list = m.questions.open;
   if (!list.length) return null;
-  const shownQ = all ? list : list.slice(0, 3);
   return (
-    <section className="open-questions" aria-labelledby="oq-title">
-      <h2 id="oq-title">Open questions</h2>
-      <ul className="plain questions">
-        {shownQ.map((q) => (
-          <li key={q.id} className="question">
-            <a className="q-text" href={to(questionAnchor(q.id))}>{q.text}</a> <AnswerLink q={q} m={m} />
-          </li>
-        ))}
-      </ul>
-      {list.length > 3 && !all && (
-        <button type="button" className="linklike small" onClick={() => setAll(true)}>
-          Show all {list.length}
+    <section className="card contrib-questions" aria-labelledby="cq-title">
+      <h2 id="cq-title">
+        <button type="button" className="q-toggle" aria-expanded={open} aria-controls="cq-list" onClick={() => setOpen(!open)}>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+            <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Open questions ({list.length.toLocaleString("en-US")})
         </button>
-      )}
+      </h2>
+      <ul id="cq-list" className="plain questions" hidden={!open}>
+        {list.map((q) => {
+          const tid = `cq-${questionAnchor(q.id)}`;
+          return (
+            <li key={q.id} className="question">
+              <span className="q-text" id={tid}>{cleanQuestion(q.text)}</span> <AnswerLink q={q} m={m} describedBy={tid} />
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
@@ -1073,6 +1083,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       <div className="title-row">
         <SubjectLogo name={name} logo={latest?.logo} size={40} />
         <h1 id="record-title" tabIndex={-1}>{name}</h1>
+        {page && <SaveStar id={m.subject.id} name={name} />}
       </div>
       <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
       <ReaderNote o={m.outdated} href={to("rebuild")} />
@@ -1159,11 +1170,6 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
           {error && !latest && <p className="error">Unable to read the page: {error}</p>}
         </div>
       )}
-      {page && (
-        <p className="ov-save">
-          <SaveStar id={m.subject.id} name={page.name || m.subject.id} />
-        </p>
-      )}
       {(page || m.summary.length > 0) && (
         <div className="overview">
           <div className="summary-col">
@@ -1175,7 +1181,6 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
             )}
           </div>
           <KeyFacts m={m} ui={ui} />
-          <OpenQuestions m={m} />
         </div>
       )}
       {page && <Related m={m} subjects={subjects} />}

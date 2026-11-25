@@ -43,7 +43,40 @@ import { mergeRepeats, type KnownContract } from "./lookup";
 import { dropUnresolvedAnswers, type UnresolvedRef } from "./settle";
 import { readDate } from "./dates";
 import { countedOf, NOT_READ } from "./counts";
-import { historicLines, originsOf, type HistoricLine, type Origin } from "./addresses";
+import { historicLines, lineForAddress, originsOf, type HistoricLine, type Origin } from "./addresses";
+import { rowPatchListsOf } from "./changeResult";
+
+/**
+ * A changes or edit job's own new line as the record shows it now: "<request id>:<id>" while the job is not folded
+ * in; once a rebuild carried it forward, the page line that carries it, through that rebuild's from origins or,
+ * over several rebuilds, through its permanent address "<job id>:<id>". An answered question keeps its links this way.
+ */
+export function ownLineNow(a: Activity, id: string, scope: LineScope, byId: Map<string, Line>, origins: Map<string, Origin>): Line | undefined {
+  const direct = byId.get(`${a.req.requestId}:${id}`);
+  if (direct) return direct;
+  if (a.fileHash) {
+    const at = lineInFile(a.fileHash, id, scope, (x) => byId.has(x));
+    if (at && byId.has(at)) return byId.get(at);
+  }
+  if (a.jobId) {
+    const at = lineForAddress(origins, `${a.jobId}:${id}`);
+    if (at && byId.has(at)) return byId.get(at);
+  }
+  return undefined;
+}
+
+/**
+ * The page's current Launched fact as a time: the page's own row, then each Key facts patch on it in completion
+ * order (a correction replaces it, a remove drops it). Home's Launch date sorts by this.
+ */
+export function launchedNow(page: { infobox: { label: string; value: string }[] } | null | undefined, after: Activity[]): number | null {
+  if (!page) return null;
+  const isLaunched = (l: string) => /^launch(?:ed)?(?: date)?$/i.test(l.trim());
+  let v: string | null = page.infobox.find((r) => isLaunched(r.label))?.value ?? null;
+  const patches = [...rowPatchListsOf(after)].filter(([k]) => isLaunched(k)).flatMap(([, ps]) => ps);
+  for (const a of after) for (const p of patches) if (p.job === a) v = p.patch.op === "remove" ? null : p.patch.value;
+  return v === null ? null : launchedOf({ infobox: [{ label: "Launched", value: v }] });
+}
 
 export interface Accounting {
   /** none: the shown page was not a rebuild from earlier files. */
@@ -650,7 +683,7 @@ export function digestOf(id: string, list: Activity[], uncounted: string[] = [])
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
   const example = core.page ? exampleOf(core.sections.flatMap((x) => x.rows.map((r) => r.line))) : null;
-  return { type: "digest", v: 9, open: core.page ? questionsOf(list, core.latest).open.length : 0, launched: launchedOf(core.page), example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo, ...(uncounted.length ? { uncounted } : {}) };
+  return { type: "digest", v: 9, open: core.page ? questionsOf(list, core.latest).open.length : 0, launched: launchedNow(core.page, core.after), example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo, ...(uncounted.length ? { uncounted } : {}) };
 }
 
 /** The Launched fact of a page as a time: its first full date, month and year, or year; null without one. */
@@ -1068,7 +1101,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
       const q = /^F(\d+):(.+)$/i.exec(id);
       let line: Line | undefined;
       if (q) line = inFile(Number(q[1]), q[2]!);
-      else if (verdict === "supported_by_source" || (verdict === null && own.has(id))) line = own.has(id) ? byId.get(`${key}:${id}`) : undefined;
+      else if (verdict === "supported_by_source" || (verdict === null && own.has(id))) line = own.has(id) ? ownLineNow(a, id, scope, byId, core.origins) : undefined;
       // supported: existing lines only. With no such line shown, no dot rather than the edit's own line.
       else line = byId.get(id);
       return line ? [line] : [];

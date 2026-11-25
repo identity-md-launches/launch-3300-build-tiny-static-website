@@ -670,7 +670,6 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .tray { position: fixed; inset: auto 0 0 0; z-index: 20; background: var(--gray-900); color: var(--gray-0); padding: var(--space-3) var(--space-4); padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgb(0 0 0 / 0.12); }
 .tray-in { max-width: 56rem; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
 .tray-text { display: grid; gap: 0; min-width: 0; }
-.tray-meta { font-size: var(--text-small); color: var(--gray-200); }
 .btn-tray { background: var(--gray-0); border-color: var(--gray-0); color: var(--gray-900); }
 @media (hover: hover) { .btn-tray:hover:not(:disabled) { background: var(--gray-100) !important; } }
 .tray .btn:focus-visible { outline-color: var(--gray-0); }
@@ -1044,19 +1043,29 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
 .q-link { color: var(--color-text-secondary); margin-inline-start: 4px; text-decoration: none; }
 .q-state { margin-inline-start: 4px; }
 .answered { margin: 4px 0 0; }
-.ov-save { display: flex; justify-content: flex-end; margin: 0 0 8px; }
-.save-star { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; min-width: 44px; padding: 0 8px; border: 0; background: transparent; color: var(--color-text-secondary); border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; }
+/* The save star: icon only, a 44px target. On a home row it ends the name line and its target overlaps the row's
+   padding (negative block margins), so it adds no height; on a project page it ends the title line. */
+.save-star { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--color-text-secondary); border-radius: 8px; cursor: pointer; font: inherit; flex: none; }
 .save-star.is-on { color: var(--amber-800, #92400e); }
 .save-star:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 @media (hover: hover) { .save-star:hover { background: var(--color-bg-hover); } }
 .subject { position: relative; }
-.subject > .save-star { align-self: flex-start; flex: none; }
-.subject .save-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.list-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; margin: 8px 0 12px; }
-.list-tools .field { display: grid; gap: 4px; min-width: 0; }
-.list-tools label { font-size: 13px; color: var(--color-text-secondary); }
+.subject-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; min-height: 24px; }
+.subject-head .save-star { margin-block: -10px; margin-inline-end: -10px; }
+.title-row h1 { flex: 0 1 auto; }
+.title-row .save-star { margin-inline-start: auto; }
+/* Home list: Find, Sort and the filter buttons; one row on wide screens. Labels are for screen readers only. */
+.list-bar { display: grid; gap: var(--space-2); margin: 8px 0 12px; min-width: 0; }
+.list-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; margin: 0; min-width: 0; }
+.list-tools .field { display: grid; min-width: 0; }
 .list-tools input, .list-tools select { min-height: 44px; width: 100%; box-sizing: border-box; }
+.home-list .list-bar .filter { margin-block: 0; }
 @media (max-width: 480px) { .list-tools { grid-template-columns: minmax(0, 1fr); } }
+@media (min-width: 60rem) {
+  .list-bar { display: flex; align-items: center; gap: 12px; }
+  .list-bar .list-tools { flex: 1 1 auto; }
+  .list-bar .filter { flex: none; flex-wrap: nowrap; }
+}
 .row-figure { font-weight: 600; }
 .show-more { margin-top: 12px; text-align: center; }
 /* Docs: two columns on wide screens, the menu as a row of links on narrow ones. */
@@ -1072,7 +1081,48 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
 .doc-mono { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; flex-wrap: wrap; }
 .doc-example { max-width: none; margin: var(--space-3) 0; }
 @media (min-width: 1000px) {
-  .doc-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+  .doc-layout { grid-template-columns: 200px minmax(0, 720px); column-gap: 56px; }
   .doc-toc { position: sticky; top: 16px; align-self: start; }
   .doc-toc ul { display: block; }
 }
+
+/* Revision 30: docs at the site's full content width, the two dark bars, focus on headings, questions on Contribute. */
+.docs.tab { display: block; max-width: none; }
+.docs .doc-layout { margin-top: 40px; }
+.doc-body { max-width: 720px; }
+.doc-group { margin: 48px 0 0; font-size: var(--text-title); }
+.doc-body > .doc-group:first-child { margin-top: 0; }
+.doc-sec { margin-top: 48px; }
+.doc-sec h2 { margin: 0 0 16px; }
+.doc-group + .doc-sec { margin-top: 24px; }
+.doc-toc a { font-size: var(--text-nav); color: var(--color-text-secondary); text-decoration: none; }
+.doc-toc a[aria-current] { color: var(--color-accent-solid); font-weight: 600; }
+@media (hover: hover) { .doc-toc a:hover { color: var(--color-text); } }
+.doc-example .label-cards { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); max-width: none; }
+.doc-example .card-name, .doc-example .card-note { white-space: nowrap; }
+
+/* The example cards are links to the page the example comes from. */
+.label-item { display: grid; min-width: 0; }
+a.label-card { text-decoration: none; color: var(--color-text); height: 100%; box-sizing: border-box; }
+@media (hover: hover) { a.label-card:hover .example-text { text-decoration: underline; text-underline-offset: 2px; } }
+a.label-card:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* The two dark bars: white text only, nothing under 14px. */
+.tray-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); font-size: var(--text-body); color: var(--gray-0); }
+.tray-price { color: var(--gray-0); }
+.tray .linklike, .tray .tray-retry { color: var(--gray-0); font-size: var(--text-nav); }
+.send-bar { font-size: var(--text-body); color: var(--gray-0); }
+.send-bar .small { font-size: var(--text-nav); color: var(--gray-0); }
+.review-meta { margin: 0 0 var(--space-3); color: var(--color-text-secondary); }
+
+/* A heading that takes focus when a page opens: an outline only for keyboard visitors (main.tsx sets html.kbd). */
+h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
+html.kbd h1[tabindex="-1"]:focus-visible, html.kbd h2[tabindex="-1"]:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 4px; }
+
+/* Contribute: Open questions (N), closed until its toggle opens it. */
+.contrib-questions h2 { margin: 0; font-size: var(--text-heading); }
+.q-toggle { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--color-text); cursor: pointer; }
+.q-toggle svg { transition: transform 0.15s ease-out; flex: none; }
+.q-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .q-toggle svg { transition: none; } }
+.contrib-questions .questions { margin: var(--space-2) 0 0; display: grid; gap: var(--space-3); }

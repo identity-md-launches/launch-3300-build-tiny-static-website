@@ -1,4 +1,5 @@
-import { questionAnchor } from "./questions";
+import { cleanQuestion, questionAnchor } from "./questions";
+import { localDateTime } from "./dates";
 /** Every paid request of this site, newest first, with its state, refusal reason, panel answer, source outcomes or edit verdicts. */
 import { artifactUrl } from "./bodies";
 import { ACTIONS } from "./config";
@@ -65,7 +66,7 @@ function AnsweredQuestions({ a, shown }: { a: Activity; shown: Shown }) {
         const lines = shown.editRefs(a, x.lines, null);
         return (
           <li key={`${x.question.id}-${i}`}>
-            <a href={to(questionAnchor(x.question.id))}>{x.op === "reword" ? "Answered in part" : "Answered"}: {x.text}</a>
+            <a href={to(questionAnchor(x.question.id))}>{x.op === "reword" ? "Answered in part" : "Answered"}: {cleanQuestion(x.text)}</a>
             {lines.length > 0 && (
               <span className="small">
                 {" "}
@@ -175,7 +176,7 @@ export function ActivityList({ items, error, loading, reload, shown }: ReturnTyp
               <li key={a.req.requestId} className="card act">
                 <div className="act-top">
                   <span className={`state state-${a.state}`}>{a.state}</span>
-                  <span className="small">{a.time ? new Date(a.time).toLocaleString() : `block ${a.req.blockNumber}`}</span>
+                  <span className="small">{a.time ? localDateTime(a.time) :`block ${a.req.blockNumber}`}</span>
                 </div>
                 <p className="act-what">
                   {what(a)}

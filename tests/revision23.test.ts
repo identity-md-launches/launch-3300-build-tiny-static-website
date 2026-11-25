@@ -125,10 +125,11 @@ describe("70541e59: a result listing that failed is a failed read with Try again
 describe("561b1b5f: the sent confirmation names Etherscan until IMD names the job", () => {
   const tx = `0x${"9".repeat(64)}`;
   it("before admission: View the Ethereum transaction, on Etherscan", () => {
-    expect(sentLink(tx, [], {})).toEqual({ href: `https://etherscan.io/tx/${tx}`, text: "View the Ethereum transaction", job: false });
+    // Revision 30: the same link reads "View the transaction", then "Follow the job".
+    expect(sentLink(tx, [], {})).toEqual({ href: `https://etherscan.io/tx/${tx}`, text: "View the transaction", job: false });
   });
   it("after admission: Follow it on the IMD explorer, to the job", () => {
-    expect(sentLink(tx, [], { [tx]: "job-fixture-123" })).toEqual({ href: "https://explorer.imd.fun/jobs/job-fixture-123", text: "Follow it on the IMD explorer", job: true });
+    expect(sentLink(tx, [], { [tx]: "job-fixture-123" })).toEqual({ href: "https://explorer.imd.fun/jobs/job-fixture-123", text: "Follow the job", job: true });
   });
   it("the toast stays until admission resolves, then hides after 8 seconds", () => {
     const src = readFileSync("src/App.tsx", "utf8");

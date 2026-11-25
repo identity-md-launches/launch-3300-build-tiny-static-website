@@ -38,7 +38,8 @@ import { INSTRUCTIONS_UNREACHABLE, instructionsOf, instructionsReachable, type I
 import type { Findable } from "./lookup";
 import { jobLink, lineAnchor, payerName } from "./format";
 import { lineForAddress } from "./addresses";
-import { readDate } from "./dates";
+import { localDateTime } from "./dates";
+import { ContributeQuestions } from "./Record";
 import { DOCS_HREF, TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, to } from "./route";
 import { Docs } from "./Docs";
 import { Profile } from "./Profile";
@@ -276,8 +277,8 @@ export function LeadsField({ id, value, onChange, plan }: { id: string; value: s
 /** When a request was sent, as "19 Nov 2026, 14:05" in the visitor's time, or "just now" while its block time is unknown. */
 function startedAt(a: Activity): string {
   if (!a.time) return "just now";
-  const d = new Date(a.time > 1e12 ? a.time : a.time * 1000);
-  return `${readDate(d.toISOString())}, ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+  // Date and time from the same clock: the visitor's own time zone.
+  return localDateTime(a.time);
 }
 
 const field = (id: string, err?: string) => ({ id, "aria-invalid": !!err, "aria-describedby": err ? `${id}-err` : undefined });
@@ -476,6 +477,7 @@ export function ContributeTab({ onAsk, researchPrice, firstPrice, rec, onRefresh
         <div className="card note-card" id="suggest-changes" tabIndex={-1}>
           <NoteForm />
         </div>
+        <ContributeQuestions m={rec} />
         {PANEL_CHECKS && <ConfirmCard key={rec.subject.id} onAsk={onAsk} rec={rec} />}
         <p className="small pay-line">Every request is paid from your own wallet to IMD Intake v2 on Ethereum. The dialog shows the price and the full request before your wallet asks.</p>
         <details className="upkeep" id="rebuild" open={firstPage || undefined}>
@@ -777,7 +779,7 @@ export const sentJobId = (hash: string, items: Activity[] | null, jobs: SentJobs
  */
 export function sentLink(hash: string, items: Activity[] | null, jobs: SentJobs = {}): { href: string; text: string; job: boolean } {
   const id = sentJobId(hash, items, jobs);
-  return id ? { href: jobLink(id, hash), text: "Follow it on the IMD explorer", job: true } : { href: jobLink(null, hash), text: "View the Ethereum transaction", job: false };
+  return id ? { href: jobLink(id, hash), text: "Follow the job", job: true } : { href: jobLink(null, hash), text: "View the transaction", job: false };
 }
 
 /** What the bottom bar says once Ethereum included a request. */
@@ -787,6 +789,8 @@ export function sentDoneText(note: Pick<SentNote, "kind" | "n" | "rebuild">): st
 }
 
 export type SendState = "waiting" | "done" | "reverted";
+/** The sent bar once Ethereum included the request, followed by one link (sentLink). */
+export const SENT_TEXT = "Sent to the swarm.";
 
 /**
  * The bar at the bottom of the page after the wallet signed: "Sent. Waiting for Ethereum…", then "Your N changes are
@@ -807,9 +811,8 @@ function SendBar({ sent, state, items, jobs, onDone }: { sent: SentNote; state: 
           <>{REVERTED}</>
         ) : (
           <>
-            {sentDoneText(sent)}{" "}
-            <a href={link.job ? link.href : sentHref(sent.hash, items, jobs)} target="_blank" rel="noopener noreferrer">Follow the job</a>
-            {link.job ? "" : <span className="small"> (IMD is assigning it; the link shows the transaction until then)</span>}
+            {SENT_TEXT}{" "}
+            <a href={link.href} target="_blank" rel="noopener noreferrer">{link.text}</a>
           </>
         )}
       </p>

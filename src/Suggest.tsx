@@ -40,6 +40,7 @@ import {
   type ChangeTarget,
 } from "./changes";
 import { holdFocus } from "./modal";
+import { cleanQuestion } from "./questions";
 import { lineAnchor } from "./format";
 import { formatNumbers } from "./numbers";
 import { proofIdsOf, settleOf, speakerText } from "./settle";
@@ -369,6 +370,34 @@ export function ChangePanel({ target, mode, evidence = [], onClose, onOpenLines 
     const t = window.setTimeout(put, 150);
     return () => window.clearTimeout(t);
   }, [inline]);
+  // "Answer this" pressed while this form is on screen (Contribute's Open questions): take the new draft, scroll the
+  // form into view and put the cursor on the line after the question.
+  useEffect(() => {
+    if (inline) return;
+    let t = 0;
+    const on = () => {
+      takeCaret();
+      const d = s.drafts.current.get(s.subject);
+      setNoteState(d?.note ?? "");
+      setLinksState(d?.links ?? "");
+      const put = () => {
+        const ta = ref.current?.querySelector<HTMLTextAreaElement>("textarea");
+        if (!ta) return;
+        ta.scrollIntoView?.({ block: "center" });
+        ta.focus({ preventScroll: true });
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+      };
+      window.requestAnimationFrame(put);
+      window.clearTimeout(t);
+      t = window.setTimeout(put, 150);
+    };
+    window.addEventListener(ANSWER_EVENT, on);
+    return () => {
+      window.removeEventListener(ANSWER_EVENT, on);
+      window.clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inline, s.subject]);
   useEffect(() => {
     if (!inline) return;
     ref.current?.querySelector<HTMLElement>("textarea")?.focus({ preventScroll: true });
@@ -535,7 +564,9 @@ const takeCaret = () => {
   return v;
 };
 /** The note "Answer this" fills in: the question on the first line, the cursor on the next. */
-export const answerNote = (question: string) => `Answer to: ${question.trim()}\n`;
+export const answerNote = (question: string) => `Answer to: ${cleanQuestion(question)}\n`;
+/** Sent when "Answer this" fills the draft, so a form already on screen takes it at once. */
+export const ANSWER_EVENT = "swarmpedia-answer";
 /**
  * "Answer this" on an open question: the Contribute form's draft becomes "Answer to: <the question>" and a new line
  * (any links already written are kept), and Contribute opens with the cursor on that line.
@@ -544,6 +575,7 @@ export function startAnswer(s: Pick<SuggestState, "drafts" | "subject">, questio
   const cur = s.drafts.current.get(s.subject);
   s.drafts.current.set(s.subject, { note: answerNote(question), links: cur?.links ?? "" });
   caretPending = true;
+  window.dispatchEvent(new Event(ANSWER_EVENT));
   location.hash = href;
 }
 
@@ -625,7 +657,6 @@ export function TrayBar({ rec, quote, onAsk }: { rec: RecordModel; quote: Quote;
     return () => ro.disconnect();
   }, [on]);
   if (!on) return null;
-  const withSource = list.filter(hasSource).length;
   const openReview = () => {
     refresh();
     setReview(true);
@@ -636,11 +667,8 @@ export function TrayBar({ rec, quote, onAsk }: { rec: RecordModel; quote: Quote;
         <div className="tray-in">
           <p className="tray-text" aria-live="polite">
             <strong>{plural(list.length, "change")}</strong>
-            <span className="tray-meta">
-              {withSource} with a source, {list.length - withSource} without
-              <span aria-hidden="true"> · </span>
-              {plan.over ? `over the ${MAX_OBJECTIVE.toLocaleString("en-US")}-character limit` : `room for about ${plan.room} more`}
-              <span aria-hidden="true"> · </span>
+            <span aria-hidden="true">·</span>
+            <span className="tray-price">
               <span className="mono">{quote.text}</span>
               {quote.failed && (
                 <>
@@ -781,6 +809,11 @@ function Review({ rec, quote, onClose, onAsk }: { rec: RecordModel; quote: Quote
           <h2 id="review-title" tabIndex={-1}>Review your changes</h2>
           <button className="x" aria-label="Close" onClick={onClose}>×</button>
         </div>
+        <p className="small review-meta">
+          {n - noSource} with a source, {noSource} without
+          <span aria-hidden="true"> · </span>
+          {plan.over ? `over the ${MAX_OBJECTIVE.toLocaleString("en-US")}-character limit` : `room for about ${plan.room} more`}
+        </p>
         <ol className="review">
           {list.map((c) => (
             <li key={c.id} className="review-item">

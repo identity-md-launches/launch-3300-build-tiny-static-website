@@ -17,13 +17,14 @@ import { LEADS_MAX, planLeads } from "./bodies";
 import type { Activity } from "./useActivity";
 import type { Example as Lines3 } from "./example";
 import { SaveStar, useSaved } from "./saved";
+import { localDate } from "./dates";
 import { SORTS, sortOf, sortProjects, figureOf, findMatches, sortFromHash, sortHash, type SortKey, type RowFacts } from "./sorting";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 function when(t: number | null) {
   if (!t) return "not yet";
-  return new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return localDate(t);
 }
 
 /**
@@ -94,10 +95,13 @@ function LightItem({ s, figure }: { s: SubjectSummary; figure: string }) {
     <li className="subject subject-light">
       <SubjectLogo name={s.name} logo={null} size={44} />
       <div className="subject-body">
-        <a className="subject-link" href={subjectHref(s.id)}>
-          <span className="subject-name">{s.name}</span>
-          {s.name !== s.id && <span className="subject-id">{s.id}</span>}
-        </a>
+        <div className="subject-head">
+          <a className="subject-link" href={subjectHref(s.id)}>
+            <span className="subject-name">{s.name}</span>
+            {s.name !== s.id && <span className="subject-id">{s.id}</span>}
+          </a>
+          <SaveStar id={s.id} name={s.name} />
+        </div>
         <p className="subject-line">Open its page to read the record.</p>
         <p className="subject-meta small">
           {figure && <span className="row-figure">{figure}</span>}
@@ -105,7 +109,6 @@ function LightItem({ s, figure }: { s: SubjectSummary; figure: string }) {
           {s.pending > 0 && <span>{plural(s.pending, "request")} pending</span>}
         </p>
       </div>
-      <SaveStar id={s.id} name={s.name} />
     </li>
   );
 }
@@ -117,10 +120,13 @@ function SubjectItem({ s, reading, failed, retry, figure = "" }: { s: SubjectSum
     <li className="subject">
       <SubjectLogo name={s.name} logo={s.logo} size={44} />
       <div className="subject-body">
-        <a className="subject-link" href={subjectHref(s.id)}>
-          <span className="subject-name">{s.name}</span>
-          {s.name !== s.id && <span className="subject-id">{s.id}</span>}
-        </a>
+        <div className="subject-head">
+          <a className="subject-link" href={subjectHref(s.id)}>
+            <span className="subject-name">{s.name}</span>
+            {s.name !== s.id && <span className="subject-id">{s.id}</span>}
+          </a>
+          <SaveStar id={s.id} name={s.name} />
+        </div>
         <p className={`subject-line${s.status && s.status.kind !== "pending" && s.status.kind !== "none" ? " subject-status" : ""}`}>
           {s.hasPage ? s.oneLine || "No one-line description yet." : s.unreadable ? <>{unreadableText(s.unreadable)} See <a href={subjectHref(s.id, "activity")}>Activity</a>.</> : status}
         </p>
@@ -147,7 +153,6 @@ function SubjectItem({ s, reading, failed, retry, figure = "" }: { s: SubjectSum
         )}
         <ReaderNote o={s.outdated} href={subjectHref(s.id, "rebuild")} />
       </div>
-      <SaveStar id={s.id} name={s.name} />
     </li>
   );
 }
@@ -174,11 +179,11 @@ function ListTools({ find, setFind, sort, setSort }: { find: string; setFind: (v
   return (
     <div className="list-tools">
       <div className="field list-find">
-        <label htmlFor="find-project">Find a project</label>
-        <input id="find-project" type="search" autoComplete="off" spellCheck={false} placeholder="Name or domain" value={find} onChange={(e) => setFind(e.target.value)} />
+        <label htmlFor="find-project" className="sr-only">Find a project</label>
+        <input id="find-project" type="search" autoComplete="off" spellCheck={false} placeholder="Find a project by name or domain" value={find} onChange={(e) => setFind(e.target.value)} />
       </div>
       <div className="field list-sort">
-        <label htmlFor="sort-projects">Sort by</label>
+        <label htmlFor="sort-projects" className="sr-only">Sort by</label>
         <select id="sort-projects" value={sort} onChange={(e) => setSort(sortOf(e.target.value))}>
           {SORTS.map((o) => (
             <option key={o.key} value={o.key}>{o.label}</option>
@@ -346,12 +351,17 @@ export function pickExample(digests: Map<string, Pick<Digest, "id" | "example" |
  */
 export const isZoraSupply = (e: Example) => e.from === null || (e.from === EXAMPLE_FALLBACK_FROM && /\bZORA\b/.test(e.proof) && /\btotal supply\b|totalSupply\(\)/i.test(e.proof));
 
-/** The three cards (Proof, Statement, Claim) with one example: the same component on Home and in Docs. */
+/**
+ * The three cards (Proof, Statement, Claim) with one example: the same component on Home and in Docs. Each card links
+ * to the page the example comes from; no logo or caption is shown, so a first visit never shows a stand-in letter.
+ */
 export function ExampleCards({ example, label }: { example: Example; label?: string }) {
+  const href = subjectHref(example.from ?? EXAMPLE_FALLBACK_FROM);
   return (
     <ul className="label-cards" aria-label={label}>
       {EXAMPLE_ORDER.map((l) => (
-        <li key={l.kind} className={`label-card label-${l.kind}`}>
+        <li key={l.kind} className="label-item">
+          <a className={`label-card label-${l.kind}`} href={href}>
           <span className="card-head">
             <span className={`card-icon kind-${l.kind}`}><KindIcon kind={l.kind} size={20} /></span>
             <span className="card-title">
@@ -360,22 +370,10 @@ export function ExampleCards({ example, label }: { example: Example; label?: str
             </span>
           </span>
           <span className="example-text">{example[l.kind]}</span>
+          </a>
         </li>
       ))}
     </ul>
-  );
-}
-
-/** "From the page of <project>" with its logo, linking to that page. */
-export function ExampleFrom({ example, digests, logos }: { example: Example; digests?: Map<string, Digest>; logos?: Map<string, string> }) {
-  return (
-    <p className="small example-from">
-      From the page of{" "}
-      <a className="example-src" href={subjectHref(example.from ?? EXAMPLE_FALLBACK_FROM)}>
-        <SubjectLogo name={example.name ?? fallbackName(digests)} logo={exampleLogo(example, digests, logos)} size={20} />
-        {example.name ?? fallbackName(digests)}
-      </a>
-    </p>
   );
 }
 
@@ -673,7 +671,6 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
       <section className="example" aria-labelledby="example-title">
         <h2 id="example-title" className="sr-only">The three kinds of line</h2>
         <ExampleCards example={example} />
-        <ExampleFrom example={example} digests={digests} logos={logos} />
       </section>
 
       {bad && <p className="warn" role="status">“{bad}” is not a project id. Ids are a domain, such as imd.fun, or chain and contract, such as 1:0x….</p>}
@@ -693,8 +690,10 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
           <>
             {cached && loading && <p className="small" role="status">Shown from this browser. Reading newer blocks…</p>}
             {/* One set of controls above both list states: typing past the last match never unmounts the field. */}
-            <ListTools find={find} setFind={(v) => { setFind(v); setLimit(PAGE_ROWS); }} sort={sort} setSort={setSort} />
-            <ListFilter all={all.length} needs={needs} saved={savedRows} view={view} set={(v) => { setView(v); setLimit(PAGE_ROWS); }} checking={pendingReads} />
+            <div className="list-bar">
+              <ListTools find={find} setFind={(v) => { setFind(v); setLimit(PAGE_ROWS); }} sort={sort} setSort={setSort} />
+              <ListFilter all={all.length} needs={needs} saved={savedRows} view={view} set={(v) => { setView(v); setLimit(PAGE_ROWS); }} checking={pendingReads} />
+            </div>
             {shown.length ? (
               <>
                 <p className="small list-note" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : find.trim() ? `${plural(shown.length, "project")} match “${find.trim()}”.` : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>

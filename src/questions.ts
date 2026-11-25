@@ -51,6 +51,17 @@ export interface QuestionState {
   byJob: Map<string, QuestionAct[]>;
 }
 
+/**
+ * A question as a visitor reads it: raw line references such as "[L42,L55,L91]", "(F1:L3)" or "[A2]" are dropped
+ * from the text. Ids and matching keep the text as written (normQuestion), so links never change.
+ */
+export const cleanQuestion = (q: string): string =>
+  q
+    .replace(/\s*[[(]\s*(?:(?:F\d+:)?[LAQ]\d+[a-z]?\s*(?:[,;]|\band\b|[-–])?\s*)+[\])]/gi, "")
+    .replace(/\s+([?.!,;:])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+
 export const normQuestion = (q: string) => q.trim().replace(/\s+/g, " ").replace(/[.?!\s]+$/, "").toLowerCase();
 /** The element id and link part of a question: "q-<job id>-q3" (#/s/<subject>/q-…). */
 export const questionAnchor = (id: string) => `q-${id.replace(/[^A-Za-z0-9_-]/g, "-")}`;

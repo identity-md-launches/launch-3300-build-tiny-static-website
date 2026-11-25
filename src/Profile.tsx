@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { formatUnits } from "viem";
 import { ACTIONS, ETHERSCAN } from "./config";
 import { jobLink } from "./format";
+import { localDate } from "./dates";
 import { publicClient } from "./reads";
 import { subjectHref } from "./route";
 import { changesOutcome } from "./outcome";
@@ -134,7 +135,7 @@ export function Profile({ address, activity }: { address: string; activity: Acti
               <li key={a.req.requestId} className="card act">
                 <div className="act-top">
                   <span className={`state state-${a.state}`}>{state}</span>
-                  <span className="small">{a.time ? new Date(a.time).toLocaleDateString() : `block ${a.req.blockNumber}`}</span>
+                  <span className="small">{a.time ? localDate(a.time) :`block ${a.req.blockNumber}`}</span>
                 </div>
                 <p className="act-what">
                   {profileKind(a)} · <a href={subjectHref(a.req.subject)}>{a.req.subject}</a>

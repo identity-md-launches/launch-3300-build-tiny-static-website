@@ -1,10 +1,10 @@
 /** How Swarmpedia works (#/docs): two groups, For readers and For builders, with an "On this page" menu. */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ETHERSCAN, IMD, INTAKE } from "./config";
 import { INSTRUCTIONS } from "./instructions";
 import { PUBLISHED_INSTRUCTIONS } from "./counts";
 import { CopyIcon } from "./Record";
-import { EXAMPLE_FALLBACK, ExampleCards, ExampleFrom, isZoraSupply, type Example } from "./Home";
+import { EXAMPLE_FALLBACK, ExampleCards, isZoraSupply, type Example } from "./Home";
 import type { Digest } from "./model";
 import { subjectHref } from "./route";
 import { lineAnchor } from "./format";
@@ -42,23 +42,42 @@ function Mono({ value, href, label }: { value: string; href?: string; label: str
 
 /** "On this page": a sticky column on wide screens, a row of links under the heading on narrow ones. */
 function Toc() {
+  // The section in view: the first one whose box reaches the top 40% of the window.
+  const [active, setActive] = useState<string>(slug(DOCS_SECTIONS[0]));
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
+    const els = DOCS_SECTIONS.map((t) => document.getElementById(`doc-${slug(t)}`)).filter((e): e is HTMLElement => !!e);
+    const seen = new Map<string, boolean>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) seen.set(e.target.id, e.isIntersecting);
+        const first = els.find((el) => seen.get(el.id));
+        if (first) setActive(first.id.slice(4));
+      },
+      { rootMargin: "0px 0px -60% 0px" },
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
   const go = (t: Title) => (e: React.MouseEvent) => {
     e.preventDefault();
+    setActive(slug(t));
     document.getElementById(`doc-${slug(t)}`)?.scrollIntoView({ block: "start" });
   };
+  const current = (t: Title) => (active === slug(t) ? ("location" as const) : undefined);
   return (
     <nav className="doc-toc" aria-label="On this page">
       <p className="doc-toc-title">On this page</p>
       <p className="doc-toc-group">For readers</p>
       <ul>
         {READER_SECTIONS.map((t) => (
-          <li key={t}><a href={`#doc-${slug(t)}`} onClick={go(t)}>{t}</a></li>
+          <li key={t}><a href={`#doc-${slug(t)}`} onClick={go(t)} aria-current={current(t)}>{t}</a></li>
         ))}
       </ul>
       <p className="doc-toc-group">For builders</p>
       <ul>
         {BUILDER_SECTIONS.map((t) => (
-          <li key={t}><a href={`#doc-${slug(t)}`} onClick={go(t)}>{t}</a></li>
+          <li key={t}><a href={`#doc-${slug(t)}`} onClick={go(t)} aria-current={current(t)}>{t}</a></li>
         ))}
       </ul>
     </nav>
@@ -91,7 +110,6 @@ export function Docs({ quote, example = { ...EXAMPLE_FALLBACK, from: null, name:
             <p>{zora ? "One fact, ZORA's total supply, the three ways a line can carry it:" : "One fact, the three ways a line can carry it, as on the home page:"}</p>
             <div className="example doc-example">
               <ExampleCards example={example} label="One fact, three kinds of line" />
-              <ExampleFrom example={example} digests={digests} logos={logos} />
             </div>
             {zora ? (
               <p>To run the proof again: on Base, call <span className="mono">totalSupply()</span> on the ZORA token contract and divide by 10<sup>18</sup>. The line gives the contract, the block and a public RPC.</p>
