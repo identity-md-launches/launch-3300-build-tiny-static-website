@@ -1,7 +1,7 @@
 import { questionAnchor, type Question } from "./questions";
 import { SaveStar } from "./saved";
 
-import { liveFirst, livenessOf, LIVENESS_TAG, type Liveness } from "./liveness";
+import { liveFirst, LIVENESS_TAG, type Liveness } from "./liveness";
 /** The record's tabs: Overview (key facts, summary), Record (filter, sections, one facts table) and Sources. */
 import { disputedCount, rowPatchListsOf, sentenceDispute, type Dispute, type Disputes, type SentenceChange } from "./changeResult";
 import { Fragment, useEffect, useState } from "react";
@@ -9,9 +9,9 @@ import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { addressText, historicFor, shortJobId } from "./addresses";
 import { explorerAddressUrl } from "./subject";
-import { addressRuns, chainEntries, chainTag, chainText, isChainName, takeAddress } from "./addrDisplay";
+import { addressRuns, chainOfAddress, chainTag, chainText, isChainName, takeAddress } from "./addrDisplay";
 import { decimalsOf, exactAmount, wholeFact } from "./amounts";
-import { itemEntries, keyFacts, sharedChain, splitAddresses, valueEntries, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem } from "./keyfacts";
+import { inviteName, keyFacts, liveRowsFirst, sharedChain, shownEntries, splitAddresses, statusOfContract, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem, type StatusOf } from "./keyfacts";
 import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
 import { BadgeMark, KindIcon, ToneMark } from "./KindIcon";
@@ -180,27 +180,25 @@ const shortLink = (url: string) => linkText(url).replace(/(?:0x[0-9a-fA-F]{12,}|
 
 /** A value: its text with every address as Addr (or an Account list, tokens, entries, chains). */
 export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
-  if (/^chains?$/i.test(row.label.trim())) {
-    const entries = row.items?.length
-      ? row.items.map((v) => ({ text: [v.name, v.text].filter(Boolean).join(" "), chain: v.chain || null }))
-      : (row.values.length ? row.values : row.value.split(/;|\n/)).map((t) => ({ text: t }));
-    const list = chainEntries(entries);
-    if (list.length)
-      return (
-        <ul className="kf-values">
-          {list.map((c, i) => (
-            <li key={i}>{chainText(c)}</li>
-          ))}
-        </ul>
-      );
-  }
   const named = !!row.mainName && namesNothing(row);
-  if (row.items?.length) {
+  const shown = shownEntries(row, contractStatus);
+  if (shown.chains)
+    return (
+      <ul className="kf-values">
+        {shown.chains.map((c, i) => (
+          <li key={i}>
+            {chainText(c)}
+            <LiveTag s={c.status} />
+          </li>
+        ))}
+      </ul>
+    );
+  if (shown.items) {
     const shared = sharedChain(row, chain);
     return (
       <>
         {shared && <p className="kf-shared small">All on {shared}</p>}
-        <ShowSome className="kf-values kf-items" limit={listLimit(row.label)} items={liveFirst(row.items.flatMap((v, k) => itemEntries(row.label, v).map((e) => ({ e, st: livenessOf({ ...e, status: row.items![k]?.status ?? contractStatus(e.address) }) }))), (x) => x.st).map(({ e: v, st }, i) => (
+        <ShowSome className="kf-values kf-items" limit={listLimit(row.label)} items={shown.items.map(({ v, st }, i) => (
             <li key={i}>
               {named && i === 0 && <strong className="kf-main-name">{row.mainName}</strong>}
               <ItemValue v={v} chain={chain} tag={!shared} />
@@ -210,37 +208,39 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
       </>
     );
   }
-  if (row.values.length)
+  // A list of texts, given as a list or as one text of several entries; the row's own link follows its last entry.
+  if (shown.values)
     return (
-      <ShowSome className="kf-values" limit={listLimit(row.label)} items={liveFirst(row.values.flatMap((v) => valueEntries(row.label, v)).map((v) => ({ v, st: livenessOf({ text: v }) })), (x) => x.st).map(({ v, st }, i) => (
+      <ShowSome className="kf-values" limit={listLimit(row.label)} items={shown.values.map(({ v, st, last }, i) => (
           <li key={i}>
-            <Runs text={v} chain={chain} />
+            {last ? <ValueText text={v} url={safeHref(row.url) && addressRuns(row.value).some((r) => r.kind === "address") ? row.url : ""} chain={chain} /> : <Runs text={v} chain={chain} />}
             <LiveTag s={st} />
           </li>
         ))} />
     );
-  if (row.accounts.length)
+  if (shown.accounts)
     return (
       <ul className="kf-accounts">
-        {row.accounts.map((a, i) => (
+        {shown.accounts.map(({ v: a, st }, i) => (
           <li key={i}>
             {/* The shared values layout (name in bold, text, link), with the account's own badge on the same item. */}
             <ItemValue v={{ name: accountName(a.name, a.url), text: a.text, url: safeHref(a.url) ? a.url : "", address: "", chain: "", explorer: "" }} chain="" />
             {row.perAccount && a.status && <AccountBadge b={a.status} />}
+            <LiveTag s={st} />
           </li>
         ))}
       </ul>
     );
-  if (row.tokens.length) {
+  if (shown.tokens)
     // One entry per token: symbol, purpose, then each address it names as Addr with its chain tag.
     return (
-      <ShowSome className="kf-tokens" limit={listLimit(row.label)} items={liveFirst(row.tokens.map((t, i) => ({ t, i, st: livenessOf({ status: t.status, name: t.symbol, text: t.purpose, chain: t.chain }) })), (x) => x.st).map(({ t, i, st }) => (
+      <ShowSome className="kf-tokens" limit={listLimit(row.label)} items={shown.tokens.map(({ v: t, first, st }, i) => (
           <li key={i} className="tok-line">
             {t.symbol && <strong className="tok-symbol">{t.symbol}</strong>}
             {/* Its own words, then the home chain's address, then "also on" with each other chain's own address and tag. */}
             {t.purpose && <span className="tok-purpose"><Runs text={t.purpose} /></span>}
             {/* Only the first token may take the subject's home chain; another without a chain of its own gets no tag. */}
-            {t.address && <Addr address={t.address} chain={chainTag(i === 0 ? t.chain || chain : t.chain)} url={t.url} />}
+            {t.address && <Addr address={t.address} chain={chainOfAddress(t.address, t.chain, first ? chain : "")} url={t.url} />}
             {(t.also?.length ?? 0) > 0 && (
               <span className="tok-also">
                 <span className="tok-also-k">also on</span>
@@ -257,26 +257,12 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
           </li>
         ))} />
     );
-  }
-  const entries = valueEntries(row.label, row.value);
-  /** Every entry of a Test networks row is a test network; elsewhere an entry's words decide. */
-  const testRow = /^test networks?$/i.test(row.label.trim());
-  if (entries.length > 1)
-    // A legacy text list ("ONE: 1; TWO: 2; …"): live entries first, each tagged, and Supply and Tokens cut at 3.
-    return (
-      <ShowSome className="kf-values" limit={listLimit(row.label)} items={liveFirst(entries.map((v, i) => ({ v, i, st: testRow ? ("test" as const) : livenessOf({ text: v }) })), (x) => x.st).map(({ v, i, st }) => (
-          <li key={i}>
-            {i === entries.length - 1 ? <ValueText text={v} url={safeHref(row.url) && addressRuns(row.value).some((r) => r.kind === "address") ? row.url : ""} chain={chain} /> : <Runs text={v} chain={chain} />}
-            <LiveTag s={st} />
-          </li>
-        ))} />
-    );
   return (
     <>
       {named && <><strong className="kf-main-name">{row.mainName}</strong>{" "}</>}
       <ValueText text={row.value} url={row.url} chain={chain} />
       {row.note && <span className="small"> {row.note}</span>}
-      {testRow && <>{" "}<LiveTag s="test" /></>}
+      {shown.single !== "live" && <>{" "}<LiveTag s={shown.single} /></>}
     </>
   );
 }
@@ -306,33 +292,16 @@ export function LiveTag({ s }: { s: Liveness | undefined | null }) {
 }
 
 /** The status the page gives a contract at this address, if any (set while a page renders its Key facts). */
-let contractStatuses = new Map<string, Liveness>();
+let contractStatus: StatusOf = () => null;
 export const setContractStatuses = (contracts: { address: string; status: string }[]) => {
-  contractStatuses = new Map(contracts.filter((c) => c.status === "test" || c.status === "past" || c.status === "live").map((c) => [c.address.toLowerCase(), c.status as Liveness]));
+  contractStatus = statusOfContract(contracts as Parameters<typeof statusOfContract>[0]);
 };
-const contractStatus = (address: string): Liveness | null => (address ? contractStatuses.get(address.toLowerCase()) ?? null : null);
 
 /**
  * An Official accounts entry's name. A Discord or Telegram invite whose name is only its invite code (or the invite
  * link itself) reads "Discord server" or "Telegram group".
  */
-export function accountName(name: string, url: string): string {
-  const n = name.trim();
-  const discord = /(?:discord\.gg|discord(?:app)?\.com\/invite)\/([\w-]+)/i.exec(url);
-  const tg = /(?:t\.me|telegram\.me)\/(?:joinchat\/|\+)([\w-]+)/i.exec(url);
-  const code = (discord ?? tg)?.[1] ?? "";
-  if (!code) return name;
-  // The name with any invite address, "@" and "on Discord" taken off: only the code left means no real name was given.
-  const bare = n
-    .replace(/^https?:\/\//i, "")
-    .replace(/^(?:discord\.gg|discord(?:app)?\.com\/invite|t\.me|telegram\.me)\/(?:joinchat\/|\+)?/i, "")
-    .replace(/^@/, "")
-    .replace(/\s+on\s+(?:discord|telegram)$/i, "")
-    .replace(/^(?:discord|telegram)(?:\s+invite)?:?\s*/i, "")
-    .trim();
-  if (n && bare.toLowerCase() !== code.toLowerCase() && !/^(?:discord|telegram)(?:\s+invite)?$/i.test(n)) return name;
-  return discord ? "Discord server" : "Telegram group";
-}
+export const accountName = (name: string, url: string): string => inviteName(name, url) ?? name;
 
 /** "Answer this": Contribute opens with "Answer to: <the question>" on the first line and the cursor on the next. */
 export function AnswerLink({ q, m }: { q: Question; m: Pick<RecordModel, "subject"> }) {
@@ -432,7 +401,7 @@ function ItemValue({ v, chain, tag = true }: { v: ShownItem; chain: string; tag?
       {v.address ? (
         <>
           {" "}
-          <Addr address={v.address} chain={chainTag(v.chain || chain)} url={v.explorer} tag={tag} />
+          <Addr address={v.address} chain={chainOfAddress(v.address, v.chain, chain)} url={v.explorer} tag={tag} />
         </>
       ) : (
         v.url && (
@@ -512,8 +481,8 @@ const rowAddresses = (r: KeyRow, chain = ""): { address: string; chain: string }
   const seen = new Set<string>();
   const out: { address: string; chain: string }[] = [];
   const add = (address: string, c: string) => { const k = address.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push({ address, chain: chainTag(c) }); } };
-  for (const t of r.tokens) { if (t.address) add(t.address, t.chain || chain); for (const x of addressRuns(t.purpose, t.chain || chain)) if (x.kind === "address") add(x.address, x.chain); }
-  for (const t of r.items ?? []) { if (t.address) add(t.address, t.chain || chain); for (const x of addressRuns(t.text, t.chain || chain)) if (x.kind === "address") add(x.address, x.chain); }
+  for (const t of r.tokens) { if (t.address) add(t.address, t.chain || (t.address.startsWith("0x") ? chain : "")); for (const x of addressRuns(t.purpose, t.chain || chain)) if (x.kind === "address") add(x.address, x.chain); }
+  for (const t of r.items ?? []) { if (t.address) add(t.address, t.chain || (t.address.startsWith("0x") ? chain : "")); for (const x of addressRuns(t.text, t.chain || chain)) if (x.kind === "address") add(x.address, x.chain); }
   for (const v of [r.value, ...r.values]) for (const x of addressRuns(v, chain)) if (x.kind === "address") add(x.address, x.chain);
   return out;
 };
@@ -686,7 +655,7 @@ export function useKeyFacts(m: RecordModel) {
   const kf = keyFacts(m.page, m.resolve, all, sourceUrl);
   // Patches from changes jobs not yet folded in: the row's new value rests on the patch's lines, in that job's scope.
   const patches = new Map([...rowPatchListsOf(m.after)].map(([k, ps]) => [k, ps.map((p) => ({ value: p.patch.value, lines: m.editRefs(p.job, p.patch.lines, null), payer: p.payer, at: p.job.doneTime ?? null, op: p.patch.op, label: p.patch.target.trim() }))] as const));
-  return { ...kf, rows: withDisputes(withPatches(kf.rows, patches, all, sourceUrl, { channels: m.page?.channels ?? [], domain: m.page?.domain ?? "" }), m.disputes) };
+  return { ...kf, rows: liveRowsFirst(withDisputes(withPatches(kf.rows, patches, all, sourceUrl, { channels: m.page?.channels ?? [], domain: m.page?.domain ?? "" }), m.disputes), contractStatus) };
 }
 
 /** A Key facts row a newer source contradicts or outdates reads "Contradicted" or "Superseded" in place of its badge. */

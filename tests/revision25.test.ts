@@ -61,7 +61,7 @@ describe("a first page is checked against a fresh scan (61494ef6)", () => {
   it("Home holds an unmatched lookup while the list comes from the cache", () => {
     const src = readFileSync("src/Home.tsx", "utf8");
     expect(src).toContain("const pendingScan = items === null || !!cached;");
-    expect(src).toContain("if (pendingScan || waits(parsed)) {");
+    expect(src).toContain("if (pendingScan || pendingReads) {");
   });
 });
 

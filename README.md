@@ -23,6 +23,7 @@ npx vite-node scripts/agents-md.ts   # rewrite public/agents.md from src/bodies.
 # browser checks on dist/ against the live record (needs Playwright with a Chromium that can start):
 IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/browser/read.mjs
 IMD_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/browser/pay.mjs
+npx vite-node scripts/published.ts   # rewrite src/published.json from the Intake and api.imd.fun, then npm run build
 # tests/e2e.mjs is the older fixture suite; its wording checks predate Swarmpedia and several fail (see Validation)
 ```
 
@@ -213,19 +214,23 @@ record has loaded, so the channels are real. The full body is shown before any w
   given, and logos are stored in the `files` store; old copies in localStorage are removed on the first visit.
   The home list shows each subject's small **digest** (name, one_line, counts, logo hash, changed date, listed
   contracts and the out-of-date count; `digests` store), and each logo once under its SHA-256 in the same store.
-- **Home fills itself in.** When Home loads it reads, without the subject being opened, the page file, logo, other
-  result files and panel answers of every listed subject that has no digest, a digest older than its newest results,
-  or a digest that recorded a failed read. One queue serves the whole visit: 3 subjects at a time, **newest first**
-  (subjects with no digest before the others), and a newer chain scan replaces what is still waiting instead of
-  starting more reads. Each row fills in as its digest arrives; while it loads it is a light placeholder row (its
-  id and two grey bars), never an instruction to open the page. A page that read while another of its result files
-  failed is still shown, with "Counts may be short: 1 result file could not be read" and **Try again**; a page file
-  that failed shows its error and Try again. An advertised logo that failed is kept apart from "no logo" and read
-  again on the next visit. Only small values (job ids, block times, ENS names, panel reads) stay in localStorage.
-- **Lookup while reading.** A contract address (or domain) with no match while those reads are under way says
-  "Checking project contracts…" and is answered when a read finds it (the site opens that project) or all reads
-  have finished (then "No page yet" and Add this project). "Add this project" checks again before the paid dialog
-  opens.
+- **Home draws from the scan.** The list shows as soon as the Intake scan is known: each row has its project, its jobs
+  and its place in the order (by block), newest first. Each request's Intake entry, block times and payer name are
+  merged in as they arrive (`mergeItems` in `src/useActivity.ts`), so one slow answer holds back only its own details.
+  Names, counts, launch dates and contracts come from this browser's digests, else from **`src/published.json`**: one
+  compact record per project, written by `npx vite-node scripts/published.ts [rpc url]` with the site's own code and
+  shipped with the site. A published record is used only while the scan holds every result it was taken from; it has
+  no logo image and no example. Regenerate it before a release (then `npm run build`). Home never reads a project's
+  full record; opening the project's page does, and "Try again" on a row whose files failed reads that one project
+  again. While rows are still filling in the totals say "about".
+- **Figures awaiting an update.** A digest records the results it was taken from. When the scan lists other results,
+  its open questions, proofs, contradicted lines and launch date are not used for sorting: the row goes after the known
+  ones and says "Count awaiting update" or "Launch date awaiting update". "No launch date" is said only of a page known
+  to have no Launched fact. Results a full read left out are recorded in the digest (`uncounted`) and never make it look old.
+- **Contract lookup.** Answered from the contracts in digests and published records, then from contracts a project's
+  own requests on the Intake name; it reads no record. When every project's contracts are known and none lists the
+  address, "No page yet" and "Add this project" show. When some are not known here, the site says so and links to
+  those projects' pages; "None of these: add it" then shows the offer.
 - While anything is pending, the page re-reads every 30 seconds.
 
 ## Reading results: the paths used
@@ -928,6 +933,38 @@ pins the site's bodies to them.
 
 ## Validation results
 
+### 2026-11-25, review fixes to revision 28 (after the last source change)
+
+Run on this machine, on the final source:
+
+- `npm run build` (tsc --noEmit, then vite build): exit 0; `dist/` rebuilt. `npx vitest run`: **563 of 563 pass in 40
+  files**; new `tests/revision29.test.ts` (24 tests, one group per finding). Vitest also prints one
+  `[vitest-worker]: Timeout calling "onTaskUpdate"` here, as it did before these changes; no test fails with it.
+- `npx vite-node scripts/published.ts`: 7 projects from the Intake and api.imd.fun, every file read, each current.
+- Chromium on `dist/` against the live record (public reads answered through the harness in `tests/browser/`):
+  - 390 wide, empty storage, one Intake answer held: 7 of 7 rows drawn, totals "About 7 projects, 877 lines", no
+    `/artifacts/` request; released: "7 projects, 877 lines, 242 of them proofs…".
+  - Launch date sort on that cold visit: 6 dates, then Tacit "No launch date". Most open questions: 11, 10, 10, 9, 9, 6, 3,
+    and the same after opening all seven pages.
+  - Looking up 0x1234…7890 on that cold visit: the No page yet offer, 0 `/artifacts/` requests, still on Home. The IMD
+    token's address opens imd.fun. With the published records made unusable: the "No record known here lists" panel with the
+    7 projects' links, 0 `/artifacts/` requests, no overflow at 390; "None of these: add it" then shows the offer.
+  - All seven subjects show Key facts and open questions; "Not read" in Activity is the same as in the previous export
+    (imd.fun 2, ens.domains 1, imdusd.com 2, the others 0). No console or page error.
+  - `tests/browser/read.mjs`: its checks pass.
+- `tests/e2e.mjs` (the older fixture suite) stops at the same place on the previous export and on this one: its first-screen
+  checks predate Swarmpedia, so its later checks did not run. Its one new difference, a row sampled before its
+  block time arrived, is now accepted by that check.
+- Design probe `taste.mjs --out test/scratch/taste`: every check passes; the 390 first screen shows the headline, the lookup
+  bar and Look it up.
+- Better Interface, the changed parts, six domains. Accessibility: the unsettled lookup is a polite status, its links
+  are real links 44px tall and its button is named. Layout: links wrap, 320 to 390 without overflow (measured at 390).
+  Writing: the panel says what is not known, where to look and the way on; a sort figure says what it waits for.
+  Typography and colours: existing sizes and tokens only. UI: no new control style. Finding fixed: a row whose time is
+  not read yet would have said "Changed not yet" (`src/Home.tsx`, `Changed`).
+- Not tested: real wallets and payments; a real case-insensitive filesystem (a test checks that no two module names in
+  `src/` collide).
+
 ### 2026-11-24, review fixes to revision 24 (after the last source change)
 
 Run on this machine, on the final source:
@@ -1085,8 +1122,8 @@ test and the e2e suite brought up to date with items A to E). Earlier details an
 
 - Public RPCs can rate-limit `eth_getLogs`. The site falls back across three, halving the range, and Activity
   offers Refresh.
-- On a first visit Home downloads every listed subject's result files (3 at a time) to fill its rows; with many
-  subjects the last rows fill in later. Their digests make later visits instant.
+- On a first visit a project with results newer than `src/published.json` shows a light row (its domain, jobs and date)
+  until its page is opened.
 - Where IndexedDB is blocked (some private windows), the site keeps its cache in memory for that visit only.
 - The Rabby "Open in" row opens rabby.io, because Rabby documents no in-app browser link.
 - Payments go to IMD and are not refunded. A refused body is a spent payment.

@@ -3,12 +3,12 @@
  * contracts, what the out-of-date note needs) kept in IndexedDB, plus each logo once under its hash. A digest is
  * written when a subject's files are read: when its page is opened. The home list never reads a full record to draw
  * itself: it is drawn from the Intake scan and these cached digests, and a subject with no digest yet shows a light
- * row from the scan alone. The one exception is a lookup of a contract address that no known row lists while some
- * rows have no digest: before offering a paid page that could duplicate one, readAll() reads those subjects' files,
- * a few at a time and newest first.
+ * row from the scan alone, or the compact record published with the site (published.json) while it is taken from
+ * results the scan holds. A contract lookup uses these too: it never reads a record.
  */
-import { useEffect, useRef, useState } from "react";
-import { digestOf, needsRetry, resultSig, type Digest } from "./model";
+import { useEffect, useMemo, useRef, useState } from "react";
+import published from "./published.json";
+import { digestOf, isCurrent, leftOut, needsRetry, resultSig, type Digest } from "./model";
 import { kvAll, kvSet } from "./store";
 import type { Activity } from "./useActivity";
 
@@ -38,6 +38,26 @@ export function splitDigests(values: unknown[]): { digests: Map<string, Digest>;
   return { digests, logos };
 }
 
+/**
+ * The stored digests, with the compact records published with the site for subjects this browser has none for (or an
+ * older one than the results the scan holds). A published record is used only when the scan holds every result it was
+ * taken from; it carries no example and no logo image. Pure, for tests.
+ */
+export function withPublished(stored: Map<string, Digest>, items: Activity[] | null, from: Digest[] = published as unknown as Digest[]): Map<string, Digest> {
+  if (!items?.length) return stored;
+  let out = stored;
+  for (const p of from) {
+    const list = items.filter((a) => a.req.subject === p.id);
+    const have = new Set(resultSig(list).split(","));
+    if (p.v !== 9 || !p.sig || !p.sig.split(",").every((x) => have.has(x))) continue;
+    const mine = stored.get(p.id);
+    if (mine && ((isCurrent(mine, list) && mine.open !== undefined) || !isCurrent(p, list))) continue;
+    if (out === stored) out = new Map(stored);
+    out.set(p.id, mine?.example ? { ...p, example: mine.example } : p);
+  }
+  return out;
+}
+
 const newest = (list: Activity[]) => Math.max(0, ...list.map((a) => a.doneTime ?? a.time ?? Number(a.completion?.blockNumber ?? a.req.blockNumber)));
 
 /**
@@ -52,7 +72,7 @@ export function digestQueue(items: Activity[], digests: Map<string, Digest>): st
     .filter(([, list]) => list.some((a) => a.filesRead === false))
     .map(([id, list]) => {
       const d = digests.get(id);
-      return { id, missing: !d, again: !!d && (d.sig !== resultSig(list) || needsRetry(d)), t: newest(list) };
+      return { id, missing: !d, again: !!d && (!isCurrent(d, list) || needsRetry(d)), t: newest(list) };
     })
     .filter((x) => x.missing || x.again);
   return want.sort((a, b) => Number(b.missing) - Number(a.missing) || b.t - a.t || a.id.localeCompare(b.id)).map((x) => x.id);
@@ -103,16 +123,13 @@ export interface DigestState {
   busy: boolean;
   /** Reads a subject's files again (its failed page, result files or logo), now. */
   retry: (id: string) => void;
-  /** Reads the files of every subject that has no digest yet: only for a contract lookup no known row answers. */
-  readAll: () => void;
 }
 
 /**
  * Writes a subject's digest whenever its files are read (its page is opened). The home page reads no subject's files
- * by itself: only readAll() (a contract lookup no known row answers) or retry() (a visitor's Try again) start reads,
- * through one DigestQueue, DIGEST_CONCURRENCY at a time, filling each row in as its digest arrives.
+ * by itself: only retry() (a visitor's Try again) starts a read, through one DigestQueue.
  */
-export function useDigests(items: Activity[] | null, subject: string | null, readSubject?: (id: string) => Promise<Activity[]>): DigestState {
+export function useDigests(items: Activity[] | null, subject: string | null, readSubject?: (id: string) => Promise<Activity[]>, all: Activity[] | null = items): DigestState {
   const [state, setState] = useState<{ digests: Map<string, Digest>; logos: Map<string, string> }>({ digests: new Map(), logos: new Map() });
   const [loaded, setLoaded] = useState(false);
   const [reading, setReading] = useState<Set<string>>(new Set());
@@ -121,12 +138,10 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
   const tried = useRef(new Map<string, string>());
   const latest = useRef(state);
   latest.current = state;
-  /** Set by readAll(): read every subject that has no digest (a contract lookup needs every row's contracts). */
-  const wantAll = useRef(false);
   /** Subjects a visitor asked to read again with Try again. */
   const wanted = useRef(new Set<string>());
-  const ctx = useRef({ items, subject, readSubject, loaded });
-  ctx.current = { items, subject, readSubject, loaded };
+  const ctx = useRef({ items, subject, readSubject, loaded, all });
+  ctx.current = { items, subject, readSubject, loaded, all };
 
   useEffect(() => {
     let live = true;
@@ -143,7 +158,7 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
   }, []);
 
   const remember = (id: string, mine: Activity[]): boolean => {
-    const d = digestOf(id, mine);
+    const d = digestOf(id, mine, leftOut((ctx.current.all ?? []).filter((a) => a.req.subject === id), mine));
     if (!d) return false;
     const logo = mine.find((a) => a.logoHash && a.logo && a.logoHash === d.logoHash)?.logo ?? null;
     const s = latest.current;
@@ -175,7 +190,7 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
   const plan = () => {
     const { items: its, subject: open, readSubject: read, loaded: ready } = ctx.current;
     if (!its || open || !read || !ready || !queue.current) return;
-    const want = digestQueue(its, latest.current.digests).filter((id) => (wantAll.current ? !latest.current.digests.has(id) : false) || wanted.current.has(id));
+    const want = digestQueue(its, latest.current.digests).filter((id) => wanted.current.has(id));
     queue.current.plan(want.filter((id) => tried.current.get(id) !== sigOf(its, id)));
   };
   queue.current ??= new DigestQueue(
@@ -202,16 +217,11 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
     () => plan(),
   );
 
-  // Reads asked for (readAll, Try again) continue as the list changes; nothing is read unasked.
+  // Reads asked for (Try again) continue as the list changes; nothing is read unasked.
   useEffect(() => {
     plan();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, subject, readSubject, loaded]);
-
-  const readAll = () => {
-    wantAll.current = true;
-    plan();
-  };
 
   const retry = (id: string) => {
     wanted.current.add(id);
@@ -224,5 +234,6 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
     plan();
   };
 
-  return { ...state, reading, failed, busy: !loaded || reading.size > 0, retry, readAll };
+  const digests = useMemo(() => withPublished(state.digests, items), [state.digests, items]);
+  return { digests, logos: state.logos, reading, failed, busy: !loaded || reading.size > 0, retry };
 }

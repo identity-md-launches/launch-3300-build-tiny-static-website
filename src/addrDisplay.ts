@@ -25,14 +25,35 @@ export function isChainName(name: string): boolean {
   return all.includes(n) || all.includes(`${n} chain`);
 }
 const NAME_RE = NAMES.map((n) => n.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")).join("|");
-/** What may follow an address to name its chain: ", on Ethereum (chain 1)", " Base", " on chain 8453". */
-const AFTER = new RegExp(`^,?\\s*(?:on\\s+(?:the\\s+)?)?(?:(${NAME_RE})(?:\\s*,?\\s*(?:\\(\\s*(?:chain(?:\\s*id)?\\s*)?\\d+\\s*\\)|chain(?:\\s*id)?\\s*\\d+)(?![\\w]))?|\\(?chain(?:\\s*id)?\\s*(\\d+)\\)?)`, "i");
+/** Chains whose addresses are not 0x ones, as written after an address; each with its explorer in addr.ts. */
+const OTHER_NAMES = ["Solana mainnet-beta", "Solana mainnet", "Solana devnet", "Solana testnet", "Solana", "Tron mainnet", "Tron", "Bitcoin", "Sui mainnet", "Sui", "Aptos mainnet", "Aptos", "Cosmos Hub", "Cosmos", "TON mainnet", "TON", "NEAR Protocol", "NEAR"];
+const OTHER_RE = OTHER_NAMES.map((n) => n.replace(/-/g, "\\-")).join("|");
+const OTHER_LABEL: [RegExp, string][] = [[/^solana$/i, "Solana"], [/^solana mainnet-beta$/i, "Solana"], [/^solana (devnet|testnet)$/i, "Solana $1"], [/^tron$/i, "Tron"], [/^bitcoin$/i, "Bitcoin"], [/^sui$/i, "Sui"], [/^aptos$/i, "Aptos"], [/^cosmos(?: hub)?$/i, "Cosmos"], [/^ton$/i, "TON"], [/^near(?: protocol)?$/i, "NEAR"]];
+/** What may follow an address to name its chain: ", on Ethereum (chain 1)", " Base", " on Tron", " on chain 8453". */
+const AFTER = new RegExp(`^,?\\s*(?:on\\s+(?:the\\s+)?)?(?:(${NAME_RE}|(?:${OTHER_RE})(?!\\w))(?:\\s*,?\\s*(?:\\(\\s*(?:chain(?:\\s*id)?\\s*)?\\d+\\s*\\)|chain(?:\\s*id)?\\s*\\d+)(?![\\w]))?|\\(?chain(?:\\s*id)?\\s*(\\d+)\\)?)`, "i");
 const ADDRESS = /0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g;
 /** A 0x address or a non-0x one (Solana, Tron, Cosmos, TON), for the runs of a text. */
 const ANY_ADDRESS = new RegExp(`${ADDRESS.source}|${OTHER_ADDRESS_IN.source}`, "g");
 
 /** "Base" for "Base mainnet", "8453" or "base"; "" for nothing. */
-export const chainTag = (v: string) => (v ? chainLabel(v.replace(/\s+mainnet$/i, "")) : "");
+export const chainTag = (v: string) => {
+  const t = v.trim().replace(/\s+mainnet$/i, "");
+  const other = OTHER_LABEL.find(([re]) => re.test(t));
+  return other ? t.replace(other[0], other[1]).replace(/(devnet|testnet)$/i, (x) => x.toLowerCase()) : t ? chainLabel(t) : "";
+};
+
+/** "near" and "ton" are also words: without "on" before them they name a chain only when written as one. */
+const isWord = (name: string, matched: string) => /^(?:near|ton)$/.test(name) && !/\bon\s/i.test(matched);
+/** "(Tron)" or "(on Tron)" right after an address that is not a 0x one. */
+const PAREN_CHAIN = new RegExp(`^\\s*\\(\\s*(?:on\\s+)?(${OTHER_RE})\\s*\\)`, "i");
+/**
+ * The chain an address is shown on: the one written for it, else the fallback (the main contract's chain). A fallback
+ * EVM chain never applies to an address that is not a 0x one: its own form then names its explorer.
+ */
+export function chainOfAddress(address: string, written: string, fallback = ""): string {
+  if (written) return chainTag(written);
+  return /^0x/i.test(address) || anyChainIdOf(fallback) === null ? chainTag(fallback) : "";
+}
 
 /** The runs of a text: plain text and addresses, each address with the chain written after it, else `fallback`. */
 export function addressRuns(text: string, fallback = ""): Run[] {
@@ -46,11 +67,17 @@ export function addressRuns(text: string, fallback = ""): Run[] {
     let end = start + m[0].length;
     const after = AFTER.exec(text.slice(end));
     let chain = "";
-    if (after && after[0].trim()) {
+    if (after && after[0].trim() && !isWord(after[1] ?? "", after[0])) {
       chain = after[1] ? chainTag(after[1]) : chainTag(after[2]!);
       end += after[0].length;
+    } else if (!m[0].startsWith("0x")) {
+      const paren = PAREN_CHAIN.exec(text.slice(end));
+      if (paren) {
+        chain = chainTag(paren[1]!);
+        end += paren[0].length;
+      }
     }
-    out.push({ kind: "address", address: m[0], chain: chain || chainTag(fallback) });
+    out.push({ kind: "address", address: m[0], chain: chainOfAddress(m[0], chain, fallback) });
     at = end;
   }
   if (at < text.length) out.push({ kind: "text", text: text.slice(at) });
@@ -77,7 +104,7 @@ const NEXT_ADDRESS = /^\s*(?:\(\s*chain(?:\s*id)?\s*\d+\s*\)\s*)?(?:(?:at|contra
 function chainAfter(text: string, end: number): { chain: string; length: number } | null {
   const rest = text.slice(end);
   const after = AFTER.exec(rest);
-  if (!after || !after[0].trim()) return null;
+  if (!after || !after[0].trim() || isWord(after[1] ?? "", after[0])) return null;
   if (NEXT_ADDRESS.test(rest.slice(after[0].length))) return null;
   return { chain: after[1] ? chainTag(after[1]) : chainTag(after[2]!), length: after[0].length };
 }

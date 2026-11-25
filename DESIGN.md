@@ -266,3 +266,15 @@ No tracked capitals, no eyebrows above headings.
 - **Disclosure chevron**: `.upkeep > summary` and `.upkeep details > summary` are flex rows (8px gap) in
   `--color-accent-solid` with a 7px two-border chevron (`::before`) pointing right, turned down on `[open]`;
   the transition is off under reduced motion; the WebKit marker is hidden.
+
+## Revision 29 additions
+
+- **Rows before details** (`src/Home.tsx`, `src/useActivity.ts`): a row appears as soon as the scan lists its project. Its
+  date reads "Reading when it changed…" until the block time arrives; the totals line starts with "About" meanwhile.
+- **Awaiting figure** (`.row-figure`): "Count awaiting update" or "Launch date awaiting update", same size and colour as
+  any sort figure, on rows placed after the known ones.
+- **Lookup not settled** (`.offer` with `.unsure-links`): the offer's panel with one sentence, a wrapping row of project
+  links (each 44px tall, up to 8, then "and N more in the list below") and a plain button "None of these: add it".
+- **Key facts order** (`liveRowsFirst` in `src/keyfacts.ts`): rows with a live entry, then rows with only test entries,
+  then only past ones, before the eight-row limit. Every row type draws from `shownEntries`, so each test or past entry
+  has its `.live-tag`.

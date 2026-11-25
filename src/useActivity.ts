@@ -5,7 +5,7 @@
  * and then scans only newer blocks. Result files (page, lines, edit, logo) are read for the subject whose page is
  * open, and by readSubject, which the home list uses to take a digest of each subject it has none for (digest.ts).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Hex } from "viem";
 import { fromStored, loadTaggedRequests, stateOf, getBlockTime, toStored, type Completion, type ScanState, type TaggedRequest } from "./chain";
 import { dropOldFileCache, kvGet, kvSet } from "./store";
@@ -65,6 +65,11 @@ export interface Activity {
    * Activity only, with this reason, and never becomes the page, adds lines, sources or counts.
    */
   notRead?: string | null;
+  /**
+   * True while only the Intake scan is known: its Intake entry, block times and ENS name are still being read. The row
+   * is drawn already, and each of them is merged in as it arrives.
+   */
+  metaPending?: boolean;
 }
 
 export const isSourceJob = (r: TaggedRequest) => r.action === ACTIONS.research && r.kind === "source";
@@ -119,7 +124,7 @@ async function timeOf(r: { blockNumber: bigint }): Promise<number | null> {
  */
 export type ReadMode = boolean | "meta";
 
-async function follow(req: TaggedRequest, completion: Completion | undefined, mode: ReadMode): Promise<Activity> {
+export async function follow(req: TaggedRequest, completion: Completion | undefined, mode: ReadMode): Promise<Activity> {
   const withFiles = mode === true;
   const state = stateOf(completion);
   const final = state !== "pending";
@@ -215,7 +220,66 @@ async function follow(req: TaggedRequest, completion: Completion | undefined, mo
   return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, filesRead: read, notRead };
 }
 
+/**
+ * A request as the Intake scan alone gives it, at once: its state and whatever this browser has cached of its time,
+ * job, payer name and refusal. follow() replaces it when its metadata has been read.
+ */
+export function scannedActivity(req: TaggedRequest, completion: Completion | undefined): Activity {
+  const state = stateOf(completion);
+  const research = resultNameOf(req) !== null;
+  const shape = research ? shapeOf(req) : null;
+  const notRead = shape && !shape.ok && !shape.legacy ? notReadText(shape.why) : null;
+  const hasFiles = research && !notRead && state === "completed";
+  const hasAnswer = req.action.startsWith("oracle.") && state === "completed";
+  const ended = completion ? cacheGet<number>(`time:${completion.blockNumber}`) : null;
+  return {
+    req, completion, state,
+    time: cacheGet<number>(`time:${req.blockNumber}`) ?? null,
+    ens: cacheGet<{ name: string | null }>(`ens:${req.payer.toLowerCase()}`)?.name ?? null,
+    jobId: cacheGet<string>(`job:${req.requestId}`) ?? null,
+    oracle: null,
+    refusal: cacheGet<Refusal>(`why:${req.requestId}`) ?? null,
+    sources: null, sourcesError: null, edit: null, changes: null, fileHash: null, page: null, via: null, rejected: null,
+    doneTime: ended ?? null,
+    logo: null, logoError: null, logoHash: null,
+    filesRead: !(hasFiles || hasAnswer),
+    notRead,
+    metaPending: true,
+  };
+}
+
+/**
+ * The list to show while requests are still being read: each request that has been followed, else what was shown for
+ * it before (same state), else what the scan gives. The open subject's requests stay as they were until all are read
+ * (`subjectReady`), so its page never flashes back to loading; on a first read they are the scan's. `prev` itself is returned when
+ * nothing differs.
+ */
+export function mergeItems(
+  scan: Pick<ScanState, "requests" | "completions">,
+  got: Map<string, Activity>,
+  prev: Activity[] | null,
+  subject: string | null = null,
+  subjectReady = false,
+  mark: (items: Activity[]) => Activity[] = (x) => x,
+): Activity[] {
+  const before = new Map((prev ?? []).map((a) => [a.req.requestId, a] as const));
+  const held = !!subject && !subjectReady && !!prev?.some((a) => a.req.subject === subject);
+  const out = mark(
+    scan.requests.flatMap((r): Activity[] => {
+      const was = before.get(r.requestId);
+      if (held && r.subject === subject) return was ? [was] : [];
+      const done = got.get(r.requestId);
+      if (done && (r.subject !== subject || subjectReady)) return [done];
+      const c = scan.completions.get(r.requestId.toLowerCase());
+      return [was && was.state === stateOf(c) ? was : scannedActivity(r, c)];
+    }),
+  );
+  return prev && out.length === prev.length && out.every((a, i) => a === prev[i]) ? prev : out;
+}
+
 const SCAN_KEY = "intake";
+/** Metadata that arrives close together is merged into the list in one update. */
+const MERGE_MS = 50;
 
 export interface ActivityState {
   items: Activity[] | null;
@@ -225,6 +289,8 @@ export interface ActivityState {
   retrying: boolean;
   /** True while the items shown come from the browser's cache and the scan for newer blocks has not ended. */
   cached: boolean;
+  /** True while some requests show only what the scan gave: their times, names and reasons are still being read. */
+  filling: boolean;
   /** Reads Ethereum again; resolves the requests as they are now, or null when it could not be read. */
   reload: () => Promise<Activity[] | null>;
   /**
@@ -341,14 +407,46 @@ export function useActivity(subject: string | null = null): ActivityState {
     return out;
   }, [followed]);
 
+  /**
+   * Draws the list at once from the scan, then merges each request's metadata as it arrives. Resolves as soon as the
+   * list is complete for the view: at once on Home, when its files are read for an open subject. One slow answer never
+   * holds back the others.
+   */
   const build = useCallback(async (): Promise<Activity[] | null> => {
     const s = scan.current;
     if (!s) return null;
     const sub = open.current;
-    const out = await readFull(s, s.requests, (r) => r.subject === sub);
-    if (scan.current === s && open.current === sub) setItems(out);
-    return out;
-  }, [readFull]);
+    const opts = { firstNamed: firstOf(s), verdicts: verdicts.current, reasons: reasons.current };
+    const got = new Map<string, Activity>();
+    let ready = false;
+    const list = (prev: Activity[] | null) => mergeItems(s, got, prev, sub, ready, (x) => markNotRead(x, opts));
+    const show = () => {
+      if (scan.current === s && open.current === sub) setItems(list);
+    };
+    let due: number | undefined;
+    const later = () => {
+      due ??= window.setTimeout(() => {
+        due = undefined;
+        show();
+      }, MERGE_MS);
+    };
+    show();
+    for (const r of s.requests)
+      if (r.subject !== sub)
+        followed(r, s.completions.get(r.requestId.toLowerCase()), false).then(
+          (a) => {
+            got.set(r.requestId, a);
+            later();
+          },
+          () => undefined,
+        );
+    if (sub) {
+      for (const a of await readFull(s, s.requests.filter((r) => r.subject === sub), () => true)) got.set(a.req.requestId, a);
+      ready = true;
+      show();
+    }
+    return list(null);
+  }, [readFull, followed]);
 
   const load = useCallback(async (): Promise<Activity[] | null> => {
     setLoading(true);
@@ -360,7 +458,8 @@ export function useActivity(subject: string | null = null): ActivityState {
         if (stored) {
           scan.current = stored;
           setCached(true);
-          await build();
+          // Shown at once; the scan for newer blocks never waits for a request's metadata.
+          void build().catch(() => undefined);
         }
       }
       const next = await loadTaggedRequests(scan.current, { onRetry: () => setRetrying(true) });
@@ -413,5 +512,6 @@ export function useActivity(subject: string | null = null): ActivityState {
     [readFull],
   );
 
-  return { items, error, loading, retrying, cached, reload: load, readSubject };
+  const filling = useMemo(() => (items ?? []).some((a) => a.metaPending), [items]);
+  return { items, error, loading, retrying, cached, filling, reload: load, readSubject };
 }

@@ -95,7 +95,7 @@ export interface InfoRow {
   /** When the value lists several things, each one: shown as separate lines. Empty for a single value. */
   values: string[];
   /** Entries the result gave as { name, url } (Official accounts): each account's name and link. */
-  entries?: { name: string; url: string; text?: string }[];
+  entries?: { name: string; url: string; text?: string; status?: "live" | "test" | "past" }[];
   /** Each values entry in parts (name, text, url, address, chain), set whenever values is. */
   items?: ValueItem[];
 }
@@ -717,7 +717,10 @@ export function parsePage(text: string, domain = ""): Page {
         // Official accounts entries keep their own text ("Launch announcements") beside their name and url.
         const entries = raw
           .filter((x) => x && typeof x === "object" && !Array.isArray(x))
-          .map((x) => ({ name: str(obj(x).name, 200).trim(), url: str(obj(x).url, 400).trim(), text: valueItemOf(x)?.text ?? "" }))
+          .map((x) => {
+            const it = valueItemOf(x);
+            return { name: str(obj(x).name, 200).trim(), url: str(obj(x).url, 400).trim(), text: it?.text ?? "", ...(it?.status ? { status: it.status } : {}) };
+          })
           .filter((e) => e.name || e.url);
         const values = items.map(valueItemText).filter(Boolean);
         const listed = values.length > 1 || items.some((e) => e.shaped);

@@ -1,9 +1,10 @@
 /** The key facts table: from "infobox" when a rebuild wrote one, else built from the page shown. Pure, for tests. */
-import { chainOnlyPiece, chainTag, otherAddresses, takeAddress, type OtherAddr } from "./addrDisplay";
+import { addressRuns, chainEntries, chainOfAddress, chainOnlyPiece, chainTag, otherAddresses, takeAddress, type OtherAddr } from "./addrDisplay";
 import { channelFor, channelStatus, fullHostOf, hostOf, onDomain, siteHost, safeHref, STATUS_WORDS, underChannel, type Channel, type ChannelStatus, type Line, type Page, type ValueItem, type Contract, TEST_NETWORK, isLiveContract, liveMainOf } from "./page";
 import { chainIdOf, chainLabel, chainName, explorerAddressUrl } from "./subject";
 import { decimalsOf, wholeFact } from "./amounts";
 import { proofIdsOf, settleOf } from "./settle";
+import { liveFirst, livenessOf, type Liveness } from "./liveness";
 
 export type Badge = { text: string; tone: "proof" | "statement" | "claim" | "proven" | "contradicted" | "outdated" | ChannelStatus };
 
@@ -250,12 +251,14 @@ export interface Account {
   channel: Channel | null;
   /** What the entry says about the account ("Launch announcements"), shown after its name; "" when none. */
   text: string;
+  /** live, test or past when its values entry gives a status. */
+  live?: Liveness;
   /** From the account's own tie: Linked from own site (linked), Verified on chain (strong), else Not verified. */
   status: Badge | null;
 }
 
 /** An Official accounts entry as the result may give it: a name with a url. */
-export type AccountEntry = { name: string; url: string; text?: string };
+export type AccountEntry = { name: string; url: string; text?: string; status?: Liveness };
 
 const SITES: Array<[RegExp, string, boolean]> = [
   [/^(?:x|twitter)\.com$/, "X", true],
@@ -273,11 +276,41 @@ const SITES: Array<[RegExp, string, boolean]> = [
 ];
 
 /**
+ * A Discord or Telegram invite's name: the server or group name the page shows. A missing name, or one that is only
+ * the invite code or link, reads "Discord server" or "Telegram group". Null when the link is not an invite.
+ */
+export function inviteName(name: string, url: string): string | null {
+  const at = /^https?:\/\//i.test(url) || !url ? url : `https://${url}`;
+  const discord = /^https?:\/\/(?:www\.)?(?:discord\.gg|discord(?:app)?\.com\/invite)\/([\w-]+)/i.exec(at);
+  const tg = /^https?:\/\/(?:www\.)?(?:t\.me|telegram\.me)\/(?:joinchat\/|\+|%2B)([\w-]+)/i.exec(at);
+  const code = (discord ?? tg)?.[1] ?? "";
+  if (!code) return null;
+  const n = name.trim();
+  // The name with any invite address, "@" and "on Discord" taken off: only the code left means no real name was given.
+  const bare = n
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/^(?:discord\.gg|discord(?:app)?\.com\/invite|t\.me|telegram\.me)\/?/i, "")
+    .replace(/^joinchat\//i, "")
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "")
+    .replace(/^[@+]+/, "")
+    .replace(/\s+on\s+(?:discord|telegram)$/i, "")
+    .replace(/^(?:discord|telegram)(?:\s+(?:invite|server|group))?:?\s+(?=\S)/i, "")
+    .replace(/^[@+]+/, "")
+    .trim();
+  const plain = /^(?:(?:join|our|the|official)\s+)*(?:discord|telegram)?(?:\s*(?:invite|server|group|channel|chat|community|link))*$/i.test(n);
+  return n && !plain && bare && bare.toLowerCase() !== code.toLowerCase() ? n : discord ? "Discord server" : "Telegram group";
+}
+
+/**
  * A short name for an account: "@zora on X", "ourzora on GitHub", "zora on Discord". Taken from its URL when it has
  * one on a known site; otherwise the given name with any bracketed address or URL removed.
  */
 export function accountLabel(name: string, url: string): string {
   const clean = name.replace(/\s*\((?:[^)]*0x[0-9a-fA-F]{6,}[^)]*|https?:[^)]*)\)/g, "").replace(/\s*0x[0-9a-fA-F]{40}\b/g, "").trim();
+  const invite = inviteName(clean, url);
+  if (invite !== null) return invite;
   let u: URL | null = null;
   try {
     u = url ? new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`) : null;
@@ -361,17 +394,17 @@ export function accountsOf(channels: Channel[], value: string | string[] | Accou
   // stays one entry. A structured entry's own url is used first.
   const parts: AccountEntry[] = (typeof value === "string" ? [value] : value)
     .flatMap((p): AccountEntry[] => {
-      if (typeof p !== "string") return [{ name: p.name.trim(), url: p.url.trim(), text: (p.text ?? "").trim() }];
+      if (typeof p !== "string") return [{ name: p.name.trim(), url: p.url.trim(), text: (p.text ?? "").trim(), ...(p.status ? { status: p.status } : {}) }];
       const found = accountEntriesIn(p, channels);
       return found.length ? found : [{ name: p.trim(), url: "" }];
     })
     .filter((p) => p.name || p.url);
-  return parts.map(({ name, url: given, text = "" }) => {
+  return parts.map(({ name, url: given, text = "", status: live }) => {
     const own = /^https?:\/\//i.test(name) ? name : /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(name) ? `https://${name}` : "";
     const url0 = safeHref(given) ? given : own;
     const channel = channelFor(channels, name, url0 ? [url0] : []);
     const url = url0 || (channel && safeHref(channel.url) ? channel.url : "");
-    return { name: accountLabel(name, url), url, channel, text, status: toBadge(accountStatus(url || name, channel, domain)) };
+    return { name: accountLabel(name, url), url, channel, text, ...(live ? { live } : {}), status: toBadge(accountStatus(url || name, channel, domain)) };
   });
 }
 
@@ -698,7 +731,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
       const main = MAIN_ROW.test(r.label.trim()) ? ADDR.exec([r.value, ...(r.items ?? []).map((x) => x.address)].join(" "))?.[0] ?? "" : "";
       return { label: r.label, value, url: r.url, note: "", ...(main ? { mainName: mainContractName(page, all, main) } : {}), lines, channel, badge, status, accounts, perAccount, tokens, values: tokens.length || accounts.length ? [] : r.values ?? [], ...(!tokens.length && !accounts.length && r.items?.length ? { items: r.items.map(shownItemOf) } : {}), ...speakersField(badge, lines, sourceUrl) };
     });
-    return { rows: liveOnlyRows(rows, page, all, sourceUrl), fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
+    return { rows: liveRowsFirst(liveOnlyRows(rows, page, all, sourceUrl), statusOfContract(page.contracts)), fromInfobox: true, otherChannels: page.channels.filter((c) => !used.has(c)) };
   }
   const rows: KeyRow[] = [];
   const site = websiteOf(page.channels, domain);
@@ -728,7 +761,7 @@ export function keyFacts(page: Page | null, resolve: (id: string) => Line | unde
     if (!l) continue;
     rows.push({ label: l.fact!.name, value: wholeFact(l.fact!, l.text, decimalsOf(all)) ?? `${l.fact!.value}${l.fact!.unit ? ` ${l.fact!.unit}` : ""}`, url: "", note: "", lines: [l], channel: null, badge: badgeOf([l], [l], sourceUrl), status: null, accounts: [], tokens: [], values: [] });
   }
-  return { rows, fromInfobox: false, otherChannels: page.channels.filter((c) => c !== site) };
+  return { rows: liveRowsFirst(rows, statusOfContract(page.contracts)), fromInfobox: false, otherChannels: page.channels.filter((c) => c !== site) };
 }
 
 /**
@@ -753,6 +786,77 @@ export function mainContractName(page: Pick<Page, "name" | "infobox" | "contract
   return page.name ? `${page.name} contract` : "Contract";
 }
 const MAIN_ROW = /^main contract$/i;
+
+/** The status the page's contracts give an address; null when it lists none. */
+export type StatusOf = (address: string) => Liveness | null;
+export const statusOfContract = (contracts: Pick<Contract, "address" | "status">[]): StatusOf => {
+  const by = new Map(contracts.filter((c) => c.address && (c.status === "test" || c.status === "past" || c.status === "live")).map((c) => [c.address.toLowerCase(), c.status as Liveness]));
+  return (a) => (a ? by.get(a.toLowerCase()) ?? null : null);
+};
+/** A test or past status the page gives the first contract a text names. */
+const textStatus = (text: string, of: StatusOf): Liveness | null => {
+  for (const r of addressRuns(text)) {
+    const s = r.kind === "address" ? of(r.address) : null;
+    if (s && s !== "live") return s;
+  }
+  return null;
+};
+const CHAINS_ROW = /^chains?$/i;
+/** The Chains row's entries, each chain once with its roles and its status. */
+export function chainsOfRow(row: Pick<KeyRow, "items" | "values" | "value">): { chain: string; role: string; status: Liveness }[] {
+  const entries: { text: string; chain?: string | null; status?: Liveness }[] = row.items?.length
+    ? row.items.map((v) => ({ text: [v.name, v.text].filter(Boolean).join(" "), chain: v.chain || null, ...(v.status ? { status: v.status } : {}) }))
+    : (row.values.length ? row.values : row.value.split(/;|\n/)).map((t) => ({ text: t }));
+  const list = chainEntries(entries).map((c) => {
+    // A chain named by several entries is live when any of them is.
+    const of = entries.filter((e) => chainEntries([e])[0]?.chain === c.chain).map((e) => livenessOf({ status: e.status, text: `${c.chain} ${c.role}` }));
+    return { ...c, status: liveFirst(of, (x) => x)[0] ?? ("live" as Liveness) };
+  });
+  return liveFirst(list, (c) => c.status);
+}
+/**
+ * One Key facts entry's status, the same for every kind of row: the one it declares, else its contract's, else test in a
+ * Test networks row, else what its words say.
+ */
+function entryLiveness(label: string, e: { status?: Liveness | null; name?: string; text?: string; chain?: string; address?: string }, of: StatusOf): Liveness {
+  const declared = e.status ?? of(e.address ?? "") ?? textStatus(e.text ?? "", of);
+  if (declared) return declared;
+  return TEST_ROW.test(label.trim()) ? "test" : livenessOf({ name: e.name, text: e.text, chain: e.chain });
+}
+/** What a row shows, each entry with its status, live entries first. Exactly one of the lists is set. */
+export interface ShownEntries {
+  chains?: { chain: string; role: string; status: Liveness }[];
+  items?: { v: ShownItem; st: Liveness }[];
+  values?: { v: string; st: Liveness; last: boolean }[];
+  accounts?: { v: Account; st: Liveness }[];
+  tokens?: { v: TokenItem; first: boolean; st: Liveness }[];
+  /** One plain value: tagged only in a Test networks row or when it names a test or past contract of the page. */
+  single?: Liveness;
+}
+export function shownEntries(row: KeyRow, of: StatusOf = () => null): ShownEntries {
+  const st = (e: Parameters<typeof entryLiveness>[1]) => entryLiveness(row.label, e, of);
+  const sorted = <T extends { st: Liveness }>(list: T[]) => liveFirst(list, (x) => x.st);
+  if (CHAINS_ROW.test(row.label.trim())) {
+    const chains = chainsOfRow(row);
+    if (chains.length) return { chains };
+  }
+  if (row.items?.length) return { items: sorted(row.items.flatMap((v) => itemEntries(row.label, v).map((e) => ({ v: e, st: st({ ...e, status: v.status }) })))) };
+  if (row.values.length) return { values: sorted(row.values.flatMap((v) => valueEntries(row.label, v)).map((v) => ({ v, st: st({ text: v }), last: false }))) };
+  if (row.accounts.length) return { accounts: sorted(row.accounts.map((v) => ({ v, st: v.live ?? (TEST_ROW.test(row.label.trim()) ? ("test" as const) : ("live" as const)) }))) };
+  if (row.tokens.length) return { tokens: sorted(row.tokens.map((v, i) => ({ v, first: i === 0, st: st({ status: v.status, name: v.symbol, text: v.purpose, chain: v.chain, address: v.address }) }))) };
+  const parts = valueEntries(row.label, row.value);
+  if (parts.length > 1) return { values: sorted(parts.map((v, i) => ({ v, st: st({ text: v }), last: i === parts.length - 1 }))) };
+  return { single: TEST_ROW.test(row.label.trim()) ? st({ text: row.value }) : textStatus(row.value, of) ?? "live" };
+}
+/** The status of a row as a whole: its best entry's. A row is test or past only when every entry it shows is. */
+export function rowLiveness(row: KeyRow, of: StatusOf = () => null): Liveness {
+  const e = shownEntries(row, of);
+  if (e.single) return e.single;
+  const all = e.chains?.map((c) => c.status) ?? [...(e.items ?? []), ...(e.values ?? []), ...(e.accounts ?? []), ...(e.tokens ?? [])].map((x) => x.st);
+  return liveFirst(all, (x) => x)[0] ?? "live";
+}
+/** Rows with a live entry first, then rows that hold only test entries, then only past ones; each group in its order. */
+export const liveRowsFirst = (rows: KeyRow[], of: StatusOf = () => null): KeyRow[] => liveFirst(rows, (r) => rowLiveness(r, of));
 
 /** The rows that describe live main-network deployments only. */
 export const LIVE_ONLY_ROWS = /^(?:main contract|chains?|contracts?|deployed by|controlled by)$/i;
@@ -891,7 +995,7 @@ export function itemEntries(label: string, v: ShownItem): ShownItem[] {
 export function sharedChain(row: Pick<KeyRow, "label" | "items">, fallback = ""): string {
   const items = row.items ?? [];
   if (!/^contracts?$/i.test(row.label.trim()) || items.length < 2) return "";
-  const chains = new Set(items.map((v) => (v.address ? chainTag(v.chain || fallback) : "")));
+  const chains = new Set(items.map((v) => (v.address ? chainOfAddress(v.address, v.chain, fallback) : "")));
   return chains.size === 1 ? [...chains][0]! : "";
 }
 

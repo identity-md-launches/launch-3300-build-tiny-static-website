@@ -7,6 +7,7 @@
  * current wording; a close marks that same question Answered, with the date and the lines that answer it. Every
  * question ever listed stays findable under its link. Pure, for tests.
  */
+import { artifactUrl, parsePrior } from "./bodies";
 import type { Activity } from "./useActivity";
 import { isChangesJob, isPageJob } from "./useActivity";
 
@@ -68,12 +69,46 @@ export function completionOrder(a: Activity, b: Activity): number {
 }
 
 /**
+ * Whether a page job was given a changes job's result: its request was sent after that job completed, and its
+ * objective (or, through its F1, that of an earlier page it was rebuilt from) lists the result's file. A rebuild sent
+ * before the answer, or that left its file out for space, never had it. Without a readable objective or file hash, only
+ * the order decides.
+ */
+function receivedBy(pages: Activity[]): (page: Activity, job: Activity) => boolean {
+  const byUrl = new Map(pages.filter((p) => p.fileHash).map((p) => [artifactUrl(p.fileHash!), p] as const));
+  const sentAfter = (page: Activity, job: Activity) => {
+    const sent = page.req.blockNumber;
+    const done = job.completion?.blockNumber;
+    if (sent === undefined || done === undefined) return true;
+    if (sent !== done) return sent > done;
+    return (page.req.logIndex ?? Infinity) > (job.completion?.logIndex ?? 0);
+  };
+  return (page, job) => {
+    const seen = new Set<Activity>();
+    for (let cur: Activity | undefined = page; cur && !seen.has(cur); ) {
+      seen.add(cur);
+      if (!sentAfter(cur, job)) return false;
+      const o: unknown = cur.req.bodyJson?.objective;
+      if (typeof o !== "string" || !job.fileHash) return true;
+      const files = parsePrior(o).files;
+      const url = artifactUrl(job.fileHash);
+      if (o.includes(url)) return true;
+      const f1 = files[0];
+      cur = f1 ? byUrl.get(f1.url) : undefined;
+    }
+    return false;
+  };
+}
+
+/**
  * Every question of a subject's counted page and changes jobs, and which are open under the page shown (`latest`):
- * its questions, less those a later changes job closed, each under its current wording.
+ * its questions, less those a later changes job closed, each under its current wording. A rebuild decides only with
+ * what it was given: an answer or a reword its job did not receive stands, with its id, date and lines.
  */
 export function questionsOf(items: Activity[], latest: Activity | undefined): QuestionState {
   const jobs = items.filter(counted).filter((a) => (isPageJob(a.req) && a.page) || (isChangesJob(a.req) && a.changes)).sort(completionOrder);
   const shown = latest?.page && counted(latest) ? latest : undefined;
+  const received = receivedBy(jobs.filter((a) => isPageJob(a.req)));
   const all = new Map<string, Question>();
   const byText = new Map<string, Question>();
   const byJob = new Map<string, QuestionAct[]>();
@@ -91,13 +126,15 @@ export function questionsOf(items: Activity[], latest: Activity | undefined): Qu
           if (all.has(q.id)) return;
           all.set(q.id, q);
           byText.set(key, q);
-        } else if (decides) q.text = t;
+        } else if (decides && (q.history ?? []).every((h) => received(a, h.by))) q.text = t;
         if (!listed.includes(q)) listed.push(q);
       });
       if (!decides) continue;
-      // The page replaces the open list: what it no longer asks is closed; what it asks is open, again if need be.
+      // The page replaces the open list: what it no longer asks is closed; what it asks is open, again if need be. An
+      // answer its job was not given still stands.
       for (const q of open) if (!listed.includes(q) && q.state === "open") q.state = "closed";
       for (const q of listed) {
+        if (q.state === "answered" && q.by && !received(a, q.by)) continue;
         if (q.state !== "open") {
           q.state = "open";
           delete q.by;
@@ -105,7 +142,7 @@ export function questionsOf(items: Activity[], latest: Activity | undefined): Qu
           delete q.lines;
         }
       }
-      open = listed;
+      open = listed.filter((q) => q.state === "open");
       continue;
     }
     for (const x of a.changes!.questions ?? []) {

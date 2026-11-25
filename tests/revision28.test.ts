@@ -62,9 +62,9 @@ describe("digests (bb454360)", () => {
     expect(digests.get("a.org")!.open).toBeUndefined();
     expect(digests.get("a.org")!.launched).toBeUndefined();
   });
-  it("the home page reads no record unasked: only readAll or Try again plan reads", () => {
+  it("the home page reads no record unasked: only Try again plans reads", () => {
     const src = readFileSync("src/digest.ts", "utf8");
-    expect(src).toContain("(wantAll.current ? !latest.current.digests.has(id) : false) || wanted.current.has(id)");
+    expect(src).toContain(".filter((id) => wanted.current.has(id))");
   });
 });
 

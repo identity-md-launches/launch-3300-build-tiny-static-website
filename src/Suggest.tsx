@@ -4,7 +4,7 @@ import { createContext, Fragment, useCallback, useContext, useEffect, useId, use
 import { CHANGES } from "./requests";
 import { askOf, type Ask } from "./requests/ask";
 import { artifactUrl, fitsObjective, MAX_OBJECTIVE } from "./bodies";
-import { InstructionsBlock } from "./Instructions";
+import { InstructionsBlock } from "./InstructionsBlock";
 import {
   CHANGE_HINTS,
   CHANGE_WORDS,

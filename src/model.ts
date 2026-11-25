@@ -480,6 +480,14 @@ export interface SubjectSummary {
   outdated: Outdated;
   /** When the record last changed: the newest completed result's time, else the newest request's. */
   changed: number | null;
+  /** Where "Recently changed" puts it: changed, or while that time is still being read an estimate from its block. */
+  order?: number;
+  /** True while the block times of its requests are still being read. */
+  waiting?: boolean;
+  /** True when its contracts are known here: its files were read, or its digest holds its newest page. */
+  indexed?: boolean;
+  /** Contracts its requests on the Intake name, for a subject whose own contracts are not known here yet. */
+  claimed?: KnownContract[];
   requests: number;
   pending: number;
   hasPage: boolean;
@@ -525,7 +533,7 @@ export function firstPageStatus(list: Activity[]): FirstPageStatus {
   if (pages.some((a) => a.state === "pending")) return { kind: "pending" };
   const last = [...pages].sort((a, b) => (a.req.blockNumber < b.req.blockNumber ? -1 : a.req.blockNumber > b.req.blockNumber ? 1 : 0)).at(-1);
   if (!last) return { kind: "none" };
-  const why = (a: Activity) => [a.refusal?.reason, a.refusal?.detail].filter(Boolean).join(": ") || "no reason given";
+  const why = (a: Activity) => [a.refusal?.reason, a.refusal?.detail].filter(Boolean).join(": ") || (a.metaPending ? "reading the reason" : "no reason given");
   if (last.state === "refused") return { kind: "refused", reason: why(last) };
   if (last.state === "failed") return { kind: "failed", reason: why(last) };
   // Completed, but its file has not been read here yet: Home reads it for the digest.
@@ -614,6 +622,11 @@ export interface Digest {
   open?: number;
   /** The Launched fact as a time, or null when the page has none (Home's Launch date). */
   launched?: number | null;
+  /**
+   * Completed results of the subject a full read left out (they do not count): the scan alone cannot tell, so Home
+   * leaves them out of its figures and of what the digest is compared with.
+   */
+  uncounted?: string[];
 }
 
 /** The completed page, sources, edit and changes results and panel answers of a subject, as one string: what a digest was taken from. */
@@ -629,7 +642,7 @@ export const resultSig = (list: Activity[]) =>
  * itself could not be read (that is not a subject without a page). A failed read of another result file does not
  * hold the page back: the digest is written with failedReads, and Home reads those files again.
  */
-export function digestOf(id: string, list: Activity[]): Digest | null {
+export function digestOf(id: string, list: Activity[], uncounted: string[] = []): Digest | null {
   if (list.some((a) => a.filesRead === false)) return null;
   const core = coreOf(list);
   if (core.latest && !core.page) return null;
@@ -637,7 +650,7 @@ export function digestOf(id: string, list: Activity[]): Digest | null {
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
   const example = core.page ? exampleOf(core.sections.flatMap((x) => x.rows.map((r) => r.line))) : null;
-  return { type: "digest", v: 9, open: core.page ? questionsOf(list, core.latest).open.length : 0, launched: launchedOf(core.page), example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo };
+  return { type: "digest", v: 9, open: core.page ? questionsOf(list, core.latest).open.length : 0, launched: launchedOf(core.page), example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo, ...(uncounted.length ? { uncounted } : {}) };
 }
 
 /** The Launched fact of a page as a time: its first full date, month and year, or year; null without one. */
@@ -744,13 +757,15 @@ export function rankedAddresses(page: Page | null): RankedAddress[] {
 function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSummary {
   const doneTimes = list.filter((a) => a.state === "completed").map((a) => a.doneTime ?? a.time ?? 0);
   const anyTimes = list.map((a) => a.time ?? 0);
-  const changed = Math.max(0, ...(doneTimes.length ? doneTimes : anyTimes)) || null;
+  const waiting = list.some((a) => a.metaPending && !(a.state === "completed" ? a.doneTime : a.time));
+  const changed = waiting ? null : Math.max(0, ...(doneTimes.length ? doneTimes : anyTimes)) || null;
   return {
     id,
     name: core.page?.name || id,
     oneLine: core.page?.oneLine ?? "",
     counts: core.counts,
     changed,
+    ...(waiting ? { waiting } : {}),
     requests: list.length,
     pending: list.filter((a) => a.state === "pending").length,
     hasPage: !!core.page,
@@ -784,29 +799,88 @@ export function digestOutdated(d: Digest, list: Activity[]): Outdated {
 export function subjectSummaries(items: Activity[], digests: Map<string, Digest> = new Map(), logos: Map<string, string> = new Map()): SubjectSummary[] {
   const by = new Map<string, Activity[]>();
   for (const a of items) by.set(a.req.subject, [...(by.get(a.req.subject) ?? []), a]);
-  const out = [...by].map(([id, list]): SubjectSummary => {
-    const own = summaryOf(id, list);
-    if (!list.some((a) => a.filesRead === false)) return own;
+  const at = blockClock(items);
+  const out = [...by].map(([id, scanned]): SubjectSummary => {
+    const list = countedBy(digests.get(id), scanned);
+    const read = summaryOf(id, list);
+    const own: SubjectSummary = { ...read, order: read.changed ?? at(list) };
+    if (!list.some((a) => a.filesRead === false)) return { ...own, indexed: true };
     const d = digests.get(id);
-    if (!d) return { ...own, counts: own.hasPage ? own.counts : null, unread: !own.hasPage, outdated: null };
+    const indexed = isIndexed(d, list);
+    const known = indexed ? { indexed } : { indexed, claimed: claimedContracts(id, list) };
+    if (!d) return { ...own, ...known, counts: own.hasPage ? own.counts : null, unread: !own.hasPage, outdated: null };
     return {
       ...own,
+      ...known,
       name: d.name || id,
       oneLine: d.oneLine,
       counts: d.counts,
-      stale: d.sig !== resultSig(list),
+      stale: !isCurrent(d, list),
       hasPage: d.hasPage,
       main: d.main,
       contracts: d.contracts,
       ranked: d.ranked ?? [],
       logo: d.logoHash ? logos.get(d.logoHash) ?? null : null,
       logoHash: d.logoHash,
-      status: d.hasPage ? null : d.status && d.sig === resultSig(list) ? d.status : own.status,
+      status: d.hasPage ? null : d.status && isCurrent(d, list) ? d.status : own.status,
       outdated: digestOutdated(d, list),
       incomplete: d.failedReads,
     };
   });
-  return out.sort((a, b) => (b.changed ?? 0) - (a.changed ?? 0) || a.id.localeCompare(b.id));
+  return out.sort((a, b) => (b.order ?? 0) - (a.order ?? 0) || a.id.localeCompare(b.id));
+}
+
+/** A completed job's or request's place in time from its block alone, set by any request whose block time is known. */
+function blockClock(items: Activity[]): (list: Activity[]) => number {
+  const anchor = items.find((a) => a.time && a.req.blockNumber);
+  const b0 = Number(anchor?.req.blockNumber ?? 0);
+  const t0 = anchor?.time ?? 0;
+  return (list) => {
+    const done = list.filter((a) => a.state === "completed" && a.completion);
+    const block = Math.max(0, ...(done.length ? done.map((a) => Number(a.completion!.blockNumber ?? 0)) : list.map((a) => Number(a.req.blockNumber ?? 0))));
+    return block ? Math.max(1, t0 + (block - b0) * 12_000) : 0;
+  };
+}
+
+/** Whether a digest holds the contracts of the subject's newest page: nothing completed since, or no newer page job. */
+export function isIndexed(d: Digest | undefined, list: Activity[]): boolean {
+  const pages = countedBy(d, list).filter((a) => isPageJob(a.req) && a.state === "completed" && !a.notRead);
+  if (!pages.length) return true;
+  if (!d) return false;
+  if (isCurrent(d, list)) return true;
+  const newest = pages.reduce((m, a) => (a.completion && m.completion && completedBefore(m.completion, a.completion) < 0 ? a : m));
+  return !!d.pageReq && newest.req.requestId === d.pageReq;
+}
+
+/** Contracts a domain subject's own requests name ("whose main contract is 0x… on chain 1"), from the Intake alone. */
+export function claimedContracts(id: string, list: Activity[]): KnownContract[] {
+  const domain = domainOfId(id);
+  const out = new Map<string, KnownContract>();
+  if (domain)
+    for (const a of list) {
+      const c = contractFromObjective(a.req.bodyJson?.objective, domain);
+      if (c) out.set(`${c.chainId}:${c.address.toLowerCase()}`, { address: c.address.toLowerCase(), chainId: c.chainId });
+    }
+  return [...out.values()];
+}
+
+/**
+ * Whether a digest's figures are the subject's current ones: it was taken from exactly the results the scan lists. A
+ * digest taken before newer results, or of an older shape, gives figures that await an update.
+ */
+export const isCurrent = (d: Digest | undefined, list: Activity[]): boolean => !!d && d.sig === resultSig(countedBy(d, list));
+
+/** A subject's scanned requests without the results its digest says a full read left out. */
+export function countedBy(d: Digest | undefined, list: Activity[]): Activity[] {
+  if (!d?.uncounted?.length) return list;
+  const out = new Set(d.uncounted);
+  return list.filter((a) => !out.has(a.req.requestId.toLowerCase()));
+}
+
+/** The completed results of a subject among `all` that a full read (`read`) left out: what uncounted holds. */
+export function leftOut(all: Activity[], read: Activity[]): string[] {
+  const kept = new Set(resultSig(read).split(","));
+  return resultSig(all).split(",").filter((x) => x && !kept.has(x));
 }
 
 export interface RecordModel {

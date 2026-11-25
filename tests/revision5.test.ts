@@ -234,7 +234,7 @@ describe("Tokens values (436ed92e, 11a41834)", () => {
     // One line per token: symbol in bold, purpose, the address linked with a small copy icon (revision 17, E16).
     expect(src).toContain('<strong className="tok-symbol">{t.symbol}</strong>');
     // Revision 19 (C10/C11): the address is the shared Addr, shortened, linked, with its copy icon and chain tag.
-    expect(src).toContain("{t.address && <Addr address={t.address} chain={chainTag(i === 0 ? t.chain || chain : t.chain)} url={t.url} />}");
+    expect(src).toContain('{t.address && <Addr address={t.address} chain={chainOfAddress(t.address, t.chain, first ? chain : "")} url={t.url} />}');
     expect(src).toMatch(/<span className="mono">\{shortHex\(address\)\}<\/span>[\s\S]*?<CopyIcon value=\{address\} \/>/);
   });
 });
@@ -266,7 +266,7 @@ describe("Home waits for contract reads before offering a paid page (0cee4f1b, 5
     const src = readFileSync("src/Home.tsx", "utf8");
     expect(src).toContain("Checking project contracts…");
     expect(src).toContain("Checking which pages need a rebuild…");
-    expect(src).toMatch(/const add = \(input: AddInput\)[\s\S]*findSubject\(submitted\.q, all\)/);
+    expect(src).toMatch(/const add = \(input: AddInput\)[\s\S]*find1\(submitted\.q\)/);
     expect(src).not.toContain("Open the page to read its record");
   });
 });

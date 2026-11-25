@@ -17,6 +17,8 @@ export interface Example {
   claim: string;
   statement: string;
   proof: string;
+  /** The proof's line id on its record, so Docs can link to its re-run steps. */
+  proofId?: string;
 }
 
 const WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
@@ -258,14 +260,14 @@ export function exampleOf(lines: Line[]): Example | null {
   for (const p of of("proof"))
     for (const s of statements.filter((x) => confirms(x, p.id))) {
       const c = claims.find((x) => (confirms(x, p.id) || confirms(x, s.id)) && [p, s, x].every((a, i, all) => all.slice(i + 1).every((b) => detailsAgree(a.key, b.key))));
-      if (c && detailsAgree(p.key, s.key)) return { claim: c.text, statement: s.text, proof: p.text };
+      if (c && detailsAgree(p.key, s.key)) return { claim: c.text, statement: s.text, proof: p.text, proofId: p.id };
     }
   // Else a text match: the same subject, predicate, value and date on all three.
   for (const p of of("proof"))
     for (const s of statements) {
       if (!sharedFact([p.key, s.key])) continue;
       const c = claims.find((x) => sharedFact([p.key, s.key, x.key]));
-      if (c) return { claim: c.text, statement: s.text, proof: p.text };
+      if (c) return { claim: c.text, statement: s.text, proof: p.text, proofId: p.id };
     }
   return null;
 }

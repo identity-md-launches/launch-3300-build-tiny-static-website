@@ -33,7 +33,7 @@ import { holdFocus } from "./modal";
 import { followAdmission, rpcReceipt, waitForReceipt, type ReceiptRead } from "./receipt";
 import { Payment, REVERTED, type PayStep } from "./payFlow";
 import { isInstructionsUnavailable, leftOutText, pageJobsOf, pendingRebuildOf, readSettled, upkeepText, type PageJobs, planRebuild, subjectRefFor, subjectSummaries, unreadableBySubject, unreadableCount, useRecordModel, type RecordModel } from "./model";
-import { InstructionsBlock } from "./Instructions";
+import { InstructionsBlock } from "./InstructionsBlock";
 import { INSTRUCTIONS_UNREACHABLE, instructionsOf, instructionsReachable, type InstructionName } from "./instructions";
 import type { Findable } from "./lookup";
 import { jobLink, lineAnchor, payerName } from "./format";
@@ -1069,7 +1069,7 @@ export default function App() {
   const changesQuote = useKindPrice(CHANGES);
   // Requests not sent through this record's instructions are left out of every view but Activity (counts.ts).
   const counted = useMemo(() => (activity.items ? readable(activity.items) : null), [activity.items]);
-  const { digests, logos, reading, failed, busy, retry, readAll } = useDigests(counted, subject ?? null, activity.readSubject);
+  const { digests, logos, reading, failed, busy, retry } = useDigests(counted, subject ?? null, activity.readSubject, activity.items);
   // One example for the three cards, on Home and in Docs.
   const example = useMemo(() => pickExample(digests), [digests]);
   if (subject) setLinkSubject(subject);
@@ -1134,7 +1134,7 @@ export default function App() {
         ) : subject ? (
           <SubjectView key={subject} sent={sent} jobs={jobs} readingFiles={readingFiles} subject={subject} subjects={subjects} items={items} allItems={allItems} activity={activity} route={route} onAsk={openAsk} researchPrice={rebuildQuote.text} firstPrice={firstQuote.text} changesQuote={changesQuote} />
         ) : (
-          <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} readAll={readAll} example={example} reload={activity.reload} onAdd={addProject} price={firstQuote.text} bad={route.bad} prefill={route.add} unreadable={unreadable} />
+          <Home key={route.add ?? ""} items={counted} error={activity.error} loading={activity.loading} retrying={activity.retrying} cached={activity.cached} digests={digests} logos={logos} reading={reading} failed={failed} busy={busy} retry={retry} filling={activity.filling} example={example} reload={activity.reload} onAdd={addProject} price={firstQuote.text} bad={route.bad} prefill={route.add} unreadable={unreadable} />
         )}
         <footer className="about">
           <p>Beta. Payments go to IMD and are not refunded. Every line comes from a paid job on Ethereum.</p>

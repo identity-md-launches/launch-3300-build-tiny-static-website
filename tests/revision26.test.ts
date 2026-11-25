@@ -24,7 +24,7 @@ describe("the Home example is one fact on all three lines (c97e5ccb)", () => {
     expect(datesIn("on 1 March 2024 and in May 2021").dates).toEqual(["2021-05", "2024-03-01"]);
   });
   it("matches a launch, with the same version and date", () => {
-    expect(exampleOf(three(published("Uniswap v3 launched in May 2021.")))).toEqual({ proof: "Uniswap v3 launched in May 2021.", statement: "Uniswap docs state that uniswap v3 launched in May 2021.", claim: "DefiLlama says uniswap v3 launched in May 2021." });
+    expect(exampleOf(three(published("Uniswap v3 launched in May 2021.")))).toMatchObject({ proof: "Uniswap v3 launched in May 2021.", statement: "Uniswap docs state that uniswap v3 launched in May 2021.", claim: "DefiLlama says uniswap v3 launched in May 2021." });
     expect(exampleOf(three(["Uniswap v3 launched in May 2021.", "Uniswap docs state that Uniswap v3 launched in June 2021.", "DefiLlama says Uniswap v3 launched in May 2021."]))).toBeNull();
     expect(exampleOf(three(["Uniswap v3 launched in May 2021.", "Uniswap docs state that Uniswap v2 launched in May 2021.", "DefiLlama says Uniswap v3 launched in May 2021."]))).toBeNull();
   });

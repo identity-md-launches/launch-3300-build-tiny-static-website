@@ -146,7 +146,7 @@ try {
     }
     const item = await page.locator(".subjects .subject").first().innerText();
     // First visit: the home list reads no page file, so a subject never opened here is listed by id (job 8).
-    check(`${W} first visit: a subject is listed by id, then its digest once its page file is read`, /imd\.fun/.test(item) && (/Reading its record…/.test(item) || /Changed /.test(item)), item.replace(/\n/g, " | "));
+    check(`${W} first visit: a subject is listed by id, then its digest once its page file is read`, /imd\.fun/.test(item) && (/Reading its record…/.test(item) || /(?:Changed |Reading when it changed)/.test(item)), item.replace(/\n/g, " | "));
     check(`${W} the title is On the record (test)`, (await page.title()) === "On the record (test)");
 
     const hero = await page.evaluate(() => {

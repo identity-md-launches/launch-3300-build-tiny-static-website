@@ -496,13 +496,13 @@ IndexedDB (database \`imd-record\`, store \`scan\`), shows them at once on a ret
 blocks after it (less 12, for reorganisations) and updates. Result files (page, lines, edit, artifacts, logos)
 are kept in IndexedDB (store \`files\`), not localStorage. The home list keeps one small digest per subject
 (name, one_line, counts, logo hash, changed date, contracts, the out-of-date count; store \`digests\`), and each
-logo once under its SHA-256. On every visit Home reads, without the subject being opened, the page file, logo,
-other result files and panel answers of each listed subject that has no digest, or whose digest predates newer
-results or recorded a failed read: one queue, 3 subjects at a time, newest first (subjects with no digest first),
-filling each row in as it arrives. A row being read is a light placeholder. A page that read while another of its
-result files failed is still shown, with "Counts may be short" and Try again; a page file that failed shows its
-error and Try again. A logo that failed is read again on the next visit. A lookup by contract address waits for
-those reads ("Checking project contracts…") before it offers "Add this project".
+logo once under its SHA-256. The list is drawn from the Intake scan at once, newest first, and each request's
+Intake entry and block times are merged in as they arrive. Home never reads a full record: names, counts, launch
+dates and contracts come from this browser's digests, else from the compact records published with the site (used
+only while the scan holds every result they were taken from). A figure taken before newer results is not sorted by:
+the row says "Count awaiting update". A lookup by contract address is answered from the same data and reads nothing:
+when some projects' contracts are not known in the browser, the site says so and links to their pages before it
+offers "Add this project".
 
 **Superseded lines.** A line with an \`outdates\` link shows an amber "Superseded" marker with "Newer: <the newer
 line>" under it, and is counted apart from Contradicted (its own filter button and section count). A Key facts row

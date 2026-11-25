@@ -5,7 +5,7 @@
  */
 import { GROUP_TONE, GROUP_WORDS, homeGroups } from "./settle";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { readerNoteText, upkeepText, statusText, subjectSummaries, unreadableSummary, unreadableText, type Digest, type SubjectSummary } from "./model";
+import { countedBy, isCurrent, readerNoteText, upkeepText, statusText, subjectSummaries, unreadableSummary, unreadableText, type Digest, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
 import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
@@ -82,6 +82,9 @@ function PlaceholderItem({ s, failed, retry }: { s: SubjectSummary; failed: stri
   );
 }
 
+/** When the record last changed; while its block time is still being read, that it is. */
+const Changed = ({ s }: { s: SubjectSummary }) => <span>{s.waiting ? "Reading when it changed…" : `Changed ${when(s.changed)}`}</span>;
+
 /**
  * A subject with no digest in this browser yet: drawn from the Intake scan alone (its id, its counted jobs, when it
  * changed). Its record is read when its page is opened, never to draw the list.
@@ -98,7 +101,7 @@ function LightItem({ s, figure }: { s: SubjectSummary; figure: string }) {
         <p className="subject-line">Open its page to read the record.</p>
         <p className="subject-meta small">
           {figure && <span className="row-figure">{figure}</span>}
-          <span>Changed {when(s.changed)}</span>
+          <Changed s={s} />
           {s.pending > 0 && <span>{plural(s.pending, "request")} pending</span>}
         </p>
       </div>
@@ -133,7 +136,7 @@ function SubjectItem({ s, reading, failed, retry, figure = "" }: { s: SubjectSum
             </>
           )}
           {figure && <span className="row-figure">{figure}</span>}
-          <span>Changed {when(s.changed)}</span>
+          <Changed s={s} />
           {s.pending > 0 && <span>{plural(s.pending, "request")} pending</span>}
           {s.stale && reading && <span>Reading newer results…</span>}
         </p>
@@ -183,6 +186,26 @@ function ListTools({ find, setFind, sort, setSort }: { find: string; setFind: (v
         </select>
       </div>
     </div>
+  );
+}
+/**
+ * What each row is sorted by: counted jobs and first request from the scan; open questions and launch date from the
+ * digest, only while it was taken from exactly the results the scan lists (else they await an update). Pure, for tests.
+ */
+export function rowFacts(items: Activity[], digests?: Map<string, Digest>): Map<string, RowFacts> {
+  const by = new Map<string, Activity[]>();
+  for (const a of items) by.set(a.req.subject, [...(by.get(a.req.subject) ?? []), a]);
+  return new Map(
+    [...by].map(([id, scanned]): [string, RowFacts] => {
+      const d = digests?.get(id);
+      const list = countedBy(d, scanned);
+      if (!list.length) return [id, { edits: 0, added: null, current: false, open: null, launched: null }];
+      const first = list.reduce((m, a) => (a.req.blockNumber < m.req.blockNumber ? a : m));
+      // While its first request's time is being read, no later one stands in for it.
+      const added = first.metaPending && !first.time ? null : Math.min(...list.map((a) => a.time ?? a.doneTime ?? Infinity));
+      const current = isCurrent(d, list) && d!.open !== undefined && d!.launched !== undefined;
+      return [id, { edits: list.filter((a) => a.state === "completed" && !a.notRead).length, added: added !== null && Number.isFinite(added) ? added : null, current, open: current ? d!.open! : null, launched: current ? d!.launched! : null }];
+    }),
   );
 }
 /** Rows drawn at first, and added by each "Show more". */
@@ -254,6 +277,33 @@ function AddOffer({ q, shown, price, onAdd }: { q: Extract<Lookup, { kind: "doma
   );
 }
 
+/** How many unread projects an unsettled contract lookup links to. */
+const UNSURE_LINKS = 8;
+
+/**
+ * A contract no known record lists, while some projects' records are not known in this browser: which projects those
+ * are, each with a link to its page (the page reads the record), and the way on when none of them is the one.
+ */
+function Unsure({ shown, rows, onNone }: { shown: string; rows: SubjectSummary[]; onNone: () => void }) {
+  const list = rows.slice(0, UNSURE_LINKS);
+  return (
+    <div className="offer" role="status" aria-live="polite">
+      <p>
+        No record known here lists <strong className="break">{shown}</strong>. {rows.length === 1 ? "The contracts of 1 project are" : `The contracts of ${rows.length.toLocaleString("en-US")} projects are`} not known in this browser yet, so {rows.length === 1 ? "it" : "one of them"} may be the one. Open its page to check:
+      </p>
+      <p className="unsure-links">
+        {list.map((s) => (
+          <a key={s.id} href={subjectHref(s.id)}>{s.name}</a>
+        ))}
+        {rows.length > list.length && <span className="small">and {(rows.length - list.length).toLocaleString("en-US")} more in the list below</span>}
+      </p>
+      <div className="row-actions">
+        <button type="button" className="btn" onClick={onNone}>None of these: add it</button>
+      </div>
+    </div>
+  );
+}
+
 /** One fact shown three ways. Fixed text, used when neither uniswap.org nor zora.co has a live example. */
 export const EXAMPLE_FALLBACK = {
   proof: "The ZORA token contract on Base reports a total supply of 10 billion ZORA.",
@@ -290,8 +340,11 @@ export function pickExample(digests: Map<string, Pick<Digest, "id" | "example" |
   return { ...EXAMPLE_FALLBACK, from: null, name: null, logoHash: null };
 }
 
-/** True when the example is the fixed ZORA supply text or zora.co's own: the Docs replay steps name ZORA's contract. */
-export const isZoraExample = (e: Example) => e.from === null || e.from === EXAMPLE_FALLBACK_FROM;
+/**
+ * True when the cards state ZORA's total supply: the fixed text, or zora.co's own proof of it. Only then do the Docs
+ * caption and totalSupply() steps describe the proof shown; a project's name alone does not say which fact it is.
+ */
+export const isZoraSupply = (e: Example) => e.from === null || (e.from === EXAMPLE_FALLBACK_FROM && /\bZORA\b/.test(e.proof) && /\btotal supply\b|totalSupply\(\)/i.test(e.proof));
 
 /** The three cards (Proof, Statement, Claim) with one example: the same component on Home and in Docs. */
 export function ExampleCards({ example, label }: { example: Example; label?: string }) {
@@ -377,7 +430,7 @@ export function StillReading({ error, retrying }: { error: string | null; retryi
   );
 }
 
-export function Home({ items, error, loading, retrying, cached, digests, logos, reading, failed, busy, retry, readAll, reload, onAdd, price, bad, prefill, unreadable, example: given }: {
+export function Home({ items, error, loading, retrying, cached, digests, logos, reading, failed, busy, retry, filling = false, reload, onAdd, price, bad, prefill, unreadable, example: given }: {
   items: Activity[] | null;
   /** Subjects with finished page jobs none of which is read, and how many of their results were not read. */
   unreadable?: Map<string, number>;
@@ -397,8 +450,8 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   busy?: boolean;
   /** Reads a subject's failed files again. */
   retry?: (id: string) => void;
-  /** Reads every subject with no digest yet: only for a contract lookup that no known row answers. */
-  readAll?: () => void;
+  /** Some rows show only what the scan gave: their times and names are still being read. */
+  filling?: boolean;
   /** The three-card example, chosen once in App so Home and Docs show the same one. */
   example?: Example;
   reload: () => Promise<unknown>;
@@ -410,6 +463,8 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
 }) {
   const [q, setQ] = useState(prefill ?? "");
   const [submitted, setSubmitted] = useState<{ raw: string; q: Lookup } | null>(null);
+  /** A contract lookup the known records cannot settle: shown instead of the offer until the visitor says it is none of them. */
+  const [unsure, setUnsure] = useState<{ raw: string; q: Lookup } | null>(null);
   const [err, setErr] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const all = useMemo(() => {
@@ -433,41 +488,35 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
     history.replaceState(null, "", sortHash(k));
   };
   const [limit, setLimit] = useState(PAGE_ROWS);
-  // What each row is sorted by: counted jobs and first request from the scan, the rest from the cached digest.
-  const facts = useMemo(() => {
-    const out = new Map<string, RowFacts>();
-    for (const a of items ?? []) {
-      const id = a.req.subject;
-      const f = out.get(id) ?? { edits: 0, added: null, open: null, launched: null };
-      if (a.state === "completed" && !a.notRead) f.edits += 1;
-      const t = a.time ?? a.doneTime;
-      if (t && (f.added === null || t < f.added)) f.added = t;
-      out.set(id, f);
-    }
-    for (const [id, f] of out) {
-      const d = digests?.get(id);
-      f.open = d?.open ?? null;
-      f.launched = d?.launched ?? null;
-    }
-    return out;
-  }, [items, digests]);
+  const facts = useMemo(() => rowFacts(items ?? [], digests), [items, digests]);
   const needs = all.filter((s) => s.outdated).length;
   const savedRows = all.filter((s) => saved.includes(s.id)).length;
   const filtered = all.filter((s) => matchesQuery(s, q) && findMatches(s, find) && (view === "all" || (view === "stale" ? !!s.outdated : saved.includes(s.id))));
   const shown = sortProjects(filtered, sort, facts);
   // Reads still under way can add a contract to the list or mark a page out of date.
   const pendingReads = !!busy;
-  /** Rows drawn from the scan alone: their contracts are not known in this browser until their page is opened. */
-  const unknown = all.some((s) => s.unread && !s.unreadable && !failed?.has(s.id));
-  /** A contract lookup no known row answers waits for those rows' records: never a paid duplicate. */
-  const waits = (parsed: Lookup) => pendingReads || (parsed.kind === "address" && unknown);
+  /** Rows drawn from the scan alone. */
+  const unknown = all.some((s) => s.unread && !s.unreadable);
+  /** Projects whose contracts are not known here for their newest page: they may hold a contract no known record lists. */
+  const unindexed = all.filter((s) => s.indexed === false && !s.unreadable);
+  /** The project a lookup names: by its record's contracts, else by a contract its own requests on the Intake name. */
+  const find1 = (parsed: Lookup) => findSubject(parsed, all) ?? findSubject(parsed, unindexed.map((s) => ({ id: s.id, contracts: s.claimed ?? [] })));
+  /**
+   * Answers a lookup no row matched, from what is known here alone: a domain, or a contract when every project's
+   * contracts are known, gets the offer; otherwise the visitor is shown which projects are not known. It never reads a record.
+   */
+  const answer = (raw: string, parsed: Lookup) => {
+    setChecking(null);
+    if (parsed.kind === "address" && unindexed.length) setUnsure({ raw: raw.trim(), q: parsed });
+    else setSubmitted({ raw: raw.trim(), q: parsed });
+  };
   // A list read from this browser's cache, or not read at all yet, cannot show that a project has no page: an unmatched
   // lookup waits for the current scan of Ethereum, and says so when that scan fails.
   const pendingScan = items === null || !!cached;
   const scanFailed = pendingScan && !!error && !loading;
   const SCAN_FAILED = "Ethereum could not be read, so the site cannot tell whether this project already has a page. Try again in a moment.";
   /** The totals are exact once every project's counts are known; until then they say "about". */
-  const countsReady = !pendingReads && !unknown && all.every((s) => !!s.counts || !s.hasPage);
+  const countsReady = !pendingReads && !filling && !unknown && all.every((s) => !!s.counts || !s.hasPage);
   /** Some counts are known: while the rest load, the totals say "about". */
   const someCounts = all.some((s) => !!s.counts);
   /** An address or domain looked up while reads were pending: answered once they finish. */
@@ -476,6 +525,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const look = (raw: string) => {
     const parsed = parseLookup(raw);
     setSubmitted(null);
+    setUnsure(null);
     if (parsed.kind === "empty") {
       setErr("Write a domain, such as imd.fun, or a 0x contract address.");
       input.current?.focus();
@@ -487,7 +537,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
       return;
     }
     setErr("");
-    const found = findSubject(parsed, all);
+    const found = find1(parsed);
     if (found) {
       location.hash = subjectHref(found);
       return;
@@ -497,15 +547,12 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
       void reload();
       return;
     }
-    // A page that lists this contract (or domain) may still be on its way: never offer a paid duplicate before
-    // every pending read has answered. A contract no known row lists reads the rows not read here yet.
-    if (pendingScan || waits(parsed)) {
-      if (parsed.kind === "address" && unknown) readAll?.();
+    // The list may still be on its way: never offer a paid duplicate before the scan and the stored records answered.
+    if (pendingScan || pendingReads) {
       setChecking(raw);
       return;
     }
-    setChecking(null);
-    setSubmitted({ raw: raw.trim(), q: parsed });
+    answer(raw, parsed);
   };
 
   // Answer a lookup made while reads were pending, as soon as one finds it or all have finished.
@@ -513,44 +560,41 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
     if (checking === null) return;
     const parsed = parseLookup(checking);
     if (parsed.kind === "empty" || parsed.kind === "invalid") return setChecking(null);
-    const found = findSubject(parsed, all);
+    const found = find1(parsed);
     if (found) {
       setChecking(null);
       location.hash = subjectHref(found);
     } else if (scanFailed) {
       setChecking(null);
       setErr(SCAN_FAILED);
-    } else if (!pendingScan && !waits(parsed)) {
-      setChecking(null);
-      setSubmitted({ raw: checking.trim(), q: parsed });
-    }
+    } else if (!pendingScan && !pendingReads) answer(checking, parsed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checking, all, pendingReads, unknown, pendingScan, scanFailed]);
+  }, [checking, all, pendingReads, pendingScan, scanFailed]);
 
   // An offer already shown gives way when a read finds the project it was about.
   useEffect(() => {
-    if (!submitted) return;
-    const found = findSubject(submitted.q, all);
+    const asked = submitted ?? unsure;
+    if (!asked) return;
+    const found = find1(asked.q);
     if (found) {
       setSubmitted(null);
+      setUnsure(null);
       location.hash = subjectHref(found);
     }
-  }, [submitted, all]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted, unsure, all]);
 
   /** Checks again before the paid dialog opens: routes to a project a read has since found. */
   const add = (input: AddInput): string | null => {
     if (submitted) {
-      const found = findSubject(submitted.q, all);
+      const found = find1(submitted.q);
       if (found) {
         location.hash = subjectHref(found);
         return null;
       }
     }
     if (pendingScan) return "Still reading newer blocks from Ethereum. Try again in a moment.";
-    if (submitted ? waits(submitted.q) : pendingReads) {
-      if (submitted?.q.kind === "address" && unknown) readAll?.();
-      return "Still checking project contracts. Try again in a moment.";
-    }
+    if (pendingReads) return "Still checking project contracts. Try again in a moment.";
     return onAdd(input);
   };
 
@@ -608,6 +652,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
               setErr("");
               setChecking(null);
               if (submitted && e.target.value.trim() !== submitted.raw) setSubmitted(null);
+              if (unsure && e.target.value.trim() !== unsure.raw) setUnsure(null);
             }}
             aria-invalid={!!err}
             aria-describedby={err ? "lookup-err" : undefined}
@@ -621,6 +666,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             {pendingScan ? "Reading newer blocks from Ethereum…" : "Checking project contracts…"}
           </p>
         )}
+        {unsure && !offer && <Unsure shown={unsure.raw} rows={unindexed} onNone={() => { setSubmitted(unsure); setUnsure(null); }} />}
         {offer && <AddOffer key={`${offer.kind}:${offerName}`} q={offer} shown={submitted!.raw} price={price} onAdd={add} />}
       </div>
 

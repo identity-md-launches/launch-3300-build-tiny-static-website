@@ -208,6 +208,8 @@ main > .tabs { border-bottom: 1px solid var(--color-border); margin-bottom: calc
 .lookup .btn-lookup { flex: none; height: 56px; border-radius: var(--radius-bar); padding: 0 var(--space-6); font-size: var(--text-heading); }
 .lookup-msg { width: 100%; text-align: start; }
 .offer { width: 100%; display: grid; gap: var(--space-3); text-align: start; background: var(--color-bg-subtle); border-radius: var(--radius-card); padding: var(--space-4); }
+.unsure-links { display: flex; flex-wrap: wrap; gap: 0 var(--space-4); align-items: center; }
+.unsure-links a { display: inline-flex; align-items: center; min-height: 44px; }
 .offer-chain { display: grid; gap: var(--space-2); }
 .offer-chain label { font-size: var(--text-small); font-weight: 600; }
 .nowrap { white-space: nowrap; }

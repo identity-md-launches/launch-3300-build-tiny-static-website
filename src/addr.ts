@@ -85,6 +85,7 @@ export function otherExplorerUrl(address: string, chain = ""): string {
     if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address)) return `https://tronscan.org/#/address/${a}`;
     if (BASE58.test(address) && keyLike(address)) return `https://solscan.io/account/${a}`;
     if (/^bc1/.test(address)) return `https://mempool.space/address/${a}`;
+    if (/^cosmos1/.test(address)) return `https://www.mintscan.io/cosmos/address/${a}`;
     if (TON.test(address)) return `https://tonviewer.com/${a}`;
   }
   return "";

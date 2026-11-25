@@ -78,7 +78,7 @@ describe("D11. a token's other chains carry their own chain", () => {
     expect(chainOnlyPiece(`USDC: dollar ${B} on Base`)).toBeNull();
   });
   it("a token past the first never takes the subject's home chain", () => {
-    expect(read("src/Record.tsx")).toContain("chain={chainTag(i === 0 ? t.chain || chain : t.chain)}");
+    expect(read("src/Record.tsx")).toContain('chain={chainOfAddress(t.address, t.chain, first ? chain : "")}');
   });
 });
 

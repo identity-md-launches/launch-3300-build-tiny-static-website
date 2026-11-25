@@ -4,9 +4,10 @@ import { ETHERSCAN, IMD, INTAKE } from "./config";
 import { INSTRUCTIONS } from "./instructions";
 import { PUBLISHED_INSTRUCTIONS } from "./counts";
 import { CopyIcon } from "./Record";
-import { EXAMPLE_FALLBACK, ExampleCards, ExampleFrom, isZoraExample, type Example } from "./Home";
+import { EXAMPLE_FALLBACK, ExampleCards, ExampleFrom, isZoraSupply, type Example } from "./Home";
 import type { Digest } from "./model";
 import { subjectHref } from "./route";
+import { lineAnchor } from "./format";
 import type { Quote } from "./Suggest";
 
 export const READER_SECTIONS = ["Three kinds of line", "Reading a page", "Adding and correcting", "Cost", "Limits"] as const;
@@ -65,7 +66,7 @@ function Toc() {
 }
 
 export function Docs({ quote, example = { ...EXAMPLE_FALLBACK, from: null, name: null, logoHash: null }, digests, logos }: { quote: Quote; example?: Example; digests?: Map<string, Digest>; logos?: Map<string, string> }) {
-  const zora = isZoraExample(example);
+  const zora = isZoraSupply(example);
   useEffect(() => {
     document.title = "How Swarmpedia works · Swarmpedia";
   }, []);
@@ -95,7 +96,7 @@ export function Docs({ quote, example = { ...EXAMPLE_FALLBACK, from: null, name:
             {zora ? (
               <p>To run the proof again: on Base, call <span className="mono">totalSupply()</span> on the ZORA token contract and divide by 10<sup>18</sup>. The line gives the contract, the block and a public RPC.</p>
             ) : (
-              <p>To run the proof again, open it in Record: its re-run steps give the chain, the contract or source, the block and a public RPC.</p>
+              <p>To run the proof again, <a href={subjectHref(example.from!, example.proofId ? lineAnchor(example.proofId) : "record")}>open it in Record</a>: its re-run steps give the chain, the contract or source, the block and a public RPC.</p>
             )}
             <p>Who said a line never changes. What changes is whether another line confirms, contradicts or supersedes it.</p>
           </Section>

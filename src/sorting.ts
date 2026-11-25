@@ -19,13 +19,18 @@ export const sortFromHash = (hash: string) => sortOf(/[?&]sort=([a-z]+)/.exec(ha
 
 /** What a row is sorted by that the summary does not hold: counted jobs, first request, and two digest figures. */
 export interface RowFacts {
+  /**
+   * False when the figures read from the subject's record (open questions, proofs, contradicted lines, launch date) are
+   * not known for its current results: nothing read here yet, or newer results since. Such a row goes after known ones.
+   */
+  current?: boolean;
   /** Counted jobs: completed requests whose result was read. */
   edits: number;
   /** The subject's first request. */
   added: number | null;
   /** Open questions on the page shown, from the digest; null when not known yet. */
   open: number | null;
-  /** The Launched fact as a time; null when the page has none. */
+  /** The Launched fact as a time; null when the page has none (known only while `current`). */
   launched: number | null;
 }
 
@@ -36,11 +41,16 @@ export function findMatches(s: Pick<SubjectSummary, "id" | "name">, find: string
   return s.name.toLowerCase().includes(f) || s.id.toLowerCase().includes(f);
 }
 
-type Row = Pick<SubjectSummary, "id" | "changed" | "counts">;
+type Row = Pick<SubjectSummary, "id" | "changed" | "counts"> & { order?: number };
+/** The sorts whose figure comes from the subject's record, not from the Intake scan. */
+const FROM_RECORD: SortKey[] = ["proven", "open", "disputed", "launched"];
+/** True when this sort's figure for the row is not known for its current results. */
+export const awaits = (k: SortKey, f: RowFacts | undefined) => FROM_RECORD.includes(k) && f?.current === false;
 /** The figure a sort ranks by; null for "goes last". */
 export function figure(s: Row, k: SortKey, f: RowFacts | undefined): number | null {
+  if (awaits(k, f)) return null;
   switch (k) {
-    case "changed": return s.changed;
+    case "changed": return s.order ?? s.changed;
     case "added": return f?.added ?? null;
     case "edits": return f?.edits ?? 0;
     case "proven": return s.counts ? s.counts.checks : null;
@@ -50,12 +60,15 @@ export function figure(s: Row, k: SortKey, f: RowFacts | undefined): number | nu
   }
 }
 
-/** The rows in the chosen order: largest or newest first; for Launch date the earliest first. Unknown figures go last. */
+/**
+ * The rows in the chosen order: largest or newest first; for Launch date the earliest first. A missing figure (no
+ * Launched fact) goes after known ones, and a figure awaiting an update after those.
+ */
 export function sortProjects<T extends Row>(rows: T[], k: SortKey, facts: Map<string, RowFacts>): T[] {
   return rows
-    .map((s, i) => ({ s, i, v: figure(s, k, facts.get(s.id)) }))
+    .map((s, i) => ({ s, i, v: figure(s, k, facts.get(s.id)), late: Number(awaits(k, facts.get(s.id))) }))
     .sort((a, b) => {
-      if (a.v === null && b.v === null) return a.i - b.i;
+      if (a.v === null && b.v === null) return a.late - b.late || a.i - b.i;
       if (a.v === null) return 1;
       if (b.v === null) return -1;
       return (k === "launched" ? a.v - b.v : b.v - a.v) || a.i - b.i;
@@ -67,6 +80,7 @@ const n = (v: number, one: string, many = `${one}s`) => `${v.toLocaleString("en-
 const day = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 /** The figure a row is sorted by, when the row does not already show it ("12 edits", "9 open questions"). */
 export function figureOf(s: Row, k: SortKey, f: RowFacts | undefined): string {
+  if (awaits(k, f)) return k === "launched" ? "Launch date awaiting update" : "Count awaiting update";
   const v = figure(s, k, f);
   if (v === null) return k === "launched" ? "No launch date" : "";
   switch (k) {

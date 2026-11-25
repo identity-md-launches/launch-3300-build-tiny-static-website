@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { artifactUrl, matchesTemplate, MAX_OBJECTIVE, parsePrior, rebuildBody, rebuildObjective, REBUILD_TEMPLATE } from "../src/bodies";
 import { changesBody, changesObjective, CHANGES_TEMPLATE, lineTarget, parseItems, type Change } from "../src/changes";
 import { INSTRUCTIONS, instructionsOf, rawCid } from "../src/instructions";
-import { InstructionsBlock } from "../src/Instructions";
+import { InstructionsBlock } from "../src/InstructionsBlock";
 import { leftOutText } from "../src/model";
 import { refFromId } from "../src/subject";
 
