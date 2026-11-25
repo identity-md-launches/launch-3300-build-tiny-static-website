@@ -24,6 +24,9 @@ import {
   type Prior,
   type Template,
 } from "./bodies";
+import { HeaderSearch, type SearchEntry } from "./HeaderSearch";
+import { Contributors } from "./Contributors";
+import { CONTRIBUTORS_TITLE } from "./contributors";
 import { OverviewTab, PayerLink, RecordTab, SourcesTab, type Filter, type Ui } from "./Record";
 import { ActivityList } from "./ActivityList";
 import { Connect, loadWallet, useWalletAccount } from "./walletLazy";
@@ -40,7 +43,7 @@ import { jobLink, lineAnchor, payerName } from "./format";
 import { lineForAddress } from "./addresses";
 import { localDateTime } from "./dates";
 import { ContributeQuestions } from "./Record";
-import { DOCS_HREF, TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, to } from "./route";
+import { CONTRIBUTORS_HREF, DOCS_HREF, TABS, canonicalHash, routeOf, setLinkSubject, subjectHref, to } from "./route";
 import { Docs } from "./Docs";
 import { Profile } from "./Profile";
 import { CHAIN_CHOICES, chainName, describeSubject, refFromInput, validateSubject, type SubjectRef } from "./subject";
@@ -1088,8 +1091,10 @@ export default function App() {
   const readingFiles = !!subject && activity.items !== null && items === null;
   const subjects = useMemo<Findable[]>(() => subjectSummaries(counted ?? [], digests, logos).map((s) => ({ id: s.id, main: s.main, contracts: s.contracts, ranked: s.ranked })), [activity.items, digests, logos]);
   useEffect(() => {
-    if (!subject && !route.docs && !route.wallet) document.title = HOME_TITLE;
-  }, [subject, route.docs, route.wallet]);
+    if (!subject && !route.docs && !route.wallet && !route.contributors) document.title = HOME_TITLE;
+  }, [subject, route.docs, route.wallet, route.contributors]);
+  // The header search lists every project the home list shows, with its logo.
+  const searchEntries = useMemo<SearchEntry[]>(() => subjectSummaries(counted ?? [], digests, logos), [counted, digests, logos]);
 
   /** The home form: the Rebuild dialog for that subject, starting from its record when it already has one. */
   const addProject = (input: { domain: string; address: string; chain: string; leads?: string[] }): string | null => {
@@ -1125,13 +1130,19 @@ export default function App() {
       <header className="top">
         <div className="top-row">
           <a className="brand" href="#/">Swarmpedia <span className="brand-beta">beta</span></a>
-          <a className="top-link" href={DOCS_HREF} aria-current={route.docs ? "page" : undefined}>How it works</a>
+          <HeaderSearch entries={searchEntries} home={!subject && !route.docs && !route.wallet && !route.contributors} />
+          <nav className="top-nav" aria-label="Site">
+            <a className="top-link" href={DOCS_HREF} aria-current={route.docs ? "page" : undefined}>How it works</a>
+            <a className="top-link" href={CONTRIBUTORS_HREF} aria-current={route.contributors ? "page" : undefined}>{CONTRIBUTORS_TITLE}</a>
+          </nav>
           <Connect />
         </div>
       </header>
       <main id="root-main" tabIndex={-1}>
         {route.docs ? (
           <Docs quote={rebuildQuote} example={example} digests={digests} logos={logos} />
+        ) : route.contributors ? (
+          <Contributors activity={activity} />
         ) : route.wallet ? (
           <Profile key={route.wallet} address={route.wallet} activity={activity} />
         ) : subject ? (

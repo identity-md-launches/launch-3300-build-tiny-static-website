@@ -981,6 +981,8 @@ export interface RecordModel {
   unresolved: UnresolvedRef[];
   /** A line's earlier origin ("F2:L14") in words: the job that wrote it, its payer and date. No ids. */
   fromOrigin: (ref: string) => string;
+  /** The wallet whose changes request first wrote a line carried over from these origins ("F2:L14"), if any. */
+  changesPayerOf: (from: string[]) => { name: string; address: string } | null;
   /** When the job that wrote an earlier line ("F2:L14") completed (unix seconds), or null when unknown. */
   fromTime: (ref: string) => number | null;
   /** The newest page job for this subject that has not completed yet: while it runs, Rebuild is not offered. */
@@ -1126,6 +1128,16 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     return `carried over from ${what} paid by ${payerName(a)}${a.doneTime ? `, ${readDate(String(a.doneTime))}` : ""}`;
   };
 
+  const changesPayerOf = (from: string[]): { name: string; address: string } | null => {
+    for (const ref of from) {
+      const m = /^\s*F(\d+):/i.exec(ref);
+      const f = m ? given.files.find((x) => x.n === Number(m[1])) : undefined;
+      const a = f?.hash ? (items ?? []).find((x) => x.fileHash === f.hash) : undefined;
+      if (a && isChangesJob(a.req)) return { name: payerName(a), address: a.req.payer };
+    }
+    return null;
+  };
+
   const fromTime = (ref: string): number | null => firstRecordedOf(ref, given.files, items ?? []);
 
   const answerRef = (target: string) => {
@@ -1239,6 +1251,7 @@ export function useRecordModel(items: Activity[] | null, chainError: string | nu
     merged: core.merged,
     unresolved: core.unresolved,
     fromOrigin,
+    changesPayerOf,
     fromTime,
     pendingRebuild: pendingRebuildOf(items ?? []),
     sourceList,

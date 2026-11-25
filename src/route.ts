@@ -23,6 +23,8 @@ export interface Route {
   docs?: boolean;
   /** "#/w/<address>": one wallet's profile page. */
   wallet?: string;
+  /** "#/contributors": the people who added to Swarmpedia pages. */
+  contributors?: boolean;
   /** "#/s/<subject>/l/<job id>:<line id>": the Record at that line, highlighted. */
   address?: string;
 }
@@ -62,6 +64,7 @@ export function routeOf(hash: string): Route {
   // "#/add/" with nothing after it: home with the lookup field empty and focused, for a related project whose
   // record gives no usable domain or contract.
   if (h === "/docs" || h === "/docs/") return { subject: null, tab: "overview", target: null, docs: true };
+  if (h === "/contributors" || h === "/contributors/") return { subject: null, tab: "overview", target: null, contributors: true };
   const w = /^\/w\/(0x[0-9a-fA-F]{40})\/?$/.exec(h);
   if (w) return { subject: null, tab: "overview", target: null, wallet: w[1]!.toLowerCase() };
   if (h === "/add" || h === "/add/") return { subject: null, tab: "overview", target: null, add: "" };
@@ -119,3 +122,6 @@ export const setLinkSubject = (s: string) => {
 };
 /** "#/s/<subject open now>/<part>" for an in-page link. */
 export const to = (part = "") => subjectHref(current, part);
+
+/** The contributors page. */
+export const CONTRIBUTORS_HREF = "#/contributors";

@@ -190,7 +190,10 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
   const plan = () => {
     const { items: its, subject: open, readSubject: read, loaded: ready } = ctx.current;
     if (!its || open || !read || !ready || !queue.current) return;
-    const want = digestQueue(its, latest.current.digests).filter((id) => wanted.current.has(id));
+    // Read: subjects asked for with Try again, and every row whose digest (stored here or published with the site)
+    // was taken before a newer counted result, so a home row never stays behind its project's page.
+    const known = withPublished(latest.current.digests, its);
+    const want = digestQueue(its, known).filter((id) => wanted.current.has(id) || (known.has(id) && !isCurrent(known.get(id)!, its.filter((a) => a.req.subject === id))));
     queue.current.plan(want.filter((id) => tried.current.get(id) !== sigOf(its, id)));
   };
   queue.current ??= new DigestQueue(
@@ -217,7 +220,7 @@ export function useDigests(items: Activity[] | null, subject: string | null, rea
     () => plan(),
   );
 
-  // Reads asked for (Try again) continue as the list changes; nothing is read unasked.
+  // Reads asked for (Try again) and refreshes of rows behind a newer counted result continue as the list changes.
   useEffect(() => {
     plan();
     // eslint-disable-next-line react-hooks/exhaustive-deps

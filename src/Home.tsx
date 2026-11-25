@@ -8,7 +8,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { countedBy, isCurrent, readerNoteText, upkeepText, statusText, subjectSummaries, unreadableSummary, unreadableText, type Digest, type SubjectSummary } from "./model";
 import { subjectHref } from "./route";
 import { CHAIN_CHOICES, OTHER_CHAIN, chainName } from "./subject";
-import { findSubject, matchesQuery, parseLookup, type Lookup } from "./lookup";
+import { findSubject, matchesNameOrDomain, parseLookup, type Lookup } from "./lookup";
+import { SEARCH_PLACEHOLDER } from "./HeaderSearch";
 import { SubjectLogo } from "./Logo";
 import { KindIcon, ToneMark } from "./KindIcon";
 import imdLogo from "./assets/imd-logo.png";
@@ -18,7 +19,7 @@ import type { Activity } from "./useActivity";
 import type { Example as Lines3 } from "./example";
 import { SaveStar, useSaved } from "./saved";
 import { localDate } from "./dates";
-import { SORTS, sortOf, sortProjects, figureOf, findMatches, sortFromHash, sortHash, type SortKey, type RowFacts } from "./sorting";
+import { SORTS, sortOf, sortProjects, figureOf, sortFromHash, sortHash, type SortKey, type RowFacts } from "./sorting";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
@@ -174,22 +175,16 @@ function ListFilter({ all, needs, saved, view, set, checking }: { all: number; n
     </div>
   );
 }
-/** "Find a project" (by name or domain) and "Sort by", above the list. */
-function ListTools({ find, setFind, sort, setSort }: { find: string; setFind: (v: string) => void; sort: SortKey; setSort: (k: SortKey) => void }) {
+/** "Sort by", on the right of the row above the list. The big box at the top is the one search. */
+function ListSort({ sort, setSort }: { sort: SortKey; setSort: (k: SortKey) => void }) {
   return (
-    <div className="list-tools">
-      <div className="field list-find">
-        <label htmlFor="find-project" className="sr-only">Find a project</label>
-        <input id="find-project" type="search" autoComplete="off" spellCheck={false} placeholder="Find a project by name or domain" value={find} onChange={(e) => setFind(e.target.value)} />
-      </div>
-      <div className="field list-sort">
-        <label htmlFor="sort-projects" className="sr-only">Sort by</label>
-        <select id="sort-projects" value={sort} onChange={(e) => setSort(sortOf(e.target.value))}>
-          {SORTS.map((o) => (
-            <option key={o.key} value={o.key}>{o.label}</option>
-          ))}
-        </select>
-      </div>
+    <div className="field list-sort">
+      <label htmlFor="sort-projects">Sort by</label>
+      <select id="sort-projects" value={sort} onChange={(e) => setSort(sortOf(e.target.value))}>
+        {SORTS.map((o) => (
+          <option key={o.key} value={o.key}>{o.label}</option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -477,7 +472,6 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const [view, setView] = useState<ListView>("all");
   const onlyStale = view === "stale";
   const saved = useSaved();
-  const [find, setFind] = useState("");
   const [sort, setSortState] = useState<SortKey>(() => (typeof location === "undefined" ? "changed" : sortFromHash(location.hash)));
   const setSort = (k: SortKey) => {
     setSortState(k);
@@ -489,7 +483,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const facts = useMemo(() => rowFacts(items ?? [], digests), [items, digests]);
   const needs = all.filter((s) => s.outdated).length;
   const savedRows = all.filter((s) => saved.includes(s.id)).length;
-  const filtered = all.filter((s) => matchesQuery(s, q) && findMatches(s, find) && (view === "all" || (view === "stale" ? !!s.outdated : saved.includes(s.id))));
+  const filtered = all.filter((s) => matchesNameOrDomain(s, q) && (view === "all" || (view === "stale" ? !!s.outdated : saved.includes(s.id))));
   const shown = sortProjects(filtered, sort, facts);
   // Reads still under way can add a contract to the list or mark a page out of date.
   const pendingReads = !!busy;
@@ -633,7 +627,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             look(q);
           }}
         >
-          <label htmlFor="lookup" className="sr-only">A project's website or a contract address</label>
+          <label htmlFor="lookup" className="sr-only">{SEARCH_PLACEHOLDER}</label>
           <input
             id="lookup"
             ref={input}
@@ -643,7 +637,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
-            placeholder="A project's website or a contract address"
+            placeholder={SEARCH_PLACEHOLDER}
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
@@ -690,13 +684,14 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
           <>
             {cached && loading && <p className="small" role="status">Shown from this browser. Reading newer blocks…</p>}
             {/* One set of controls above both list states: typing past the last match never unmounts the field. */}
+            {/* One row: the filter buttons on the left, "Sort by" on the right. */}
             <div className="list-bar">
-              <ListTools find={find} setFind={(v) => { setFind(v); setLimit(PAGE_ROWS); }} sort={sort} setSort={setSort} />
               <ListFilter all={all.length} needs={needs} saved={savedRows} view={view} set={(v) => { setView(v); setLimit(PAGE_ROWS); }} checking={pendingReads} />
+              <ListSort sort={sort} setSort={setSort} />
             </div>
             {shown.length ? (
               <>
-                <p className="small list-note" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : find.trim() ? `${plural(shown.length, "project")} match “${find.trim()}”.` : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
+                <p className="small list-note" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
                 <ul className="subjects">
                   {shown.slice(0, limit).map((s) => (
                     <SubjectItem key={s.id} s={s} reading={!!reading?.has(s.id)} failed={failed?.get(s.id) ?? ""} retry={retry} figure={figureOf(s, sort, facts.get(s.id))} />
@@ -712,12 +707,12 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
               </>
             ) : (
               <p className="small list-note" aria-live="polite">
-                {view === "saved" && !find.trim() ? "Saved projects stay on this device." : find.trim() ? `No project matches “${find.trim()}”.` : pendingReads && onlyStale ? "Checking which pages need a rebuild…" : q.trim() ? `No project${onlyStale ? " that needs a rebuild" : ""} matches “${q.trim()}”.${onlyStale ? "" : " Press Look it up to add it."}` : onlyStale ? "No page needs a rebuild." : "No projects."}
+                {view === "saved" && !q.trim() ? "Saved projects stay on this device." : pendingReads && onlyStale ? "Checking which pages need a rebuild…" : q.trim() ? `No project${onlyStale ? " that needs a rebuild" : ""} matches “${q.trim()}”.${onlyStale ? "" : " Press Look it up to add it."}` : onlyStale ? "No page needs a rebuild." : "No projects."}
               </p>
             )}
           </>
         ) : (
-          <p className="small" aria-live="polite">{q.trim() ? `No project matches “${q.trim()}”. Press Look it up to add it.` : "No projects yet. Add the first one with the bar above."}</p>
+          <p className="small" aria-live="polite">{q.trim() ? `No project matches “${q.trim()}”. Press Look it up to add it.` : "No projects yet. Add the first one with the box above."}</p>
         )}
       </div>
 

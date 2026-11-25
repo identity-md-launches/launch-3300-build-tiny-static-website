@@ -790,8 +790,23 @@ const MAIN_ROW = /^main contract$/i;
 /** The status the page's contracts give an address; null when it lists none. */
 export type StatusOf = (address: string) => Liveness | null;
 export const statusOfContract = (contracts: Pick<Contract, "address" | "status">[]): StatusOf => {
-  const by = new Map(contracts.filter((c) => c.address && (c.status === "test" || c.status === "past" || c.status === "live")).map((c) => [c.address.toLowerCase(), c.status as Liveness]));
-  return (a) => (a ? by.get(a.toLowerCase()) ?? null : null);
+  // One address can be deployed on several chains (Intake v2 is on Ethereum, Robinhood Chain and Sepolia): it is
+  // test or past only when every listed deployment of it is; one live deployment makes it live. Without a status of
+  // its own a deployment counts as live, so an address on Sepolia never lends its tag to the same address on Ethereum.
+  const by = new Map<string, Liveness[]>();
+  for (const c of contracts) {
+    if (!c.address) continue;
+    const k = c.address.toLowerCase();
+    const st: Liveness = c.status === "test" || c.status === "past" ? c.status : "live";
+    by.set(k, [...(by.get(k) ?? []), st]);
+  }
+  const anyDeclared = new Set(contracts.filter((c) => c.address && (c.status === "test" || c.status === "past" || c.status === "live")).map((c) => c.address.toLowerCase()));
+  return (a) => {
+    if (!a) return null;
+    const k = a.toLowerCase();
+    if (!anyDeclared.has(k)) return null;
+    return liveFirst(by.get(k) ?? [], (x) => x)[0] ?? null;
+  };
 };
 /** A test or past status the page gives the first contract a text names. */
 const textStatus = (text: string, of: StatusOf): Liveness | null => {
@@ -913,7 +928,11 @@ const partsOf = (value: string) => value.split(/\s*(?:[;,]|\band\b)\s*/i).map((x
 export function liveOnlyRows(rows: KeyRow[], page: Pick<Page, "contracts">, all: Line[], sourceUrl: (l: Line) => string = () => ""): KeyRow[] {
   const isLive = (r: KeyRow) => LIVE_ONLY_ROWS.test(r.label.trim());
   const nets = new Map<string, string>();
-  const addNet = (n: string) => n && !nets.has(n.toLowerCase()) && nets.set(n.toLowerCase(), n);
+  const addNet = (raw: string) => {
+    const n = netName(raw);
+    const k = netKey(n);
+    if (n && !nets.has(k)) nets.set(k, n);
+  };
   const testLines: Line[] = [];
   const out: KeyRow[] = [];
   for (const r of rows) {
@@ -952,11 +971,29 @@ export function liveOnlyRows(rows: KeyRow[], page: Pick<Page, "contracts">, all:
   const result = liveLeft ? out : out.filter((r) => !isLive(r));
   // Every test program the page lists, whatever its address format, has its network named.
   for (const c of page.contracts) if (c.status === "test" || (!isLiveContract(c) && c.status !== "past")) addNet(testNetworksIn(`${c.chain} ${c.role}`)[0] ?? c.chain.trim());
-  if (!nets.size || result.some((r) => TEST_ROW.test(r.label.trim()))) return result;
+  if (!nets.size) return result;
   const lines = [...new Set([...testLines, ...linesNaming(all, page.contracts.filter((c) => c.status === "test"))])];
+  // The page has its own Test networks row: a test network taken out of Chains or Contracts is added to it, never dropped.
+  const own = result.findIndex((r) => TEST_ROW.test(r.label.trim()));
+  if (own >= 0) {
+    const r = result[own]!;
+    const listed = (r.values.length ? r.values : partsOf(r.value)).map((v) => netKey(netName(v)));
+    const missing = [...nets].filter(([k]) => !listed.includes(k)).map(([, n]) => n);
+    if (!missing.length) return result;
+    const merged: KeyRow = r.values.length ? { ...r, values: [...r.values, ...missing], value: [...r.values, ...missing].join("; ") } : { ...r, value: [r.value, ...missing].filter((x) => x.trim()).join(", ") };
+    return result.map((x, i) => (i === own ? { ...merged, lines: [...new Set([...r.lines, ...lines])] } : x));
+  }
   const badge = badgeOf(lines, all, sourceUrl);
   return [...result, { label: "Test networks", value: [...nets.values()].join(", "), url: "", note: "", lines, channel: null, badge, status: null, accounts: [], tokens: [], values: [], ...speakersField(badge, lines, sourceUrl) }];
 }
+/** A test network's shown name: a chain id by its name (11155111 is Sepolia). */
+const netName = (raw: string): string => {
+  const t = raw.trim();
+  if (/^\d+$/.test(t)) return chainName(Number(t)) || t;
+  return t;
+};
+/** "Sepolia testnet", "Sepolia" and "sepolia test network" are one network. */
+const netKey = (n: string) => n.toLowerCase().replace(/\s+(?:test[- ]?net(?:work)?|network)$/, "").trim();
 /** The record lines that name any of these contracts' addresses. */
 function linesNaming(all: Line[], contracts: Contract[]): Line[] {
   const addrs = contracts.map((c) => c.address.trim().toLowerCase()).filter((a) => a.length >= 20);
@@ -966,30 +1003,27 @@ const tokenName = (name: string) => (/\btoken$/i.test(name.trim()) ? name.trim()
 
 const SUPPLY_ROW = /^(?:(?:total|circulating|max(?:imum)?|token) )?supply$/i;
 const NAMED = /^(\$?[A-Za-z][\w.]{0,11}):\s+(?=\S)/;
-/** "100 million on Ethereum, about 2,420 on Polygon PoS" as two amounts: only when every part names its own chain. */
-const byChain = (text: string): string[] => {
-  const parts = text.split(/,\s+(?:and\s+)?/);
-  return parts.length > 1 && parts.every((p) => /\d/.test(p) && /\bon\s+[A-Z]/.test(p)) ? parts : [text];
-};
 /**
- * A long text value as one entry per line. A Supply value is split at its semicolons and at amounts that each name
- * their chain, and a leading "IMD: " names every entry; another row is split at semicolons when it has three or more
- * entries. A value with one entry is returned whole.
+ * A long text value as one entry per line. A Supply value is one entry per token (see below); another row is split at
+ * semicolons when it has three or more entries. A value with one entry is returned whole.
  */
 export function valueEntries(label: string, value: string): string[] {
   const parts = value.split(/;\s+/).map((p) => p.trim()).filter(Boolean);
   if (!SUPPLY_ROW.test(label.trim())) return parts.length >= 3 ? parts : [value];
-  const named = NAMED.exec(parts[0] ?? "");
-  const shared = named && !parts.slice(1).some((p) => NAMED.test(p)) ? named[1]! : "";
-  if (shared) parts[0] = parts[0]!.slice(named![0].length);
-  const out = parts.flatMap(byChain);
-  return out.length > 1 ? out.map((p) => (shared ? `${shared}: ${p}` : p)) : [value];
+  // Supply is one entry per token, its text as written. A value that names its token ("IMD: about 7.08 million in
+  // total; about 4.28 million bridged") is split only where another token's name starts; a part with no name of its
+  // own belongs to the token before it. A value that names no token is split at its semicolons, one token each.
+  if (!NAMED.test(parts[0] ?? "")) return parts.length > 1 ? parts : [value];
+  const out: string[] = [];
+  for (const p of parts) {
+    if (NAMED.test(p) || !out.length) out.push(p);
+    else out[out.length - 1] = `${out[out.length - 1]}; ${p}`;
+  }
+  return out.length > 1 ? out : [value];
 }
-/** The same for a list entry with a name of its own: the name goes before each amount. */
-export function itemEntries(label: string, v: ShownItem): ShownItem[] {
-  if (!SUPPLY_ROW.test(label.trim()) || v.address || !v.text) return [v];
-  const parts = v.text.split(/;\s+/).map((p) => p.trim()).filter(Boolean).flatMap(byChain);
-  return parts.length > 1 ? parts.map((text, i) => ({ ...v, text, url: i === parts.length - 1 ? v.url : "" })) : [v];
+/** A list entry with a name of its own is one token: shown once, its text as written, never split. */
+export function itemEntries(_label: string, v: ShownItem): ShownItem[] {
+  return [v];
 }
 /** The chain every entry of a Contracts row shares, shown once for the list; "" when they differ or one has none. */
 export function sharedChain(row: Pick<KeyRow, "label" | "items">, fallback = ""): string {

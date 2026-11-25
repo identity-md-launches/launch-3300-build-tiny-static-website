@@ -28,6 +28,10 @@
     "sha256": "74f6ac6095c4bfc35e704a99aa256e19e60045673d799285ea7fa2631b080602"
   },
   {
+    "file": "changes-76bb018d8c8b.txt",
+    "sha256": "76bb018d8c8b02ab335897e57b81f243f13d1a4dd01bbc7983e2e8e7639c3fc3"
+  },
+  {
     "file": "changes-8400e6bf9d85.txt",
     "sha256": "8400e6bf9d85d62ec6f7285e35e328353f499dd7e93101a6d311b24bf6fab3a7"
   },
@@ -70,6 +74,10 @@
   {
     "file": "rebuild-153b2cd5869b.txt",
     "sha256": "153b2cd5869bdb6853081cf4f2dbff02f933284d3cc46708f4c9fccd28a19fe8"
+  },
+  {
+    "file": "rebuild-1cb3032ca031.txt",
+    "sha256": "1cb3032ca031c1402694a41fa4c60f44806f98f49ba3ee728e944f0d64f5c927"
   },
   {
     "file": "rebuild-2bc2ecf2ae61.txt",

@@ -4,13 +4,14 @@ import { SaveStar } from "./saved";
 import { liveFirst, LIVENESS_TAG, type Liveness } from "./liveness";
 /** The record's tabs: Overview (key facts, summary), Record (filter, sections, one facts table) and Sources. */
 import { disputedCount, rowPatchListsOf, sentenceDispute, type Dispute, type Disputes, type SentenceChange } from "./changeResult";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { EXPLORER } from "./config";
 import { jobLink, kindName, lineAnchor, payerName, shortHex } from "./format";
 import { addressText, historicFor, shortJobId } from "./addresses";
 import { explorerAddressUrl } from "./subject";
 import { addressRuns, chainOfAddress, chainTag, chainText, isChainName, takeAddress } from "./addrDisplay";
 import { decimalsOf, exactAmount, wholeFact } from "./amounts";
+import { addedOf, contributorsOf, fundersOf, shownLabel, type ContributorStat } from "./contributors";
 import { inviteName, keyFacts, liveRowsFirst, sharedChain, shownEntries, splitAddresses, statusOfContract, withPatches, type Badge, type KeyRow, type RowChange, type ShownItem, type StatusOf } from "./keyfacts";
 import { addHref, lineAddressHref, subjectHref, to, walletHref } from "./route";
 import { SubjectLogo } from "./Logo";
@@ -194,6 +195,26 @@ export function KeyValue({ row, chain }: { row: KeyRow; chain: string }) {
         ))}
       </ul>
     );
+  if (shown.items && /^contracts?$/i.test(row.label.trim())) {
+    // Contracts: each entry is one two-column line, its name (and its own tag) then its address, so every address
+    // sits beside its name when there is room and below it, the same way for every entry, when there is not.
+    const shared = sharedChain(row, chain);
+    return (
+      <>
+        {shared && <p className="kf-shared small">All on {shared}</p>}
+        <ShowSome className="kf-values kf-items kf-contracts" limit={listLimit(row.label)} items={shown.items.map(({ v, st }, i) => (
+            <li key={i}>
+              <span className="kf-c-name">
+                {named && i === 0 && <strong className="kf-main-name">{row.mainName}</strong>}
+                <ItemValue v={{ ...v, address: "", url: v.address ? "" : v.url }} chain={chain} />
+                <LiveTag s={st} />
+              </span>
+              {v.address && <span className="kf-c-addr"><Addr address={v.address} chain={chainOfAddress(v.address, v.chain, chain)} url={v.explorer} tag={!shared} /></span>}
+            </li>
+          ))} />
+      </>
+    );
+  }
   if (shown.items) {
     const shared = sharedChain(row, chain);
     return (
@@ -531,10 +552,10 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                     {hasRowDetails(r) ? (
                       <button type="button" className="kf-toggle" aria-expanded={openRow === r.label} aria-controls={`kf-d-${i}`} onClick={() => setOpenRow(openRow === r.label ? null : r.label)}>
                         <span className="chev" aria-hidden="true" />
-                        {r.label}
+                        {shownLabel(r.label)}
                       </button>
                     ) : (
-                      r.label
+                      shownLabel(r.label)
                     )}
                   </th>
                   <td className="kf-value" role="cell">
@@ -624,7 +645,7 @@ function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
           e.preventDefault();
           ui.openLines([r.disputedBy!]);
         }}
-        aria-label={`${r.label}: ${b.text}. Open the newer line that ${b.tone === "contradicted" ? "contradicts" : "outdates"} it`}
+        aria-label={`${shownLabel(r.label)}: ${b.text}. Open the newer line that ${b.tone === "contradicted" ? "contradicts" : "outdates"} it`}
       >
         <BadgeMark tone={b.tone} />
         {b.text}
@@ -647,7 +668,7 @@ function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
         e.preventDefault();
         ui.openLines(r.lines.map((l) => l.id));
       }}
-      aria-label={`${r.label}: ${b.text}. Open the ${r.lines.length === 1 ? "line" : `${r.lines.length} lines`} it rests on`}
+      aria-label={`${shownLabel(r.label)}: ${b.text}. Open the ${r.lines.length === 1 ? "line" : `${r.lines.length} lines`} it rests on`}
     >
       <BadgeMark tone={b.tone} />
       {b.text}
@@ -1070,6 +1091,82 @@ export function PageRetry({ onRetry, retrying = false }: { onRetry?: () => void;
   );
 }
 
+/** Rows shown in "Page contributors" before "Show all N". */
+export const PAGE_CONTRIBUTORS_SHOWN = 5;
+/**
+ * "About this page", at the bottom of Overview after Related (never inside Key facts): the people who added to this
+ * page and the wallets that paid for its jobs, each linked to its profile. Computed from the page's counted jobs.
+ */
+export function AboutThisPage({ items, subject }: { items: Activity[]; subject: string }) {
+  const people = useMemo(() => contributorsOf(items.filter((a) => a.req.subject === subject)), [items, subject]);
+  const funders = useMemo(() => fundersOf(items, subject), [items, subject]);
+  const [all, setAll] = useState(false);
+  if (!people.length && !funders.length) return null;
+  const shown = all ? people : people.slice(0, PAGE_CONTRIBUTORS_SHOWN);
+  return (
+    <section className="about-page" aria-labelledby="about-page-title">
+      <h2 id="about-page-title">About this page</h2>
+      <div className="about-page-cols">
+        <div>
+          <h3>Page contributors</h3>
+          {people.length ? (
+            <>
+              <ContributorTable rows={shown} caption="Page contributors" />
+              {people.length > PAGE_CONTRIBUTORS_SHOWN && !all && (
+                <button type="button" className="linklike small" onClick={() => setAll(true)}>Show all {people.length.toLocaleString("en-US")}</button>
+              )}
+            </>
+          ) : (
+            <p className="small">No changes have been added to this page yet.</p>
+          )}
+        </div>
+        <div>
+          <h3>Funded by</h3>
+          <ul className="plain funders">
+            {funders.map((f) => (
+              <li key={f.address}>
+                <a href={walletHref(f.address)} className={f.name.startsWith("0x") ? "mono" : undefined}>{f.name}</a>{" "}
+                <span className="small num">{f.jobs === 1 ? "1 job" : `${f.jobs.toLocaleString("en-US")} jobs`}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** The contributors table, the same on #/contributors and under "About this page". */
+export function ContributorTable({ rows, caption, ranked = false }: { rows: ContributorStat[]; caption: string; ranked?: boolean }) {
+  return (
+    <div className="table-scroll">
+      <table className="contrib-table">
+        <caption className="sr-only">{caption}</caption>
+        <thead>
+          <tr>
+            {ranked && <th scope="col" className="num">#</th>}
+            <th scope="col">Name</th>
+            <th scope="col">Notes added</th>
+            <th scope="col">Questions answered</th>
+            <th scope="col">Pages touched</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.address}>
+              {ranked && <td className="num">{i + 1}</td>}
+              <td><a href={walletHref(r.address)} className={r.name.startsWith("0x") ? "mono" : undefined}>{r.name}</a></td>
+              <td className="num">{addedOf(r)}</td>
+              <td className="num">{r.answered.toLocaleString("en-US")}</td>
+              <td className="num">{r.pages.toLocaleString("en-US")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false, unreadable = 0, onRetry, jobs = { finished: false, loadFailed: false, settled: true } }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean; unreadable?: number; onRetry?: () => void; jobs?: PageJobs }) {
   const { page, latest, error } = m;
   // D10: "No page yet" and "Create the page" only once the current scan shows no finished page job.
@@ -1184,6 +1281,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
         </div>
       )}
       {page && <Related m={m} subjects={subjects} />}
+      {page && items && <AboutThisPage items={items} subject={m.subject.id} />}
 
       {page ? (
         <div className="ov-foot" id="suggest">
@@ -1323,8 +1421,15 @@ function Details({ row, ctx, id, withText }: { row: RecordRow; ctx: Ctx; id: str
   const job = origin ? { what: origin.raised ? "A changes job a visitor raised" : "A sources or edit job", payer: origin.payer, payerAddr: origin.payerAddr, href: origin.jobHref } : ctx.research ? { what: "The page job", payer: ctx.research.payer, payerAddr: ctx.research.payerAddr, href: ctx.research.href } : null;
   // Where the line was first written: the job and its line id, a permanent address (addresses.ts).
   const written = ctx.m.origins.get(line.id);
+  // A line a visitor's changes request added, directly or carried into a later page: "Added by <name>".
+  const addedBy = origin?.raised ? { name: origin.payer, address: origin.payerAddr } : ctx.m.changesPayerOf(line.from);
   return (
     <div className="details" id={id}>
+      {addedBy && (
+        <p className="small added-by">
+          Added by <PayerLink name={addedBy.name} address={addedBy.address} />
+        </p>
+      )}
       <dl className="facts">
         {withText && (
           <>

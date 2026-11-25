@@ -94,6 +94,20 @@ export function matchesQuery(s: Findable & { name: string; oneLine: string }, ra
   return hay.some((x) => x.toLowerCase().includes(n) || x.toLowerCase().includes(needle));
 }
 
+/**
+ * The one search (Home's big box and the header field): a project matches by its name or its domain; a 0x address
+ * matches the projects whose record lists that contract (on that chain when one is given).
+ */
+export function matchesNameOrDomain(s: Findable & { name: string }, raw: string): boolean {
+  const needle = raw.trim().toLowerCase();
+  if (!needle) return true;
+  const q = parseLookup(raw);
+  if (q.kind === "address") return holdsContract(s, q.address, q.chainId);
+  const bare = needle.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "");
+  const n = q.kind === "domain" ? q.domain : bare;
+  return [s.id, s.name].some((x) => x.toLowerCase().includes(n) || x.toLowerCase().includes(bare));
+}
+
 /** The bar's value for a subject id handed over by "Add this project": a domain, or "chain:0x…". */
 export const lookupText = (id: string) => id.trim();
 

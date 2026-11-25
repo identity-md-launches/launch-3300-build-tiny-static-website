@@ -1054,18 +1054,12 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
 .subject-head .save-star { margin-block: -10px; margin-inline-end: -10px; }
 .title-row h1 { flex: 0 1 auto; }
 .title-row .save-star { margin-inline-start: auto; }
-/* Home list: Find, Sort and the filter buttons; one row on wide screens. Labels are for screen readers only. */
-.list-bar { display: grid; gap: var(--space-2); margin: 8px 0 12px; min-width: 0; }
-.list-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; margin: 0; min-width: 0; }
-.list-tools .field { display: grid; min-width: 0; }
-.list-tools input, .list-tools select { min-height: 44px; width: 100%; box-sizing: border-box; }
-.home-list .list-bar .filter { margin-block: 0; }
-@media (max-width: 480px) { .list-tools { grid-template-columns: minmax(0, 1fr); } }
-@media (min-width: 60rem) {
-  .list-bar { display: flex; align-items: center; gap: 12px; }
-  .list-bar .list-tools { flex: 1 1 auto; }
-  .list-bar .filter { flex: none; flex-wrap: nowrap; }
-}
+/* Home list: one row, the filter buttons on the left and "Sort by" on the right; they wrap only when both cannot fit. */
+.list-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); margin: 8px 0 12px; min-width: 0; }
+.home-list .list-bar .filter { margin-block: 0; flex: 0 1 auto; }
+.list-sort { display: flex; align-items: center; gap: var(--space-2); margin-inline-start: auto; min-width: 0; }
+.list-sort label { font-size: var(--text-small); color: var(--color-text-secondary); white-space: nowrap; }
+.list-sort select { min-height: 44px; }
 .row-figure { font-weight: 600; }
 .show-more { margin-top: 12px; text-align: center; }
 /* Docs: two columns on wide screens, the menu as a row of links on narrow ones. */
@@ -1129,3 +1123,70 @@ html.kbd h1[tabindex="-1"]:focus-visible, html.kbd h2[tabindex="-1"]:focus-visib
 .q-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .q-toggle svg { transition: none; } }
 .contrib-questions .questions { margin: var(--space-2) 0 0; display: grid; gap: var(--space-3); }
+
+/* ---------- Revision 31: Contracts entries, one search, contributors ---------- */
+/* Contracts: name and its tag in the first column, the address in the second, the same for every entry. */
+.kf-contracts li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: baseline; }
+.kf-contracts .kf-c-name { min-width: 0; }
+.kf-contracts .kf-c-addr { justify-self: end; }
+.keyfacts .kf-value .kf-contracts .addr { display: inline-flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: var(--space-1); white-space: nowrap; }
+@media (max-width: 22.99rem) {
+  .kf-contracts li { grid-template-columns: minmax(0, 1fr); }
+  .kf-contracts .kf-c-addr { justify-self: start; }
+}
+
+/* 64 px between the three cards and the "Projects" heading (Home's own gap plus this margin). */
+.home > .example { margin-bottom: var(--space-8); }
+@media (min-width: 23.4375rem) and (max-width: 30rem) { .home > .example { margin-bottom: 48px; } }
+@media (max-width: 23.4275rem) { .home > .example { margin-bottom: var(--space-8); } }
+
+/* Header: name, search, the two site links, Connect. */
+.top-row { position: relative; }
+.top-nav { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
+.hsearch { position: relative; flex: 0 1 18rem; min-width: 0; }
+.hsearch-field { position: relative; }
+.hsearch input { width: 100%; box-sizing: border-box; min-height: 40px; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-subtle); font: inherit; font-size: var(--text-nav); color: var(--color-text); }
+.hsearch input::placeholder { color: var(--color-text-secondary); opacity: 1; }
+.hsearch input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; background: var(--color-bg); }
+.hsearch-toggle { display: none; width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: none; color: var(--color-text); cursor: pointer; }
+.hsearch-toggle:hover { background: var(--color-bg-hover); }
+.hsearch-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.hsearch-list { position: absolute; z-index: 20; top: calc(100% + 4px); inset-inline: 0; min-width: 16rem; margin: 0; padding: var(--space-1); list-style: none; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: 0 8px 24px rgb(20 23 28 / 0.12); }
+.hsearch-list li a { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-2); border-radius: 6px; color: var(--color-text); text-decoration: none; min-width: 0; }
+.hsearch-list li[aria-selected="true"] a { background: var(--color-bg-hover); }
+.hsearch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.hsearch-text { font-weight: 400; overflow-wrap: anywhere; }
+.hsearch-domain { margin-inline-start: auto; color: var(--color-text-secondary); white-space: nowrap; }
+.hsearch-none { padding: var(--space-2); color: var(--color-text-secondary); }
+/* Below 768 px: a search icon; pressed, the field opens across the header at full width. The two site links take a
+   second row so the name, the icon and Connect keep the first. */
+@media (max-width: 47.99rem) {
+  .top-row, .top-row:has(.acct-wrap) { flex-wrap: wrap; column-gap: var(--space-1); }
+  .hsearch { flex: none; order: 1; position: static; }
+  .top-row > .acct-wrap, .top-row > .btn, .top-row > .acct-skeleton { order: 2; }
+  .top-nav { order: 3; flex: 1 1 100%; gap: var(--space-4); }
+  .top-nav .top-link { font-size: var(--text-small); min-height: 36px; }
+  .hsearch-toggle { display: inline-flex; }
+  .hsearch-field { display: none; }
+  .hsearch-open .hsearch-field { display: block; position: absolute; z-index: 21; inset-inline: var(--page-pad); top: calc(100% - 4px); background: var(--color-bg); padding-bottom: var(--space-2); }
+  .hsearch-open .hsearch-field input { min-height: 44px; font-size: var(--text-body); }
+  .hsearch-list { min-width: 0; }
+}
+
+/* About this page and the contributors table. */
+.about-page { display: grid; gap: var(--space-3); padding-top: var(--space-6); border-top: 1px solid var(--color-border); min-width: 0; }
+.about-page h2 { margin: 0; font-size: var(--text-title); }
+.about-page h3 { margin: 0 0 var(--space-2); font-size: var(--text-heading); }
+.about-page-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
+@media (min-width: 60rem) { .about-page-cols { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
+.funders { display: grid; gap: var(--space-1); }
+.funders li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); min-height: 28px; }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.contrib-table { width: 100%; border-collapse: collapse; font-size: var(--text-body); }
+.contrib-table th, .contrib-table td { text-align: start; padding: var(--space-2) var(--space-3) var(--space-2) 0; border-bottom: 1px solid var(--color-border); vertical-align: baseline; }
+.contrib-table thead th { font-size: var(--text-small); font-weight: 600; color: var(--color-text-secondary); }
+.contrib-table td.num, .contrib-table th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.contrib-table td a { overflow-wrap: anywhere; }
+.contributors { display: grid; gap: var(--space-4); }
+.contributors .lead { margin: 0; color: var(--color-text-secondary); }
+.added-by { margin: 0 0 var(--space-2); }
