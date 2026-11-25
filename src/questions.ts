@@ -52,12 +52,12 @@ export interface QuestionState {
 }
 
 /**
- * A question as a visitor reads it: raw line references such as "[L42,L55,L91]", "(F1:L3)" or "[A2]" are dropped
+ * A question as a visitor reads it: raw line references such as "[L42,L55,L91]", "(F1:L3)", "[A2]" or "[S11,S23,L66]" are dropped
  * from the text. Ids and matching keep the text as written (normQuestion), so links never change.
  */
 export const cleanQuestion = (q: string): string =>
   q
-    .replace(/\s*[[(]\s*(?:(?:F\d+:)?[LAQ]\d+[a-z]?\s*(?:[,;]|\band\b|[-–])?\s*)+[\])]/gi, "")
+    .replace(/\s*[[(]\s*(?:(?:F\d+:)?[LAQS]\d+[a-z]?\s*(?:[,;]|\band\b|[-–])?\s*)+[\])]/gi, "")
     .replace(/\s+([?.!,;:])/g, "$1")
     .replace(/\s+/g, " ")
     .trim();

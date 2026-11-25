@@ -1,5 +1,6 @@
 /** Home's "Find a project" and "Sort by": pure, for tests. No likes and no sorting by token price. */
 import type { SubjectSummary } from "./model";
+import { localDate } from "./dates";
 
 export const SORTS = [
   { key: "changed", label: "Recently changed" },
@@ -85,7 +86,7 @@ export function figureOf(s: Row, k: SortKey, f: RowFacts | undefined): string {
   if (v === null) return k === "launched" ? "No launch date" : "";
   switch (k) {
     case "changed": return "";
-    case "added": return `Added ${day(v)}`;
+    case "added": return `Added ${localDate(v)}`;
     case "edits": return n(v, "edit");
     case "proven": return n(v, "proof");
     case "open": return n(v, "open question");

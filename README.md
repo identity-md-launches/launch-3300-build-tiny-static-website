@@ -933,6 +933,43 @@ pins the site's bodies to them.
 
 ## Validation results
 
+### 2026-11-25, review fixes to revision 30 (after the last source change)
+
+Three review findings, all reproduced on the previous source, all fixed:
+
+- Uniswap's open questions showed "[S11,S23,L66]" and "[L73,S23]": `cleanQuestion` (`src/questions.ts`) now also
+  accepts S (source) references in a bracketed list, so the whole bracket is dropped. Both strings are in
+  `tests/revision30.test.ts`.
+- Home's "Added <date>" was printed in UTC: it now uses `localDate` (`src/sorting.ts`, `figureOf`); "Launched"
+  stays a calendar date as written.
+- Docs headings measured 32px above their text: the cause was the global `section { display: grid; gap: 16px }` plus
+  the h2's 16px margin (grid items' margins do not collapse). `.doc-sec` now has `row-gap: 16px`, the h2 no margin and
+  the element after it no top margin (`src/styles.css`).
+
+Run on this machine, on the final source:
+
+- `npm run build` (tsc --noEmit, then vite build): exit 0; `dist/` rebuilt. `npx tsc --noEmit`: exit 0.
+  `npx vitest run`: **583 of 583 pass in 41 files**, also with `TZ=Pacific/Kiritimati` (UTC+14).
+- Chromium on `dist/` (Playwright 1.59 with this machine's Chromium headless shell):
+  - #/docs at 1440: every one of the ten section headings is 16px above its text; buttons to columns 40px; section to
+    section 48px.
+  - #/s/uniswap.org/suggest-changes: "Open questions (9)"; the nine questions show no bracketed references, and the
+    Record shows none either. The two questions from the report end at their full stop.
+  - Home at 390 in Pacific/Kiritimati, Sort by "Newest added": "Added 25 Nov 2026" for the two rows added on
+    24 Nov 2026 UTC afternoon.
+  - Through `tests/browser/harness.mjs`: all seven subjects (tacit.finance, nousresearch.com, imd.fun, zora.co,
+    uniswap.org, ens.domains, imdusd.com) show their pages with Key facts; "Not read" in Activity is unchanged
+    (imd.fun 2, ens.domains 1, imdusd.com 2, the others 0); no raw references in Activity; no page error.
+  - `tests/browser/read.mjs`: 12 PASS, no FAIL, no console error (Home at 390, 320 and 1440 without overflow; Key facts
+    at 320 for five subjects).
+- Design probe `taste.mjs --out test/scratch/taste`: all 16 checks pass; the 390 screenshot shows the headline, the
+  lookup bar and Look it up on the first screen.
+- Better Interface, the changed parts. Accessibility: question text is shorter to read aloud, nothing else changed.
+  Layout: docs heading spacing now follows the 16/40/48 rhythm. Writing: questions end on their sentence. Typography and
+  colours: no new sizes or colours. UI: no new control. No other finding.
+- Not tested: real wallets and payments. The headless Chromium here has no system UI font, so screenshots fall back to
+  a monospace face; the layout measurements above do not depend on it.
+
 ### 2026-11-25, review fixes to revision 28 (after the last source change)
 
 Run on this machine, on the final source:

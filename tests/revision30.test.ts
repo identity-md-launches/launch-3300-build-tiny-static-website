@@ -16,6 +16,7 @@ import { ExampleCards, EXAMPLE_FALLBACK } from "../src/Home";
 import { launchedNow, launchedOf, ownLineNow, pageJobsOf, useRecordModel } from "../src/model";
 import { parsePage } from "../src/page";
 import { cleanQuestion } from "../src/questions";
+import { figureOf } from "../src/sorting";
 import { OverviewTab, type Ui } from "../src/Record";
 import { SaveStar } from "../src/saved";
 import { answerNote, SuggestProvider } from "../src/Suggest";
@@ -126,6 +127,12 @@ describe("C: open questions", () => {
     expect(cleanQuestion("Is the fee 0.3% (L3) or 1% [L4; L5]?")).toBe("Is the fee 0.3% or 1%?");
     expect(cleanQuestion("Which chain [F2:L14, A1] runs it?")).toBe("Which chain runs it?");
     expect(cleanQuestion("Is [the token] live?")).toBe("Is [the token] live?");
+    expect(
+      cleanQuestion("Does any contract, ENS record or deployer wallet point to a project channel? Reviewed links establish website attribution. [S11,S23,L66]"),
+    ).toBe("Does any contract, ENS record or deployer wallet point to a project channel? Reviewed links establish website attribution.");
+    expect(
+      cleanQuestion("Is the earlier Lens profile still an official account? It disappeared from the updated Labs directory and could not be opened. [L73,S23]"),
+    ).toBe("Is the earlier Lens profile still an official account? It disappeared from the updated Labs directory and could not be opened.");
     expect(answerNote(QUESTION)).toBe("Answer to: Who audits the vault contracts?\n");
   });
   it("Answer this fills a form already on screen through an event, and the Record keeps Not known yet", () => {
@@ -157,7 +164,7 @@ describe("D: the docs page", () => {
     expect(css).toContain(".docs.tab { display: block; max-width: none; }");
     expect(css).toContain(".docs .doc-layout { margin-top: 40px; }");
     expect(css).toContain(".doc-sec { margin-top: 48px; }");
-    expect(css).toContain(".doc-sec h2 { margin: 0 0 16px; }");
+    expect(css).toContain(".doc-sec { row-gap: 16px; }");
     expect(css).toContain("grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))");
     expect(css).toMatch(/\.doc-toc a \{ font-size: var\(--text-nav\); color: var\(--color-text-secondary\); text-decoration: none; \}/);
     expect(css).toContain(".doc-toc a[aria-current] { color: var(--color-accent-solid);");
@@ -221,5 +228,21 @@ describe("F: small fixes", () => {
     expect(launchedNow(p, [fix("March 2018"), fix("2019-07-02")])).toBe(Date.UTC(2019, 6, 2));
     expect(launchedNow(p, [fix("", "remove")])).toBe(null);
     expect(src("src/model.ts")).toContain("launched: launchedNow(core.page, core.after)");
+  });
+});
+
+describe("Revision 30 review: Added in the visitor's time zone, docs heading gap", () => {
+  it("Newest added prints the first request's moment in the visitor's zone; Launched stays as written", () => {
+    const row = { id: "uniswap.org", changed: 0, counts: null } as Parameters<typeof figureOf>[0];
+    const t = 1795543343000; // 2026-11-24T18:02:23Z
+    const facts = { edits: 1, added: t, open: 0, launched: Date.UTC(2018, 10, 2), current: true };
+    expect(figureOf(row, "added", facts)).toBe(`Added ${localDate(t)}`);
+    expect(figureOf(row, "launched", facts)).toBe("Launched 2 Nov 2018");
+  });
+  it("a docs heading sits 16px above its text: the section grid gap alone, no heading margin added to it", () => {
+    const css = src("src/styles.css");
+    expect(css).toContain(".doc-sec { row-gap: 16px; }");
+    expect(css).toContain(".doc-sec h2 { margin: 0; }");
+    expect(css).toContain(".doc-sec h2 + * { margin-top: 0; }");
   });
 });

@@ -1093,7 +1093,10 @@ body.has-tray .send-bar { bottom: calc(var(--tray-h, 6rem) + var(--space-3)); }
 .doc-group { margin: 48px 0 0; font-size: var(--text-title); }
 .doc-body > .doc-group:first-child { margin-top: 0; }
 .doc-sec { margin-top: 48px; }
-.doc-sec h2 { margin: 0 0 16px; }
+.doc-sec { row-gap: 16px; }
+/* A section is a grid (section rule) whose 16px row gap is the space under the heading; a margin would add to it. */
+.doc-sec h2 { margin: 0; }
+.doc-sec h2 + * { margin-top: 0; }
 .doc-group + .doc-sec { margin-top: 24px; }
 .doc-toc a { font-size: var(--text-nav); color: var(--color-text-secondary); text-decoration: none; }
 .doc-toc a[aria-current] { color: var(--color-accent-solid); font-weight: 600; }

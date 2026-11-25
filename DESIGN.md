@@ -187,8 +187,8 @@ No tracked capitals, no eyebrows above headings.
   is read, so its Price is always an amount; a price that differs from the one the page showed says so above Pay. After
   an approval the price is read again, and a new one returns to review with its own Pay button. "Retry price" shows
   when a later read fails, and Pay is disabled until one succeeds. It closes when the wallet has signed.
-- **Send bar** (`.send-bar`): a fixed dark bar, at most 36rem, "Sent. Waiting for Ethereum…", then "Your N changes are
-  with the swarm. Follow the job", with a dismiss button. With changes waiting it sits above the tray
+- **Send bar** (`.send-bar`): a fixed dark bar, at most 36rem: "Sent to the swarm." and one link, "View the transaction"
+  until IMD has assigned the job, then "Follow the job" (`sentLink` in `src/App.tsx`), with a dismiss button. With changes waiting it sits above the tray
   (`--tray-h`, the tray's measured height), never over "Review and submit".
 - **Source names** (`.srcs`, `.src-pages`): under a line, each site once as 13px links to the page read; several pages of
   one site are a dotted-underlined disclosure, "api.imd.fun, 4 pages". The line's details list every page
@@ -251,7 +251,7 @@ No tracked capitals, no eyebrows above headings.
 - **Copy icon** `.copy-icon`: 28px square (36px on coarse pointers), no border, secondary colour, an inline 14px SVG; the accessible name says what it copies ("Copy address 0x…"). Used beside token addresses and on the profile address. The text `.copy` button stays for "Copy citation".
 - **Token line** `.tok-line`: flex row with wrap only between parts: `.tok-symbol` bold and nowrap, `.tok-purpose` secondary colour and the only part that wraps inside itself, `.tok-addr` keeps the linked short address and its copy icon together (nowrap), `.tok-chain` a small grey pill (`--text-small`, `--color-bg-hover` background, 999px radius). When every token names the same chain the pill is shown once after the list (`.tok-chain-row`).
 - **Cited line** `.cited`: a card with a 3px accent left border above the Record when it is opened by `#/s/<subject>/l/<job id>:<line id>`; status word coloured green (confirmed), red (contradicted) or amber (superseded). The addressed row (`.row.is-addressed`, `tr.is-addressed`) gets `--color-accent-subtle` and a 3px inset accent bar.
-- **How it works** `.docs`: one 760px column, twelve `h2` sections at `--text-title`; the three kind badges reuse `.kind`; the build diagram `.doc-flow` is a wrapping row of bordered boxes joined by "→", so it stacks on phones.
+- **How it works** `.docs`: the site's full content width (`.docs.tab { max-width: none }`). Below 1000px the menu is a wrapping row of links above the text; from 1000px `.doc-layout` is two columns, a 200px sticky menu and a text column up to 720px, 56px apart. Sections are `h2` at `--text-title`; the three kind badges reuse `.kind`; the build diagram `.doc-flow` is a wrapping row of bordered boxes joined by "→", so it stacks on phones.
 - **Profile** `.profile`: address line (short address, copy icon, Etherscan link), then `.totals`, an auto-fit grid of four bordered cells (min 140px, so 2×2 at 390 and one row at desktop) with the value at `--text-title` weight 600, then the request list reusing the Activity `.card.act` rows.
 - The type scale is unchanged: six sizes (`--text-display`, `--text-title`, `--text-heading`, `--text-body`, `--text-nav`, `--text-small`).
 
@@ -278,3 +278,29 @@ No tracked capitals, no eyebrows above headings.
 - **Key facts order** (`liveRowsFirst` in `src/keyfacts.ts`): rows with a live entry, then rows with only test entries,
   then only past ones, before the eight-row limit. Every row type draws from `shownEntries`, so each test or past entry
   has its `.live-tag`.
+
+## Revision 30: layout (from `src/styles.css` lines 1046–1135)
+
+- **Save star** `.save-star`: icon only, a 44×44px target, `aria-label="Save"`, secondary text colour, amber-800 when on,
+  hover background `--color-bg-hover`. On a Home row it ends the name line (`.subject-head`, flex, space-between) with
+  -10px block margins, so it adds no height; on a project page it ends the title line (`.title-row`, `margin-inline-start: auto`).
+- **Home list bar** `.list-bar`: "Find a project" and "Sort by" (`.list-tools`, 44px fields, placeholders, labels
+  `.sr-only`) and the filter buttons. Stacked below 60rem (one column under 480px); from 60rem one flex row, 12px gaps.
+- **Example cards** `a.label-card`: each card is a link to the example project's page; no caption, no logo. On the docs
+  page `.doc-example .label-cards` spans the text column, `repeat(auto-fit, minmax(200px, 1fr))`, labels `nowrap`.
+- **Docs spacing**: 40px from the two buttons to the columns (`.docs .doc-layout`), 48px between sections
+  (`.doc-sec`, 24px after a group title), 16px from a heading to its text. A section is a grid (the global
+  `section` rule); its `row-gap: 16px` is that space, so the `h2` has no margin and the element after it no top margin.
+  Menu links `.doc-toc a`: `--text-nav` (14px), secondary grey, no underline; the section in view has
+  `aria-current` and the accent colour, weight 600.
+- **Dark bars** (`.tray`, `.send-bar`): white (`--gray-0`) text only on the dark ground, body size, secondary text
+  and links at `--text-nav` (14px). The tray reads "1 change · 0.5 IMD" and its button; the source counts and room
+  left are in the review dialog (`.review-meta`).
+- **Heading focus**: a page's h1 (or a tab's h2) takes focus with `tabindex="-1"`; no outline, except a 2px
+  `--color-focus` outline when the visitor is using the keyboard (`html.kbd`, set in `src/main.tsx`).
+- **Open questions** on Contribute (`.contrib-questions`): an "Open questions (N)" toggle (`.q-toggle`, 44px, a
+  chevron that turns 90°, no motion under reduced motion), closed by default; each question once, its raw line
+  references removed (`cleanQuestion`, which drops bracketed lists of L, A, Q and S references), and "Answer this".
+- **Dates**: every moment (block time, job time, "Added" on Home) in the visitor's time zone, date and time from one
+  clock (`src/dates.ts`); a Launched fact is a calendar date and is shown as written.
+
