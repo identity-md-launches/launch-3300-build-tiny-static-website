@@ -3,6 +3,7 @@ import objective from "../templates/research.txt?raw";
 import sourceTemplate from "../templates/source.txt?raw";
 import rebuildTemplate from "../templates/rebuild.txt?raw";
 import rebuildTemplateV1 from "../templates/rebuild-v1.txt?raw";
+import rebuildTemplateV2 from "../templates/rebuild-v2.txt?raw";
 import editTemplate from "../templates/edit.txt?raw";
 import { APP_TAG } from "./config";
 import { DEFAULT_SUBJECT, describeSubject, type SubjectRef } from "./subject";
@@ -17,6 +18,11 @@ export const SOURCE_TEMPLATE = sourceTemplate.trim();
 export const REBUILD_TEMPLATE = rebuildTemplate.trim();
 /** The page objective as sent with every instruction file published before the Swarmpedia name (see src/openings.ts). */
 export const REBUILD_TEMPLATE_V1 = rebuildTemplateV1.trim();
+/**
+ * The page objective as sent with the Swarmpedia rebuild files published before the screenshot outputs
+ * (src/openings.ts LOGO_ONLY_HASHES): "output artifacts/page.json and artifacts/logo.png;".
+ */
+export const REBUILD_TEMPLATE_V2 = rebuildTemplateV2.trim();
 export const EDIT_TEMPLATE = editTemplate.trim();
 
 export type Kind = "proof" | "statement" | "claim";
@@ -477,14 +483,20 @@ export function matchesTemplate(objective: unknown, sha256 = INSTRUCTIONS.rebuil
 }
 
 /**
- * A rebuild's two named outputs, both always written: the page file, and artifacts/logo.png. When the subject's own
+ * A rebuild's six named outputs, all always written: the page file, artifacts/logo.png and the four screenshot slots
+ * artifacts/shot-1.png to artifacts/shot-4.png (each slot the job cannot fill is a 1 by 1 transparent PNG, left out
+ * of page.screenshots; the site reads a screenshot only when page.screenshots lists its file).
+ * Before the screenshots a rebuild had two named outputs: the page file, and artifacts/logo.png. When the subject's own
  * domain serves no icon the job writes a 1 by 1 transparent placeholder PNG there and leaves page.logo out; the site
  * shows the logo file only when page.logo is present, else the letter tile. IMD's free request check
  * (POST /requests/check) accepted a job body with both outputs on 2026-11-20 (see the README).
  */
+/** The screenshot slots a rebuild declares, in order. */
+export const SHOT_SLOTS = [1, 2, 3, 4] as const;
 export const REBUILD_OUTPUTS = [
   { name: "page", path: "artifacts/page.json", mediaType: "application/json" },
   { name: "logo", path: "artifacts/logo.png", mediaType: "image/png" },
+  ...SHOT_SLOTS.map((n) => ({ name: `shot-${n}`, path: `artifacts/shot-${n}.png`, mediaType: "image/png" })),
 ];
 
 /** "Rebuild the page": the research action and tag, with the earlier results filled in. */

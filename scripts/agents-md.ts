@@ -120,7 +120,7 @@ ${fence(currentOpening)}
 
 | Action | Id |
 | --- | --- |
-| Rebuild the page | \`${ACTIONS.research}\` (tag kind \`add\`, outputs \`artifacts/page.json\` and \`artifacts/logo.png\`) |
+| Rebuild the page | \`${ACTIONS.research}\` (tag kind \`add\`, outputs \`artifacts/page.json\`, \`artifacts/logo.png\` and \`artifacts/shot-1.png\` to \`artifacts/shot-4.png\`) |
 | Suggest changes | \`${ACTIONS.research}\` (tag kind \`changes\`, output \`artifacts/changes.json\`) |
 | Add sources (older; no longer offered, results still read) | \`${ACTIONS.research}\` (tag kind \`source\`, output \`artifacts/lines.json\`) |
 | Suggest an edit (older; no longer offered, results still read) | \`${ACTIONS.research}\` (tag kind \`edit\`, output \`artifacts/edit.json\`) |
@@ -222,13 +222,46 @@ optionally \`url\`, or \`address\` with \`chain\`, and no other shape; the infob
 For Founder or creator, Contributors and any line about a person's role the job uses every speaker, strongest first:
 the project on its own channels, another person at the project, an outside publication, the person about themselves.
 
-**Two outputs, both always written.** The body declares \`artifacts/page.json\` and \`artifacts/logo.png\`
+**Page and logo, always written.** The body declares \`artifacts/page.json\` and \`artifacts/logo.png\`
 (\`image/png\`). The job takes the logo only from the subject's own domain (apple-touch-icon, favicon or
 og:image, converted to a PNG of at most 256 by 256) and sets \`logo{url,fetched_at}\` in the page file. When it
 finds no icon it still writes a 1 by 1 transparent placeholder PNG, so the declared file exists, and leaves
 \`logo\` out of the page file. The site shows the logo file only when the page's \`logo\` is present, after its
 bytes match the listed SHA-256 and decode as a whole PNG; otherwise it shows a tile with the name's first letter.
 It never loads an image from the project's server or any other site.
+
+**Four screenshot slots.** The body also declares \`artifacts/shot-1.png\` to \`artifacts/shot-4.png\`
+(\`image/png\`), and the objective names them after the logo. The job captures up to 4 real screenshots of the
+project's live public app or site, each a PNG 1280 pixels wide (no wallet connected, signed in nowhere, nothing
+personal; never generated, drawn or edited), fills the slots in order and lists each in
+\`screenshots[{file,caption,url,captured_at}]\` (\`file\` is \`artifacts/shot-<n>.png\`, the caption at most 8 words).
+A slot it cannot fill holds a 1 by 1 transparent PNG and is left out of the list. The site reads only the first
+listed screenshot, checks it like the logo (listed SHA-256, whole PNG that decodes, at least 320 pixels wide) and
+shows it above the Summary with its caption and the host it was captured from. A page job sent with a rebuild file
+published before the screenshots (\`templates/rebuild-v2.txt\`, the hashes in \`LOGO_ONLY_HASHES\` of
+\`src/openings.ts\`) names only page.json and logo.png and is checked against that wording.
+
+**New keys of the page file** (from ${INSTRUCTIONS.rebuild.file}; each is optional, and a page without them shows as
+before):
+
+- \`subject.category\`: one of \`protocol\`, \`app\`, \`network\`, \`token\`, \`ai\`, \`tool\`, \`other\`, what the
+  product mainly is. \`subject.type\` stays as it was.
+- \`subject.app{url,label}\`: where a person actually uses the product, with a label of at most 3 words ("Open the
+  app"). The site keeps it only when the url is on the subject's own domain or under a listed channel.
+- \`screenshots[{file,caption,url,captured_at}]\`: above.
+- \`explained{how_it_works[],tokens[{token,sentences[]}],contracts[{address,chain,sentences[]}]}\`: plain-words
+  sentences, each \`{text,lines[]}\` like a summary sentence (at most 25 words, nothing no line supports), with
+  \`kind\` \`not_checked\` when the job could not read enough to say something is absent, and in contracts \`part\`
+  \`who_can_change\` or \`what_it_means\`. how_it_works up to 6 sentences; up to 6 per token in the Tokens row;
+  at most 3 live main-network contracts with up to 5 each.
+- \`ask[{question,line,call{chain_id,to,data,returns,decimals,unit}}]\`: up to 3 questions of at most 10 words
+  about the current state, each re-running one proof line by a single \`eth_call\` at the latest block on an EVM
+  chain; \`returns\` is \`uint\`, \`address\`, \`bool\` or \`string\`. The site keeps an entry only when its line is
+  a proof line of the page, \`to\` is an address and \`data\` is hex calldata.
+
+The site parses and keeps \`category\`, \`app\`, \`explained\` and \`ask\` but does not show them yet. A changes
+result may patch an explained sentence the same way it patches a summary sentence (\`kind\` \`explained\`, the
+sentence's exact text as \`target\`, \`op\` \`set\`); the site keeps those patches for the explained layout.
 
 **Folded in.** A result (page, sources or edit) is folded into the page shown only if its artifact URL
 (\`${API}/artifacts/<sha-256>\`) appears in the objective of the request that produced the page shown, read from

@@ -37,3 +37,22 @@ export const V1_OPENING_HASHES: ReadonlySet<string> = new Set([
 
 /** True when a job naming this instruction file was written with the older openings. */
 export const hasV1Opening = (sha256: string) => V1_OPENING_HASHES.has(sha256);
+
+/**
+ * Every rebuild instruction file published with the Swarmpedia openings before the page request named the four
+ * screenshot outputs: a job naming one of these was sent "output artifacts/page.json and artifacts/logo.png;"
+ * (templates/rebuild-v2.txt) and declared two outputs. Every file published since names
+ * "artifacts/logo.png and artifacts/shot-1.png to artifacts/shot-4.png" (templates/rebuild.txt) and declares six.
+ * This list never changes: a new instruction file is not in it, so it takes the current template.
+ */
+export const LOGO_ONLY_HASHES: ReadonlySet<string> = new Set([
+  "034069da489114053889c5bcbb02fc122942f63bad4c7a00758247ad904f980c",
+  "1cb3032ca031c1402694a41fa4c60f44806f98f49ba3ee728e944f0d64f5c927",
+  "2bc2ecf2ae616623904b5db683bba973b4cb5e155fe77aa7f91960873a592dd5",
+  "52b9d4be7f53892f796b641bc2f494acd8464d12616346a8740f3847832f8f98",
+  "59cb466af10382675da242a484b636759df54199200f2a4a14c95338a1b155f2",
+  "d3414e5807fc7be0ddddeaf7f1722fecda25c7fd2bd8a832fd5c541b3f4c3d4a",
+]);
+
+/** True when a page job naming this rebuild file was sent with the logo-only objective (templates/rebuild-v2.txt). */
+export const hasLogoOnlyObjective = (sha256: string) => LOGO_ONLY_HASHES.has(sha256);

@@ -269,6 +269,64 @@ export interface Page {
   sources: Source[];
   related: Related[];
   logo: LogoSource | null;
+  /* Parts added with the screenshot instructions (rebuild-2d329d7d77e8.txt). Each is present only when the page file
+   * gives a valid one, so a page built before them parses exactly as it did. */
+  /** subject.category: what the product mainly is. */
+  category?: Category;
+  /** subject.app: where a person uses the product, on its own domain or a listed channel. */
+  app?: AppLink;
+  /** The screenshots the job listed, in its order (at most 4, one per slot). */
+  screenshots?: Screenshot[];
+  /** Plain-words explanations: how it works, each token, each live main-network contract. */
+  explained?: Explained;
+  /** Proofs a browser can re-run: one eth_call at the latest block, one value. */
+  ask?: Ask[];
+}
+
+export const CATEGORIES = ["protocol", "app", "network", "token", "ai", "tool", "other"] as const;
+export type Category = (typeof CATEGORIES)[number];
+export interface AppLink {
+  url: string;
+  /** At most 3 words, such as "Open the app". */
+  label: string;
+}
+export interface Screenshot {
+  /** As the page lists it: artifacts/shot-<slot>.png. */
+  file: string;
+  /** 1 to 4: the output named shot-<slot> holds the PNG. */
+  slot: number;
+  caption: string;
+  /** The page captured. */
+  url: string;
+  capturedAt: string;
+}
+export interface ExplainedSentence {
+  text: string;
+  lines: string[];
+  /** not_checked: the job did not read enough to say it is absent. */
+  kind?: "not_checked";
+  /** In contracts: who can change it, or what that means for a user's funds. */
+  part?: "who_can_change" | "what_it_means";
+}
+export interface Explained {
+  howItWorks: ExplainedSentence[];
+  tokens: { token: string; sentences: ExplainedSentence[] }[];
+  contracts: { address: string; chain: string; sentences: ExplainedSentence[] }[];
+}
+export const ASK_RETURNS = ["uint", "address", "bool", "string"] as const;
+export interface AskCall {
+  chainId: number;
+  to: string;
+  data: string;
+  returns: (typeof ASK_RETURNS)[number];
+  decimals: number | null;
+  unit: string;
+}
+export interface Ask {
+  question: string;
+  /** The proof line it re-runs. */
+  line: string;
+  call: AskCall;
 }
 
 const str = (v: unknown, max = 2000): string => (typeof v === "string" ? v.slice(0, max) : typeof v === "number" ? String(v) : "");
@@ -686,6 +744,107 @@ export function rejectionOf(text: string): string | null {
   }
 }
 
+const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
+
+/** subject.category, when it is one of the seven. */
+export function parseCategory(v: unknown): Category | null {
+  const c = str(v, 32).trim().toLowerCase();
+  return (CATEGORIES as readonly string[]).includes(c) ? (c as Category) : null;
+}
+
+/** subject.app: an http(s) url on the subject's own domain or under a listed channel, with a label of 1 to 3 words. */
+export function parseApp(v: unknown, domain: string, channels: Channel[]): AppLink | null {
+  const o = obj(v);
+  const href = safeHref(str(o.url, 400).trim());
+  const label = str(o.label, 60).replace(/\s+/g, " ").trim();
+  if (!href || !label || words(label) > 3) return null;
+  const own = !!domain && onDomain(href, domain);
+  if (!own && !channels.some((c) => underChannel(href, c))) return null;
+  return { url: href, label };
+}
+
+const SHOT_FILE = /^(?:\.\/)?(?:artifacts\/)?shot-([1-4])\.png$/;
+/** page.screenshots: at most 4, each naming one of the four slots once; an entry with no valid file is left out. */
+export function parseScreenshots(v: unknown): Screenshot[] {
+  const seen = new Set<number>();
+  const out: Screenshot[] = [];
+  for (const x of arr(v).slice(0, 8)) {
+    const o = obj(x);
+    const file = str(o.file ?? o.path, 64).trim();
+    const m = SHOT_FILE.exec(file);
+    if (!m || seen.has(Number(m[1]))) continue;
+    seen.add(Number(m[1]));
+    out.push({ file, slot: Number(m[1]), caption: str(o.caption, 160).replace(/\s+/g, " ").trim(), url: str(o.url, 400).trim(), capturedAt: str(o.captured_at ?? o.time ?? o.at, 64).trim() });
+    if (out.length === 4) break;
+  }
+  return out;
+}
+
+function parseExplainedSentences(v: unknown, max: number, parts: boolean): ExplainedSentence[] {
+  return arr(v)
+    .map((s): ExplainedSentence => {
+      const o = obj(s);
+      const kind = str(o.kind, 32).trim().toLowerCase();
+      const part = str(o.part, 32).trim().toLowerCase();
+      return {
+        text: str(o.text, 600).trim(),
+        lines: arr(o.lines).map((x) => str(x, 64).trim()).filter(Boolean),
+        ...(kind === "not_checked" ? { kind: "not_checked" as const } : {}),
+        ...(parts && (part === "who_can_change" || part === "what_it_means") ? { part } : {}),
+      };
+    })
+    .filter((s) => s.text)
+    .slice(0, max);
+}
+
+/** page.explained: up to 6 how-it-works sentences, up to 6 per token, at most 3 contracts with up to 5 each. Null when it says nothing. */
+export function parseExplained(v: unknown): Explained | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = obj(v);
+  const howItWorks = parseExplainedSentences(o.how_it_works, 6, false);
+  const tokens = arr(o.tokens)
+    .slice(0, 20)
+    .map((x) => {
+      const t = obj(x);
+      return { token: str(t.token ?? t.symbol ?? t.name, 80).trim(), sentences: parseExplainedSentences(t.sentences, 6, false) };
+    })
+    .filter((t) => t.token && t.sentences.length);
+  const contracts = arr(o.contracts)
+    .map((x) => {
+      const c = obj(x);
+      return { address: str(c.address, 64).trim(), chain: str(c.chain, 64).trim(), sentences: parseExplainedSentences(c.sentences, 5, true) };
+    })
+    .filter((c) => /^0x[0-9a-fA-F]{40}$/.test(c.address) && c.sentences.length)
+    .slice(0, 3);
+  return howItWorks.length || tokens.length || contracts.length ? { howItWorks, tokens, contracts } : null;
+}
+
+/**
+ * page.ask: at most 3, each a question of at most 10 words, a proof line the page has, and one eth_call a browser can
+ * send as given: a chain id, a contract address, hex calldata, one return type of four, its decimals and unit.
+ */
+export function parseAsk(v: unknown, lineIds: Set<string>): Ask[] {
+  return arr(v)
+    .slice(0, 12)
+    .flatMap((x): Ask[] => {
+      const o = obj(x);
+      const question = str(o.question, 200).replace(/\s+/g, " ").trim();
+      const line = str(o.line ?? o.line_id, 64).trim();
+      const c = obj(o.call);
+      const chainId = typeof c.chain_id === "number" ? c.chain_id : /^\d{1,12}$/.test(str(c.chain_id, 16)) ? Number(str(c.chain_id, 16)) : NaN;
+      const to = str(c.to, 64).trim();
+      const data = str(c.data, 2000).trim();
+      const returns = str(c.returns, 16).trim().toLowerCase();
+      const d = typeof c.decimals === "number" ? c.decimals : /^\d{1,2}$/.test(str(c.decimals, 4)) ? Number(str(c.decimals, 4)) : null;
+      if (!question || words(question) > 10 || !lineIds.has(line)) return [];
+      if (!Number.isInteger(chainId) || chainId < 1 || !/^0x[0-9a-fA-F]{40}$/.test(to) || !/^0x(?:[0-9a-fA-F]{8})(?:[0-9a-fA-F]{2})*$/.test(data)) return [];
+      if (!(ASK_RETURNS as readonly string[]).includes(returns)) return [];
+      const decimals = d !== null && Number.isInteger(d) && d >= 0 && d <= 77 ? d : null;
+      return [{ question, line, call: { chainId, to, data, returns: returns as AskCall["returns"], decimals, unit: str(c.unit, 40).trim() } }];
+    })
+    .slice(0, 3);
+}
+
 export function parsePage(text: string, domain = ""): Page {
   const j = obj(JSON.parse(text));
   const subject = obj(j.subject);
@@ -795,6 +954,23 @@ export function parsePage(text: string, domain = ""): Page {
     sources,
     related: parseRelated(j.related),
     logo: parseLogo(j.logo),
+    ...newParts(j, subject, domain.trim().toLowerCase(), channels, lines),
+  };
+}
+
+/** The parts added with the screenshot instructions, each only when the page file gives a valid one. */
+function newParts(j: Record<string, unknown>, subject: Record<string, unknown>, domain: string, channels: Channel[], lines: Line[]): Partial<Page> {
+  const category = parseCategory(subject.category);
+  const app = parseApp(subject.app, domain, channels);
+  const screenshots = parseScreenshots(j.screenshots);
+  const explained = parseExplained(j.explained);
+  const ask = parseAsk(j.ask, new Set(lines.filter((l) => l.kind === "proof").map((l) => l.id)));
+  return {
+    ...(category ? { category } : {}),
+    ...(app ? { app } : {}),
+    ...(screenshots.length ? { screenshots } : {}),
+    ...(explained ? { explained } : {}),
+    ...(ask.length ? { ask } : {}),
   };
 }
 
@@ -1241,8 +1417,28 @@ export function parsePatches(v: unknown): Patch[] {
     return [{ kind, target, value, lines, ...(op === "set" ? { op: "set" as const } : {}) }];
   });
 }
+/** A changes result's patch of an explained sentence: its exact text as target, and its new text. */
+export interface ExplainedPatch {
+  kind: "explained";
+  target: string;
+  value: string;
+  lines: string[];
+  op: "set";
+}
+export function parseExplainedPatches(v: unknown): ExplainedPatch[] {
+  return bounded(v).list.flatMap((x): ExplainedPatch[] => {
+    const o = obj(x);
+    const target = str(o.target, 600).trim();
+    const value = str(o.value ?? o.text, 600).trim();
+    const op = str(o.op, 16).trim().toLowerCase();
+    if (str(o.kind, 16).toLowerCase() !== "explained" || !target || !value || (op && op !== "set")) return [];
+    return [{ kind: "explained", target, value, lines: arr(o.lines).map((l) => str(l, 64).trim()).filter(Boolean), op: "set" }];
+  });
+}
 export interface ChangesResult {
   items: ChangeVerdict[];
+  /** New text for explained sentences (kept for the next job's layout; nothing shows them yet). */
+  explainedPatches?: ExplainedPatch[];
   /** New values for Key facts rows and summary sentences in affects (see Patch). */
   patches: Patch[];
   /** What the new lines contradict or outdate elsewhere in the record. */
@@ -1297,6 +1493,10 @@ export function parseChanges(text: string): ChangesResult {
       }),
     affects: parseAffects(j.affects),
     patches: parsePatches(j.patches),
+    ...(() => {
+      const e = parseExplainedPatches(j.patches);
+      return e.length ? { explainedPatches: e } : {};
+    })(),
     questions: parseQuestionChanges(j.questions),
     data: over ? { ...data, tooLarge: data.tooLarge ?? over } : data,
   };

@@ -87,7 +87,7 @@ describe("request kinds (45506add)", () => {
   it("result files come from the registered kinds, older tag kinds keep theirs", () => {
     expect(REQUEST_KINDS.map((k) => resultFileOf(k.tagKind))).toEqual(["page", "page", "changes"]);
     expect([resultFileOf("source"), resultFileOf("edit"), resultFileOf("nothing")]).toEqual(["lines", "edit", null]);
-    expect(resultNamesOf("add")).toEqual(["page", "logo"]);
+    expect(resultNamesOf("add")).toEqual(["page", "logo", "shot-1", "shot-2", "shot-3", "shot-4"]);
     expect(resultNameOf({ action: CHANGES.action, kind: "changes" })).toBe("changes");
     expect(resultNameOf({ action: "oracle.request@oracle-1", kind: "proof" })).toBeNull();
   });

@@ -40,6 +40,71 @@ the export works under an IPFS gateway subpath or an ENS name. Routing is by has
 - Old links open imd.fun: `#record`, `#actions`, `#add-sources`, `#activity`, `#line-…` and `#source-N` go to the
   same place under `#/s/imd.fun/…`.
 
+## Revision 33: data for the next layout (2026-11-26)
+
+This round adds data to the page file; the layout that shows it comes in the next job. New instruction files with new
+hashes: `rebuild-2d329d7d77e8.txt` and `changes-6f7e0f27ff1a.txt` (`npx vite-node scripts/instructions.ts`). Every
+earlier file stays served and is still accepted.
+
+- **Screenshots (A).** The page request declares four more outputs, `shot-1` to `shot-4` at `artifacts/shot-1.png` to
+  `artifacts/shot-4.png` (`image/png`), after `artifacts/logo.png` (`REBUILD_OUTPUTS` in `src/bodies.ts`), and the
+  objective names them: "Whatever else: output artifacts/page.json, artifacts/logo.png and artifacts/shot-1.png to
+  artifacts/shot-4.png; …" (`templates/rebuild.txt`). The rebuild file adds the brief's screenshot rule word for word,
+  plus "Fill the slots in order from artifacts/shot-1.png, and write file as that path." The page file lists
+  `screenshots[{file,caption,url,captured_at}]`.
+- **Older page jobs.** A job sent with one of the six Swarmpedia rebuild files published before this revision named
+  only page.json and logo.png. Those hashes are fixed in `LOGO_ONLY_HASHES` (`src/openings.ts`), and the job check
+  replays them with `templates/rebuild-v2.txt` (the previous objective, byte for byte); every later file uses
+  `templates/rebuild.txt`. The job check does not look at a body's outputs, so two-output and six-output jobs are
+  both read. The site reads a screenshot only when the job declared that slot.
+- **Explained (B)**: `explained{how_it_works[],tokens[{token,sentences[]}],contracts[{address,chain,sentences[]}]}`.
+  Each sentence is `{text,lines[]}`; `kind` is `not_checked` when the job could not read enough to say something is
+  absent; contract sentences carry `part` `who_can_change` or `what_it_means`. The brief's sentences 3 to 7 are in
+  the rebuild file word for word, with the list names and entry keys added so a job writes one shape.
+- **Ask (C)**: `ask[{question,line,call{chain_id,to,data,returns,decimals,unit}}]`, up to 3, each re-running one
+  proof line by one `eth_call` at the latest block.
+- **Subject (D)**: `subject.category` (protocol, app, network, token, ai, tool or other) and `subject.app{url,label}`.
+  `subject.type` is unchanged.
+- **Wording (D9, D10).** In the summary rule, after "in 2 or 3 paragraphs" the rule now reads "… in 2 or 3
+  paragraphs. The first paragraph is 2 or 3 sentences that stand alone: what it is and what a person does with it.
+  Write for a friend new to it: what it is, …". The original sentence ran on after "paragraphs", so the rest of it
+  became the sentence "Write for a friend new to it: …" with its words unchanged. The one_line rule gains "At most 14
+  words." Every other earlier sentence is unchanged; `tests/revision33.test.ts` compares them one by one with
+  `rebuild-1cb3032ca031.txt`.
+- **Changes (E13).** The changes file adds "A patch may name an explained sentence, the same way it names a summary
+  sentence. Its kind is explained, its target the sentence's exact text, and it always has op set and the sentence's
+  new text." before its JSON keys line. `parseChanges` keeps such patches in `explainedPatches`, apart from the Key facts
+  and summary patches, which are applied exactly as before.
+- **Parsing (E14)** (`src/page.ts`: `parseCategory`, `parseApp`, `parseScreenshots`, `parseExplained`, `parseAsk`).
+  A part is put on the page only when the file gives a valid one, so a page built before this change parses to exactly
+  the same object. `app` is kept only on the subject's own domain or under a listed channel, with a label of 1 to 3
+  words. A screenshot entry needs a file `artifacts/shot-1.png` to `shot-4.png`, one entry per slot, at most 4. `explained`
+  is capped at the brief's counts (6, 6 per token, 3 contracts of 5). An `ask` entry needs a question of at most 10 words, a
+  proof line id the page has, a chain id, a contract address, hex calldata (a 4-byte selector and whole bytes) and one of
+  `uint`, `address`, `bool`, `string`.
+- **What shows (E15).** Only the first listed screenshot, above the Summary on Overview (`FirstShot` in
+  `src/Record.tsx`). It is read like the logo (`fetchShot` in `src/api.ts`): the result file `shot-<n>` from
+  api.imd.fun, its bytes checked against the listed SHA-256, a whole PNG that decodes, and at least 320 pixels wide
+  (so a 1 by 1 placeholder never shows). It is cached in IndexedDB, full width of the reading column, at most 480 px
+  tall (a tall capture shows its top), with its caption and a link to the host it was captured from. Pages without a
+  screenshot look as they did. The new rebuild file means every existing page reads "Built with older instructions"
+  under Page upkeep and About this page, as after every earlier instruction change. Readers get no new note.
+- `/agents.md` (`scripts/agents-md.ts`) documents the six outputs, the new keys and the explained patches.
+
+### Checks run for revision 33 (results as observed)
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck` (`tsc --noEmit`) | passed, no errors |
+| `npm run build` (`tsc --noEmit && vite build`) | passed; `dist/index.html` with relative `./assets/` URLs, the new instruction files in `dist/instructions/` |
+| `npx vitest run tests/` | 44 files, 627 tests passed (610 before; new `tests/revision33.test.ts` with 17 tests; 7 older tests updated for the six outputs, the new hashes and the new summary wording) |
+| Job check against live history (scratch script: `loadTaggedRequests` from the Intake on mainnet, then `shapeOf` with this code and with the code at HEAD) | 35 tagged requests across all seven subjects (imd.fun, tacit.finance, nousresearch.com, zora.co, uniswap.org, ens.domains, imdusd.com). Both versions give the same verdicts: 20 read, 10 older jobs read only through a later page, and the same 5 "Not read" as before. No new "Not read". |
+| `npx vite-node scripts/check-objectives.ts` (IMD's free request check, rebuild and changes bodies with the new files) | Both bodies were judged. The only blocker for each was `remote_instructions`: the new files did not answer at filebase within 10 seconds. That is expected until this export is pinned. Run it again after publishing. |
+| design-critic `taste.mjs` on the export (Playwright in /tmp, Chromium with libraries and fonts unpacked into /tmp) | all 16 checks passed at 320, 390 and 1440 (render, layout, targets, contrast, casing, tracking, eyebrows, type-sizes, type-faces, glyphs, slogans, repetition, copy-budget, chrome, motion, share) |
+| `FirstShot` rendered with the built CSS (scratch page, a real 1280 x 2000 PNG capture) | PASS at 320, 390 and 1440: no horizontal scroll; the image fills the column (288, 358, 760 px wide) and is at most 480 px tall; caption above the Summary heading; natural width 1280; no console error |
+
+Limitations: no subject page was opened in a browser on the live record. A page that lists screenshots does not exist yet, because no job has run with the new file. The screenshot block was checked on its own with the site's CSS, and its read path (`fetchShot`) was checked by unit tests and code review only. The free request check could not fetch the new instruction files before publication.
+
 ## Revision 32: layout (2026-11-25)
 
 Layout only; no instruction file changed (`public/instructions/` and `src/instructions*.json` are untouched).
@@ -454,7 +519,7 @@ notes); and notes written afresh each run. These standing rules now live in the 
 
 ## Rebuild, edit and what the site shows
 
-- **Rebuild the page**: `job.open@job-1`, tag kind `add`, outputs `artifacts/page.json` and `artifacts/logo.png`
+- **Rebuild the page**: `job.open@job-1`, tag kind `add`, outputs `artifacts/page.json`, `artifacts/logo.png` and `artifacts/shot-1.png` to `artifacts/shot-4.png`
   (both always written, see Logo below), objective
   `templates/rebuild.txt` with `<SUBJECT>` and `<PRIOR>` = `[F1] https://api.imd.fun/artifacts/<hash of the page
   shown>; [F2] …` (every completed page, sources and edit result of the subject **not folded in**, oldest first,
@@ -795,7 +860,7 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-1cb3032ca031.txt` and `changes-76bb018d8c8b.txt`; still served: `rebuild-59cb466af103.txt`, `changes-a7ea2f0a9c20.txt`, `rebuild-d3414e5807fc.txt`, `changes-e7afaac38d03.txt`, `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-2d329d7d77e8.txt` and `changes-6f7e0f27ff1a.txt`; still served: `rebuild-1cb3032ca031.txt`, `changes-76bb018d8c8b.txt`, `rebuild-59cb466af103.txt`, `changes-a7ea2f0a9c20.txt`, `rebuild-d3414e5807fc.txt`, `changes-e7afaac38d03.txt`, `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
@@ -827,10 +892,10 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreia4wmbszibryfacnffed6smmd2eqbxzr5e3upxhfduuj4gwj5oje4?filename=rebuild-1cb3032ca031.txt`,
-  sha256 `1cb3032ca031c1402694a41fa4c60f44806f98f49ba3ee728e944f0d64f5c927`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreidwxmay3delakvtgwex4v5yd4sd6e6rutoqdo6hta7c5dtwhhb7ym?filename=changes-76bb018d8c8b.txt`,
-  sha256 `76bb018d8c8b02ab335897e57b81f243f13d1a4dd01bbc7983e2e8e7639c3fc3`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreibngkox257iuaghf2obxgc7ebhttabjf2tqgoerwhxgxjr7p6duoq?filename=rebuild-2d329d7d77e8.txt`,
+  sha256 `2d329d7d77e8a00c72e9c1b985f204f3980292ea7033891b1ee6ba63f7f87474`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreidppyhsp7y2iby4glbv7sfxubjjant5w2ztqum5l7rztkn4xy3t6y?filename=changes-6f7e0f27ff1a.txt`,
+  sha256 `6f7e0f27ff1a4071c32c35fc8b7a05290367db6b338519d5fe399a9bcbe373f6`
 <!-- instructions:end -->
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,

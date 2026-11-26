@@ -31,7 +31,7 @@ describe("A3: objective openings", () => {
     for (const b of [rebuildBody({ files: [], answers: [] }, ref), rebuildBody({ files: [], answers: [] }, { ...ref, address: "0x" + "cd".repeat(20), chainId: 8453 })]) expect(shapeOf(req("add", b)).ok).toBe(true);
     expect(hasV1Opening(INSTRUCTIONS.rebuild.sha256)).toBe(false);
     expect(V1_OPENING_HASHES.size).toBe(24);
-    expect(PUBLISHED_INSTRUCTIONS.length).toBe(36);
+    expect(PUBLISHED_INSTRUCTIONS.length).toBe(38);
   });
   it("an older file sent with the new opening, or a new file with the old opening, does not count", () => {
     const old = PUBLISHED_INSTRUCTIONS.find((p) => p.file === "rebuild-153b2cd5869b.txt")!;
@@ -82,7 +82,7 @@ describe("C7: one module per request kind", () => {
     expect(await REBUILD.price(read, {})).toBe(7n);
     expect(await CHANGES.price(read, {})).toBe(7n);
     expect(asked).toEqual(["job.open@job-1", "job.open@job-1", "job.open@job-1"]);
-    expect(resultNamesOf("add")).toEqual(["page", "logo"]);
+    expect(resultNamesOf("add")).toEqual(["page", "logo", "shot-1", "shot-2", "shot-3", "shot-4"]);
     expect(resultNamesOf("changes")).toEqual(["changes"]);
     expect(String(FIRST_PAGE.body({ prior: { files: [], answers: [] }, subject: ref }).objective)).toMatch(/^Write the Swarmpedia/);
     expect(String(REBUILD.body({ prior: { files: [], answers: [] }, subject: ref }).objective)).toMatch(/^Rebuild the Swarmpedia/);

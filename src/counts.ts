@@ -20,8 +20,8 @@
  * Everything here is pure. `shapeOf` needs only the request, so the site checks it before reading any result bytes
  * (src/useActivity.ts); `countedOf` needs the result hashes and pages of the jobs that passed.
  */
-import { EDIT_TEMPLATE, fillTemplate, leadsText, priorText, readLeads, REBUILD_TEMPLATE, REBUILD_TEMPLATE_V1, RESEARCH_OBJECTIVE, sourceObjective, RECONSIDER_MARK, type ChannelTie, type Prior } from "./bodies";
-import { hasV1Opening } from "./openings";
+import { EDIT_TEMPLATE, fillTemplate, leadsText, priorText, readLeads, REBUILD_TEMPLATE, REBUILD_TEMPLATE_V1, REBUILD_TEMPLATE_V2, RESEARCH_OBJECTIVE, sourceObjective, RECONSIDER_MARK, type ChannelTie, type Prior } from "./bodies";
+import { hasLogoOnlyObjective, hasV1Opening } from "./openings";
 import { CHANGES_TEMPLATE, CHANGES_TEMPLATE_V1, itemsText, parseItemsText, type Change } from "./changes";
 import { INSTRUCTIONS_FALLBACK_GATEWAY, INSTRUCTIONS_GATEWAY } from "./config";
 import published from "./instructions.published.json";
@@ -87,7 +87,8 @@ export function templatesFor(kind: "add" | "changes", sha256: string): string[] 
   const filebase = fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_GATEWAY);
   const fallback = fetchUrlOf(p.file, p.sha256, INSTRUCTIONS_FALLBACK_GATEWAY);
   // A file published since the Swarmpedia name: the current openings, named at filebase "or, if that fails," pinata.
-  if (!hasV1Opening(p.sha256)) return [fillTemplate(kind === "add" ? REBUILD_TEMPLATE : CHANGES_TEMPLATE, { URL: filebase, FALLBACK: fallback, HASH: p.sha256 })];
+  // A rebuild file published before the screenshot outputs was sent naming page.json and logo.png only.
+  if (!hasV1Opening(p.sha256)) return [fillTemplate(kind === "add" ? (hasLogoOnlyObjective(p.sha256) ? REBUILD_TEMPLATE_V2 : REBUILD_TEMPLATE) : CHANGES_TEMPLATE, { URL: filebase, FALLBACK: fallback, HASH: p.sha256 })];
   const base = kind === "add" ? REBUILD_TEMPLATE_V1 : CHANGES_TEMPLATE_V1;
   const era = ERAS[p.file] ?? "two";
   const forms: [Era, string][] = [["site", SITE_ADDR + p.file], ["dweb", DWEB_ADDR + p.file], ["filebase", filebase], ["two", filebase]];

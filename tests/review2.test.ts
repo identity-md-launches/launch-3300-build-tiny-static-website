@@ -145,8 +145,8 @@ describe("a first rebuild with no icon can satisfy both declared outputs (d28f6f
   it("declares page and logo and tells the job to write a placeholder PNG and leave page.logo out", () => {
     const body = rebuildBody({ files: [], answers: [], reconsider: [] } as never, refFromId("137:0x1111111111111111111111111111111111111111"));
     expect(body.outputs).toEqual(REBUILD_OUTPUTS);
-    expect(body.outputs.map((o) => o.path)).toEqual(["artifacts/page.json", "artifacts/logo.png"]);
-    expect(body.objective).toContain("Whatever else: output artifacts/page.json and artifacts/logo.png;");
+    expect(body.outputs.map((o) => o.path)).toEqual(["artifacts/page.json", "artifacts/logo.png", "artifacts/shot-1.png", "artifacts/shot-2.png", "artifacts/shot-3.png", "artifacts/shot-4.png"]);
+    expect(body.objective).toContain("Whatever else: output artifacts/page.json, artifacts/logo.png and artifacts/shot-1.png to artifacts/shot-4.png;");
     expect(INSTRUCTIONS.rebuild.text).toContain("Output artifacts/page.json and artifacts/logo.png.");
     expect(INSTRUCTIONS.rebuild.text).toContain("set logo to its URL and the time; else write logo.png as a 1 by 1 transparent PNG and leave logo out.");
     expect(INSTRUCTIONS.rebuild.text).not.toContain("artifacts/logo.png if found");
@@ -161,7 +161,7 @@ describe("the README and agents.md teach the current workflow (4b3290f1)", () =>
   const readme = readFileSync("README.md", "utf8");
   const agents = readFileSync("public/agents.md", "utf8");
   it("README: the one bar, chain picker, Related, first-page outcomes and the two outputs", () => {
-    for (const s of ["**The Look it up bar**", "chain picker", "**Related**", "First page in progress", "First page refused:", "No project found: <notes>", "`artifacts/page.json` and `artifacts/logo.png`", "**Merging is not dropping**"])
+    for (const s of ["**The Look it up bar**", "chain picker", "**Related**", "First page in progress", "First page refused:", "No project found: <notes>", "`artifacts/page.json`, `artifacts/logo.png` and `artifacts/shot-1.png` to `artifacts/shot-4.png`", "**Merging is not dropping**"])
       expect(readme).toContain(s);
     expect(readme).not.toContain("exact duplicate of a line it kept");
     expect(readme).not.toContain("stay two lines");

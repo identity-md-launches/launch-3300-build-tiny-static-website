@@ -218,24 +218,44 @@ export interface LogoRead {
   hash: string | null;
 }
 export async function fetchLogo(r: TaggedRequest, c: Completion, jobIdHint: string | null): Promise<LogoRead> {
-  const key = `logo:${r.requestId}`;
-  const cached = await kvGet<LogoRead>("files", key);
+  return fetchPngFile(r, c, jobIdHint, "logo");
+}
+
+/** A PNG's pixel width from its IHDR chunk (bytes 16 to 19), or 0. */
+export const pngWidth = (b: Uint8Array) => (b.length >= 24 ? ((b[16]! << 24) | (b[17]! << 16) | (b[18]! << 8) | b[19]!) >>> 0 : 0);
+
+/**
+ * One screenshot slot of a completed page job: the result file named shot-<slot>, read and checked as the logo is.
+ * A slot narrower than 320 pixels (the 1 by 1 placeholder a job writes for a slot it could not fill) reads as none.
+ */
+export async function fetchShot(r: TaggedRequest, c: Completion, jobIdHint: string | null, slot: number): Promise<LogoRead> {
+  const read = await fetchPngFile(r, c, jobIdHint, `shot-${slot}`);
+  return read.url && read.width !== undefined && read.width < 320 ? { url: null, hash: null } : read;
+}
+
+/** A named PNG result file of a completed job, checked against its listed SHA-256 and cached (see fetchLogo). */
+async function fetchPngFile(r: TaggedRequest, c: Completion, jobIdHint: string | null, name: string): Promise<LogoRead & { width?: number }> {
+  const key = name === "logo" ? `logo:${r.requestId}` : `${name}:${r.requestId}`;
+  const what = name === "logo" ? "logo" : "screenshot";
+  const cached = await kvGet<LogoRead & { width?: number }>("files", key);
   if (cached) return cached;
   const { files } = await jobResult(r, c, jobIdHint);
-  const file = files.find((f) => f.name === "logo");
+  const file = files.find((f) => f.name === name);
   let url: string | null = null;
+  let width: number | undefined;
   if (file) {
-    if (!/^[0-9a-f]{64}$/.test(file.hash)) throw new Error("The logo's listed hash is not 64 hex characters");
+    if (!/^[0-9a-f]{64}$/.test(file.hash)) throw new Error(`The ${what}'s listed hash is not 64 hex characters`);
     const res = await fetch(`${API}/artifacts/${file.hash}`);
-    if (!res.ok) throw new Error(`logo artifact answered ${res.status}`);
+    if (!res.ok) throw new Error(`${name} artifact answered ${res.status}`);
     const buf = await res.arrayBuffer();
-    if ((await sha256Hex(buf)) !== file.hash) throw new Error("The logo's bytes do not match the listed hash");
+    if ((await sha256Hex(buf)) !== file.hash) throw new Error(`The ${what}'s bytes do not match the listed hash`);
     const bytes = new Uint8Array(buf);
-    if (!isPng(bytes)) throw new Error("The logo is not a whole PNG file");
-    if (!(await pngDecodes(bytes))) throw new Error("The logo's PNG data does not decode");
+    if (!isPng(bytes)) throw new Error(`The ${what} is not a whole PNG file`);
+    if (!(await pngDecodes(bytes))) throw new Error(`The ${what}'s PNG data does not decode`);
     url = pngDataUrl(bytes);
+    if (name !== "logo") width = pngWidth(bytes);
   }
-  const out: LogoRead = { url, hash: file && url ? file.hash : null };
+  const out: LogoRead & { width?: number } = { url, hash: file && url ? file.hash : null, ...(width !== undefined ? { width } : {}) };
   await kvSet("files", key, out);
   return out;
 }

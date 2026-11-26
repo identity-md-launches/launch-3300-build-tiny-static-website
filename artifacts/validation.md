@@ -1,5 +1,32 @@
 # Validation
 
+## This build: revision 33, data for the next layout (2026-11-26)
+
+See README "Revision 33" for the command results table. Summary:
+- Typecheck and production build passed.
+- 627 of 627 unit tests passed.
+- The job check was run on the 35 live tagged requests with this code and with the previous code. The verdicts are identical, so there is no new "Not read" and all seven subjects keep their pages.
+- The design-critic probe passed all 16 checks at 320, 390 and 1440. Its screenshots are in `test/scratch/taste/shots/`, not committed.
+- The new screenshot block was rendered with the built CSS at 320, 390 and 1440 and passed.
+- IMD's free request check judged the new bodies. Its only blocker was that the new instruction files are not yet reachable on IPFS, which they will be after publication.
+
+Not performed: a live subject page with a screenshot in a browser. None exists until a rebuild runs with the new file.
+
+### Better Interface review of revision 33
+
+Coverage: all six domains were reviewed against the source for the one visible change, `FirstShot` (`src/Record.tsx`, `src/styles.css`). The rendered checks were made with Playwright on a scratch page that uses the built CSS. No subject page was rendered.
+
+- **Accessibility.** The image has alt text naming the project and the screen (`src/Record.tsx` `FirstShot`). Without a caption it falls back to "A screen of <name>". The source link is a real anchor with `rel="noopener noreferrer"`. The figure adds no focus stop besides that link.
+- **Layout.** The figure sits in the reading column, above the Summary heading, with an 8px gap. It never exceeds the column or 480px in height. Measured at 320, 390 and 1440 with no horizontal scroll.
+- **Writing.** The caption is the job's own (at most 8 words by the instructions). The link text is the bare host. Nothing else new is visible.
+- **Typography.** No new size: the caption is the existing 13px small text. The probe still counts at most 6 sizes, one family and two weights.
+- **Colours.** Only existing tokens: border, subtle background and secondary text. The probe measured all visible text at 4.5:1 or better on Home. The caption colour is the same token the probe already measured.
+- **UI.** A 1 by 1 placeholder slot is never shown (narrower than 320px reads as none). The image is a checked data: URL, so no third-party request.
+
+Finding fixed: none was found in the rendered check.
+
+Remaining limitation: the caption's middle dot was seen as mojibake only on the scratch page, which had no charset. The site's `index.html` declares UTF-8.
+
 ## This build: revision 32, layout (2026-11-25)
 
 See README "Revision 32: layout" for the command results table. Summary: typecheck and production build passed; 610 of 610 unit tests passed; the design-critic probe passed all 16 checks at 320, 390 and 1440 (screenshots were taken in `test/scratch/taste/shots/`, not committed); a Playwright run on the export confirmed the one-row header, the menu, the hidden label and the short placeholder at 320 and 390. Subject pages were not observed in a browser this round (the live log scan did not finish within the sandbox's time limit); that is a stated limitation, not a pass.

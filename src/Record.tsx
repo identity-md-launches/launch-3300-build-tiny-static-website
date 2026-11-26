@@ -1216,6 +1216,38 @@ export function ContributorTable({ rows, labelledBy, ranked = false, pages = tru
   );
 }
 
+/**
+ * The page's first screenshot, above the Summary: the job's real capture of the project's live app or site (page
+ * screenshots[0], read and checked as a PNG). Its caption names the screen; the link opens the page captured.
+ */
+export function FirstShot({ shot, name }: { shot: NonNullable<Activity["shot"]>; name: string }) {
+  const href = shot.source ? safeHref(shot.source) : null;
+  return (
+    <figure className="shot">
+      <img src={shot.url} alt={shot.caption ? `${name}: ${shot.caption}` : `A screen of ${name}`} width={1280} decoding="async" />
+      {(shot.caption || href) && (
+        <figcaption className="small">
+          {shot.caption}
+          {href && (
+            <>
+              {shot.caption ? " · " : ""}
+              <a href={href} target="_blank" rel="noopener noreferrer">{hostLabel(href)}</a>
+            </>
+          )}
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+const hostLabel = (href: string) => {
+  try {
+    return new URL(href).host.replace(/^www\./, "");
+  } catch {
+    return href;
+  }
+};
+
 export function OverviewTab({ m, ui, items, subjects, chainError = null, retrying = false, readingFiles = false, unreadable = 0, onRetry, jobs = { finished: false, loadFailed: false, settled: true } }: { m: RecordModel; ui: Ui; items: Activity[] | null; price: string; subjects: Findable[]; chainError?: string | null; retrying?: boolean; readingFiles?: boolean; unreadable?: number; onRetry?: () => void; jobs?: PageJobs }) {
   const { page, latest, error } = m;
   // D10: "No page yet" and "Create the page" only once the current scan shows no finished page job.
@@ -1319,6 +1351,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       {(page || m.summary.length > 0) && (
         <div className="overview">
           <div className="summary-col">
+            {page && latest?.shot && <FirstShot shot={latest.shot} name={name} />}
             <Summary m={m} ui={ui} />
             {page && !m.summary.length && (
               <p className="small">
