@@ -3,8 +3,11 @@
  * the switch between them, remembered in this browser. A card shows the first screenshot cropped from the top at 16 by
  * 10 (or the logo on a light tile), logo and name, one_line, the category, a play button to the app and "Dive in".
  */
-import { useEffect, useState } from "react";
-import { fetchShot } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { fetchLogoByHash, fetchShot } from "./api";
+import type { Digest } from "./model";
+import { kvSet } from "./store";
+import type { LogoEntry } from "./digest";
 import { localDate } from "./dates";
 import { SubjectLogo } from "./Logo";
 import { statusText, unreadableText, type SubjectSummary } from "./model";
@@ -58,7 +61,8 @@ export function categoryCounts(rows: Pick<SubjectSummary, "category">[]): { cate
 
 export function CategoryChips({ rows, value, set }: { rows: Pick<SubjectSummary, "category">[]; value: Category | null; set: (c: Category | null) => void }) {
   const cats = categoryCounts(rows);
-  if (!cats.length) return null;
+  // With a category chosen, "All" always stays, so the filter can be cleared.
+  if (!cats.length && value === null) return null;
   return (
     <div className="cat-chips" role="group" aria-label="Filter by category">
       <button type="button" className="chip" aria-pressed={value === null} onClick={() => set(null)}>
@@ -71,6 +75,41 @@ export function CategoryChips({ rows, value, set }: { rows: Pick<SubjectSummary,
       ))}
     </div>
   );
+}
+
+/**
+ * The category a visitor chose, as long as the rows the search leaves still hold one in it; otherwise none, so the
+ * search's matches show under All. Pure, for tests.
+ */
+export function liveCategory(rows: Pick<SubjectSummary, "category">[], cat: Category | null): Category | null {
+  return cat && rows.some((r) => r.category === cat) ? cat : null;
+}
+
+/**
+ * Logos Home has a hash for (from a stored or published digest) but not the image: each read once, checked against its
+ * hash, and kept in the digests store under that hash, so the card, its tile and the List row show the project's logo
+ * on a first visit. A file that fails a check is left out and the letter tile stays.
+ */
+export function useHashLogos(items: unknown[] | null, digests: Map<string, Digest> | undefined, logos: Map<string, string> | undefined): Map<string, string> {
+  const [got, setGot] = useState<Map<string, string>>(new Map());
+  const tried = useRef(new Set<string>());
+  const want = items?.length && digests ? [...digests.values()].map((d) => d.hasPage && d.logoHash).filter((h): h is string => !!h && !logos?.has(h)) : [];
+  const sig = [...new Set(want)].sort().join(",");
+  useEffect(() => {
+    // Every hash is read once per visit; its result is kept even if the list changes meanwhile.
+    for (const h of sig ? sig.split(",") : []) {
+      if (tried.current.has(h)) continue;
+      tried.current.add(h);
+      fetchLogoByHash(h).then(
+        (url) => {
+          void kvSet("digests", `logo:${h}`, { type: "logo", hash: h, url } satisfies LogoEntry);
+          setGot((m) => new Map(m).set(h, url));
+        },
+        (e: unknown) => console.warn(`Logo ${h.slice(0, 12)} could not be read:`, e instanceof Error ? e.message : e),
+      );
+    }
+  }, [sig]);
+  return got;
 }
 
 /** The card's screenshot: read from the page request's result (checked and cached by fetchShot) once the card shows. */
@@ -166,7 +205,7 @@ export function ProjectRow({ s }: { s: SubjectSummary }) {
       <div className="prow-side">
         <CategoryChip category={s.category} />
         <PlayButton app={s.app} name={s.name} />
-        <span className="small prow-built">{s.waiting ? "Reading…" : s.changed ? `Last built ${localDate(s.changed)}` : ""}</span>
+        <span className="small prow-built">{s.built ? `Last built ${localDate(s.built)}` : s.waiting ? "Reading…" : ""}</span>
       </div>
     </li>
   );

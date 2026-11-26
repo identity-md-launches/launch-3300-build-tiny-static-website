@@ -515,6 +515,8 @@ export interface SubjectSummary {
   outdated: Outdated;
   /** When the record last changed: the newest completed result's time, else the newest request's. */
   changed: number | null;
+  /** When the page shown was built: its page job's completion time, else its request's (About this page's date). */
+  built?: number | null;
   /** Where "Recently changed" puts it: changed, or while that time is still being read an estimate from its block. */
   order?: number;
   /** True while the block times of its requests are still being read. */
@@ -822,6 +824,7 @@ function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSu
     oneLine: core.page?.oneLine ?? "",
     counts: core.counts,
     changed,
+    built: core.page ? core.latest?.doneTime ?? core.latest?.time ?? null : null,
     ...(waiting ? { waiting } : {}),
     requests: list.length,
     pending: list.filter((a) => a.state === "pending").length,
@@ -880,6 +883,7 @@ export function subjectSummaries(items: Activity[], digests: Map<string, Digest>
       ranked: d.ranked ?? [],
       logo: d.logoHash ? logos.get(d.logoHash) ?? null : null,
       logoHash: d.logoHash,
+      built: builtOf(d, list) ?? own.built ?? null,
       status: d.hasPage ? null : d.status && isCurrent(d, list) ? d.status : own.status,
       category: d.category,
       app: d.app,
@@ -889,6 +893,13 @@ export function subjectSummaries(items: Activity[], digests: Map<string, Digest>
     };
   });
   return out.sort((a, b) => (b.order ?? 0) - (a.order ?? 0) || a.id.localeCompare(b.id));
+}
+
+/** The date About this page shows for a digest's page: its producing request's completion time, else its request's. */
+export function builtOf(d: Pick<Digest, "hasPage" | "pageReq">, list: Pick<Activity, "req" | "doneTime" | "time">[]): number | null {
+  if (!d.hasPage || !d.pageReq) return null;
+  const a = list.find((x) => x.req.requestId === d.pageReq);
+  return a ? a.doneTime ?? a.time ?? null : null;
 }
 
 /** A completed job's or request's place in time from its block alone, set by any request whose block time is known. */

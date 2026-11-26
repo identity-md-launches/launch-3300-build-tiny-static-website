@@ -24,6 +24,23 @@ export const ASK_RPCS: Record<number, string[]> = {
   81457: ["https://rpc.blast.io"],
   11155111: ["https://ethereum-sepolia-rpc.publicnode.com"],
   84532: ["https://sepolia.base.org"],
+  42170: ["https://nova.arbitrum.io/rpc", "https://arbitrum-nova-rpc.publicnode.com"],
+  250: ["https://fantom-rpc.publicnode.com"],
+  5000: ["https://rpc.mantle.xyz", "https://mantle-rpc.publicnode.com"],
+  34443: ["https://mainnet.mode.network"],
+  42220: ["https://forno.celo.org", "https://celo-rpc.publicnode.com"],
+  1284: ["https://rpc.api.moonbeam.network", "https://moonbeam-rpc.publicnode.com"],
+  25: ["https://evm.cronos.org"],
+  146: ["https://rpc.soniclabs.com", "https://sonic-rpc.publicnode.com"],
+  80094: ["https://rpc.berachain.com", "https://berachain-rpc.publicnode.com"],
+  1868: ["https://rpc.soneium.org"],
+  57073: ["https://rpc-gel.inkonchain.com"],
+  480: ["https://worldchain-mainnet.g.alchemy.com/public"],
+  252: ["https://rpc.frax.com"],
+  1101: ["https://zkevm-rpc.com"],
+  17000: ["https://ethereum-holesky-rpc.publicnode.com"],
+  11155420: ["https://sepolia.optimism.io"],
+  421614: ["https://sepolia-rollup.arbitrum.io/rpc"],
 };
 
 export const rpcFor = (chainId: number): string[] => ASK_RPCS[chainId] ?? [];
@@ -60,20 +77,24 @@ const numberOf = (s: string): string | null => {
 };
 
 /**
- * Whether the answer equals the value the page recorded: numbers by their digits (separators, trailing zeros and the
- * unit ignored), addresses by their hex, anything else as trimmed text without case. Null when nothing was recorded.
+ * Whether the answer equals the value the page recorded, by the call's return type: a string by its exact text (case
+ * counts), an address by its hex, a bool as true/false, a uint by its digits (separators, trailing zeros and the unit
+ * ignored). With no type known, a number by its digits and anything else by its exact text. Null when nothing was
+ * recorded.
  */
-export function sameValue(answer: string, recorded: string | undefined | null): boolean | null {
+export function sameValue(answer: string, recorded: string | undefined | null, returns?: AskCall["returns"]): boolean | null {
   const r = (recorded ?? "").trim();
   if (!r) return null;
-  if (/^0x[0-9a-fA-F]{40}$/.test(answer)) {
+  if (returns === "string") return answer.trim() === r;
+  if (returns === "bool") return answer === (/^(true|yes|1)$/i.test(r) ? "true" : /^(false|no|0)$/i.test(r) ? "false" : r);
+  if (returns === "address" || /^0x[0-9a-fA-F]{40}$/.test(answer)) {
     const a = /0x[0-9a-fA-F]{40}/.exec(r)?.[0];
     return a ? a.toLowerCase() === answer.toLowerCase() : false;
   }
   const na = numberOf(answer);
   const nr = numberOf(r);
   if (na !== null && nr !== null) return na === nr;
-  return answer.trim().toLowerCase() === r.toLowerCase();
+  return answer.trim() === r;
 }
 
 /** The recorded value as the page shows it: the proof line's fact value and unit. */

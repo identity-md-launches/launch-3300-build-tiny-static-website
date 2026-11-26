@@ -672,7 +672,7 @@ function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
         aria-label={`${shownLabel(r.label)}: ${b.text}. Open the newer line that ${b.tone === "contradicted" ? "contradicts" : "outdates"} it`}
       >
         <BadgeMark tone={b.tone} />
-        {b.text}
+        <span className="badge-text">{b.text}</span>
       </a>
     );
   const title = r.status ? STATUS_HELP[r.status.tone as ChannelStatus] : undefined;
@@ -680,7 +680,7 @@ function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
     return (
       <span className={`badge badge-${b.tone}`} title={title}>
         <BadgeMark tone={b.tone} />
-        {b.text}
+        <span className="badge-text">{b.text}</span>
       </span>
     );
   return (
@@ -695,7 +695,7 @@ function RowBadge({ r, ui }: { r: KeyRow; ui: Ui }) {
       aria-label={`${shownLabel(r.label)}: ${b.text}. Open the ${r.lines.length === 1 ? "line" : `${r.lines.length} lines`} it rests on`}
     >
       <BadgeMark tone={b.tone} />
-      {b.text}
+      <span className="badge-text">{b.text}</span>
     </a>
   );
 }

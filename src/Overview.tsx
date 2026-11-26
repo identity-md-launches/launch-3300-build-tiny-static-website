@@ -7,6 +7,7 @@ import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from "react
 import { fetchShot, type ShotRead } from "./api";
 import { askContract, recordedOf, sameValue, type AskAnswer } from "./ask";
 import { KindIcon } from "./KindIcon";
+import { evidenceOf, RestsOn } from "./Suggest";
 import { SubjectLogo } from "./Logo";
 import type { RecordModel } from "./model";
 import { formatNumbers } from "./numbers";
@@ -68,12 +69,13 @@ export function listedShots(page: RecordModel["page"], latest: Pick<Activity, "r
   return page.screenshots.filter((s) => names.includes(`shot-${s.slot}`));
 }
 
-type ShotState = ShotRead | "failed" | undefined;
+type ShotState = ShotRead | "failed" | "reading" | undefined;
 
 /**
  * 2. One large image, its caption, "1 of 4" and the address it was captured from, then a row of thumbnails. A thumbnail
- * or the arrow keys change the image. The first file is read at once; the others only once it has arrived. A 1 by 1
- * placeholder or a file that fails a check is left out.
+ * or the arrow keys change the image. Only the image shown is read: the first usable file up front, and any other only
+ * once a visitor selects it (a thumbnail shows its number until its file has been read). A 1 by 1 placeholder or a
+ * file that fails a check is left out, and the next slot is read in its place.
  */
 export function Gallery({ m, latest, name }: { m: RecordModel; latest: Activity | undefined; name: string }) {
   const listed = listedShots(m.page, latest);
@@ -81,45 +83,52 @@ export function Gallery({ m, latest, name }: { m: RecordModel; latest: Activity 
   const [reads, setReads] = useState<{ key: string; by: Map<number, ShotState> }>({ key: "", by: new Map() });
   const [at, setAt] = useState(0);
   const frame = useRef<HTMLDivElement>(null);
+  /** The slots asked for under the current key: each file is read at most once. */
+  const asked = useRef<{ key: string; slots: Set<number> }>({ key: "", slots: new Set() });
+  const live = useRef(true);
   useEffect(() => {
-    if (!key || !latest?.completion) return;
-    let live = true;
-    const by = new Map<number, ShotState>();
-    setReads({ key, by: new Map(by) });
-    setAt(0);
-    const jobId = latest.via?.jobId ?? latest.jobId ?? null;
-    (async () => {
-      for (const s of listed) {
-        let r: ShotState;
-        try {
-          r = await fetchShot(latest.req, latest.completion!, jobId, s.slot);
-        } catch (e) {
-          console.warn(`Screenshot ${s.slot} could not be read:`, e instanceof Error ? e.message : e);
-          r = "failed";
-        }
-        if (!live) return;
-        by.set(s.slot, r);
-        setReads({ key, by: new Map(by) });
-      }
-    })();
+    live.current = true;
     return () => {
-      live = false;
+      live.current = false;
     };
-    // The key names the request and its slots; the objects behind it are replaced on every refresh.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  if (!listed.length) return null;
+  }, []);
+  useEffect(() => setAt(0), [key]);
   const by = reads.key === key ? reads.by : new Map<number, ShotState>();
-  // Shown: every slot not yet known to be empty or broken. Read ones carry their image.
   const shown = listed.filter((s) => {
     const r = by.get(s.slot);
-    return r === undefined || (r !== "failed" && !!r.url);
+    return r === undefined || r === "reading" || (r !== "failed" && !!r.url);
   });
-  if (!shown.length) return null;
-  const i = Math.min(at, shown.length - 1);
+  const i = Math.min(at, Math.max(0, shown.length - 1));
+  const curSlot = shown[i]?.slot ?? null;
+  // Read the slot shown (the first one on arrival), and only that one.
+  useEffect(() => {
+    if (!key || !latest?.completion || curSlot === null) return;
+    if (asked.current.key !== key) asked.current = { key, slots: new Set() };
+    if (asked.current.slots.has(curSlot)) return;
+    asked.current.slots.add(curSlot);
+    const put = (st: ShotState) =>
+      live.current &&
+      setReads((r) => {
+        const next = new Map(r.key === key ? r.by : []);
+        next.set(curSlot, st);
+        return { key, by: next };
+      });
+    put("reading");
+    const jobId = latest.via?.jobId ?? latest.jobId ?? null;
+    fetchShot(latest.req, latest.completion, jobId, curSlot).then(
+      (r) => put(r),
+      (e: unknown) => {
+        console.warn(`Screenshot ${curSlot} could not be read:`, e instanceof Error ? e.message : e);
+        put("failed");
+      },
+    );
+    // The key names the request and its slots; the objects behind it are replaced on every refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, curSlot]);
+  if (!listed.length || !shown.length) return null;
   const cur = shown[i]!;
   const read = by.get(cur.slot);
-  const img = read && read !== "failed" ? read : null;
+  const img = read && read !== "failed" && read !== "reading" ? read : null;
   const go = (n: number) => setAt((n + shown.length) % shown.length);
   const onKey = (e: KeyboardEvent) => {
     if (shown.length < 2) return;
@@ -150,10 +159,10 @@ export function Gallery({ m, latest, name }: { m: RecordModel; latest: Activity 
         <div className="g-thumbs" role="group" aria-label="Choose a screenshot">
           {shown.map((s, j) => {
             const r = by.get(s.slot);
-            const u = r && r !== "failed" ? r.url : null;
+            const u = r && r !== "failed" && r !== "reading" ? r.url : null;
             return (
               <button key={s.slot} type="button" className="g-thumb" aria-pressed={j === i} aria-label={`Screenshot ${j + 1} of ${shown.length}${s.caption ? `: ${s.caption}` : ""}`} onClick={() => go(j)}>
-                {u ? <img src={u} alt="" width={160} height={120} /> : <span className="g-thumb-wait" aria-hidden="true" />}
+                {u ? <img src={u} alt="" width={160} height={120} /> : <span className="g-thumb-num num" aria-hidden="true">{j + 1}</span>}
               </button>
             );
           })}
@@ -211,25 +220,58 @@ export function ExplainedText({ s, m, openLines }: { s: ExplainedSentence; m: Pi
   );
 }
 
-/** 4. explained.how_it_works as numbered steps. */
+/** 4. explained.how_it_works as numbered steps. A step opens the lines it rests on in place, under it, like a summary sentence. */
 export function HowItWorks({ m, openLines }: { m: RecordModel; openLines: (ids: string[]) => void }) {
+  const [open, setOpen] = useState<number | null>(null);
   const steps = m.page?.explained?.howItWorks ?? [];
   if (!steps.length) return null;
+  const all = m.sections.flatMap((x) => x.rows.map((r) => r.line));
   return (
     <section className="ov-sec how" aria-labelledby="how-title">
       <h2 id="how-title">How it works</h2>
       <ol className="steps">
-        {steps.map((s, i) => (
-          <li key={i}>
-            <ExplainedText s={s} m={m} openLines={openLines} />
-          </li>
-        ))}
+        {steps.map((s, i) => {
+          const refs = linesOf(m, s);
+          const body = (
+            <>
+              {formatNumbers(s.text)}
+              {"\u2060"}
+              <ExplainedMark kind={s.kind} />
+            </>
+          );
+          return (
+            <li key={i}>
+              {refs.length ? (
+                <span
+                  className={`x-text x-open sent${open === i ? " is-on" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={open === i}
+                  aria-controls={`step-ev-${i}`}
+                  title={`Show the ${refs.length === 1 ? "line" : `${refs.length} lines`} it rests on`}
+                  onClick={() => setOpen(open === i ? null : i)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setOpen(open === i ? null : i);
+                    }
+                  }}
+                >
+                  {body}
+                </span>
+              ) : (
+                <span className="x-text">{body}</span>
+              )}
+              {open === i && refs.length > 0 && <RestsOn id={`step-ev-${i}`} text={s.text} evidence={evidenceOf(refs, all)} onOpenLines={openLines} />}
+            </li>
+          );
+        })}
       </ol>
     </section>
   );
 }
 
-const CHAIN_NAMES: Record<number, string> = { 1: "Ethereum", 8453: "Base", 10: "OP Mainnet", 42161: "Arbitrum One", 137: "Polygon", 7777777: "Zora", 130: "Unichain", 56: "BNB Chain", 43114: "Avalanche", 100: "Gnosis", 59144: "Linea", 534352: "Scroll", 324: "zkSync Era", 81457: "Blast", 11155111: "Sepolia", 84532: "Base Sepolia" };
+const CHAIN_NAMES: Record<number, string> = { 1: "Ethereum", 8453: "Base", 10: "OP Mainnet", 42161: "Arbitrum One", 42170: "Arbitrum Nova", 137: "Polygon", 7777777: "Zora", 130: "Unichain", 56: "BNB Chain", 43114: "Avalanche", 100: "Gnosis", 59144: "Linea", 534352: "Scroll", 324: "zkSync Era", 81457: "Blast", 250: "Fantom", 5000: "Mantle", 34443: "Mode", 42220: "Celo", 1284: "Moonbeam", 25: "Cronos", 146: "Sonic", 80094: "Berachain", 1868: "Soneium", 57073: "Ink", 480: "World Chain", 252: "Fraxtal", 1101: "Polygon zkEVM", 17000: "Holesky", 11155420: "OP Sepolia", 421614: "Arbitrum Sepolia", 11155111: "Sepolia", 84532: "Base Sepolia" };
 export const chainNameOf = (id: number) => CHAIN_NAMES[id] ?? `chain ${id}`;
 
 const timeText = (t: number) => (t ? new Date(t).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
@@ -247,7 +289,7 @@ function AskCard({ a, m, i }: { a: Ask; m: RecordModel; i: number }) {
       (e: unknown) => setSt({ busy: false, answer: null, error: e instanceof Error ? e.message : "The call failed" }),
     );
   };
-  const same = st.answer ? sameValue(st.answer.value, line?.fact?.value) : null;
+  const same = st.answer ? sameValue(st.answer.value, line?.fact?.value, a.call.returns) : null;
   const id = `ask-${i}`;
   return (
     <li className="ask-card">
@@ -347,7 +389,7 @@ export function GoDeeper({ m, openLines }: { m: RecordModel; openLines: (ids: st
     <section className="ov-sec deeper" aria-labelledby="deeper-title">
       <h2 id="deeper-title">Go deeper</h2>
       {tokens.length > 0 && (
-        <Deeper title={tokens.length === 1 ? "The token" : "The tokens"}>
+        <Deeper title="The token">
           {tokens.map((t) => (
             <div className="x-block" key={t.token}>
               <h3>{t.token}</h3>

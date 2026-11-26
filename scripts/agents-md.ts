@@ -60,8 +60,8 @@ A subject is one project, never a person and never a name:
   such as \`1:0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7\`. Any chain id: when an address has no page yet, the
   home bar's chain picker names six chains and takes any other as a number under "Other chain ID" (such as \`137:0x…\`).
 
-**One search.** **The home bar** is one input, "Search projects, or enter a website or contract address" (the same words
-shown above it), with one button, "Look it up". Typing filters the list of projects below by name or domain. On submit
+**One search.** **The home bar** is one input, "Search projects, or enter a website or contract address" (its placeholder;
+the label with the same words is for screen readers only), with one button, "Look it up". Typing filters the list of projects below by name or domain. On submit
 it opens the subject whose id is that domain, or whose id or listed contracts include that address (on the chain
 given as \`<chain id>:0x…\`, or on any chain when none is given; an address recorded on another chain never matches).
 A pasted link is reduced to its host, even an explorer link with an address in its path. An unmatched lookup waits
@@ -106,6 +106,76 @@ ${fence(currentOpening)}
 \`, whose main contract is <address> on chain <id>\` when one is known, or
 \`the project whose main contract is <address> on chain <id>\` without a domain, such as
 \`${describeSubject(EXAMPLE_REF)}\`. A job with the current instruction file and that description is not read.
+
+## Current layout (revision 36)
+
+**Home** (\`#/\`). The heading "Find new projects: what they promise, what they do, and what people say." with the line
+about IMD under it, then the one search bar and "Look it up". The search field's label is for screen readers only;
+its placeholder carries the same words, and no label text is visible. Under it comes **Projects**: the filter buttons
+(All, Needs a rebuild, Saved), and beside "Sort by" a **Cards | List** switch. Cards is the default, and the choice is
+kept in this browser (\`localStorage\` key \`swarmpedia.homeView\`). Above both views are category chips: "All" and one
+chip per category that has at least one project, each with its count. A chip filters both views. "All" stays visible
+while a category is chosen, and a search that leaves no project in the chosen category clears it, so the search's
+matches show under All.
+- A **card** shows the first screenshot cropped from the top at 16 by 10 (with no screenshot, the logo centred on a
+  light tinted tile), then the logo and name, one_line, the category chip, a small outlined play button that opens
+  the app in a new tab (the app label is its tooltip) and "Dive in", which opens the project page. A card shows no
+  counts of kinds and nothing about disputes.
+- A **List row** shows the logo, name, one_line, category, the play button and "Last built <date>". The date is the
+  completion of the page job that built the page shown, the same date About this page gives. The "Recently changed"
+  sort still uses the newest result of any kind. The existing sort options stay.
+- Logos: when a stored or published digest names a logo hash this browser has not read, Home downloads
+  \`api.imd.fun/artifacts/<hash>\`, checks the bytes against that hash and the PNG rules, and uses the same image for the
+  tile, the card heading and the List row. A project with no usable logo shows its initial.
+- The three example cards (proof, statement, claim) come after the directory, so a phone's first screen shows the
+  projects. At 390 pixels the filter buttons take one row, and Cards | List and Sort by share the next.
+
+**Overview** (\`#/s/<id>\`). One column, at most 760 pixels wide, with 40 pixels between sections, in this order. A
+section with no data is left out, so a page built before these keys existed still shows cleanly.
+1. **Header**: logo, name, one_line, a small category chip and the save star. On the right is a filled button with
+   \`app.label\` that opens \`app.url\` in a new tab. With no \`app\` there is no button.
+2. **Screenshots**: one large image (rounded corners, thin border), under it the caption, "1 of 4" and the address it
+   was captured from, then a row of thumbnails. A thumbnail or the left and right arrow keys change the image. Only
+   the first usable file is downloaded up front. Another file is downloaded when it is selected, and until then its
+   thumbnail shows its number. A 1 by 1 file, or one that fails a check, is skipped.
+3. **Summary**: the first paragraph only, then "Read more", which opens the rest with the legend. Clicking a sentence
+   opens "This rests on" (its lines) in place under the paragraph.
+4. **How it works**: \`explained.how_it_works\` as numbered steps. Clicking a step (or Enter) opens the same
+   "This rests on" list in place under the step, and each line in it links to Record. The step's kind is a small
+   quiet mark at its end, not a coloured label. A sentence with a missing or unknown kind shows no mark.
+5. **The basics**: the Key facts as a plain list, the label on the left and the value on the right. The order is
+   verified links (channels), tokens with their addresses and a copy button, runs on, founder or team, then the rest
+   behind "Show all". Each row keeps its pencil, and its status is a small mark at the end of the row. On phones the
+   mark is the status icon alone, and its words stay in the tooltip and for screen readers.
+6. **Ask the contract**: one card per \`ask\` entry with the question and "Ask now". The visitor's browser makes the
+   \`eth_call\` on a public RPC for that chain (a list by chain id in \`src/ask.ts\`, including Arbitrum Nova 42170), with
+   no wallet. It decodes the answer by \`returns\` and shows it with its unit, the block number and the block time,
+   beside the value recorded on the page ("On this page"). When they differ it says "Changed since this page was
+   built". A \`string\` is compared exactly (case counts), an \`address\` by its hex, a \`bool\` as true or false, and a
+   \`uint\` by its digits. On an RPC error it says so and offers "Try again".
+7. **Go deeper**: four rows that open in place. "The token" holds \`explained.tokens\`, one block per token (the label
+   stays "The token" for any number of tokens). "The contracts" holds \`explained.contracts\`, with the who_can_change
+   sentences under "Who can change it" and the what_it_means sentences under "What that means for you". "Not known
+   yet" holds the open questions, with their count. "Full record" holds the counts and a link to the Record tab.
+8. **Related** and **About this page** follow, as before.
+
+**Instruction changes (revision 35).** The current files are \`rebuild-7351e67f471b.txt\` and
+\`changes-d73d152f1764.txt\` (\`src/instructions.json\`). Every earlier file stays served and accepted. The rebuild file
+keeps every earlier sentence and adds five:
+- **ask**: "When the record holds a proof that fits, ask is never empty. Take the call from that line's rerun text;
+  you do not need to run it again. Prefer the price or cost a person pays, then a supply or count."
+- **tokens**: "At most 6 sentences per token in total. Never two sentences that say the same thing. Leave out 'how you
+  get it' unless a source names where. For whether more can be created or destroyed, read the token's verified
+  source: this sentence should rest on a proof. Do not write that it was not checked when the record already holds
+  lines on it."
+- **explained**: "A sentence's kind is the weakest kind among the lines it rests on: proof, statement, claim, or
+  not_checked when it rests on none. Use no other kind. A what_it_means sentence carries no kind."
+- **one_line**: "Say what a person can do there, in words a newcomer would use. Do not list what the project consists
+  of."
+- **screenshots**: "Capture the top of each page, 1280 by 960, after it has finished loading. Skip a page whose
+  capture is mostly empty."
+
+The job check and the page accept an explained sentence with a missing or unknown kind and show it with no mark.
 
 ## The call
 
@@ -464,7 +534,7 @@ or whose publisher is not a channel, shows as a **claim**. A source job's line i
 \`read, not about this subject: <about_why>\`. \`differs\` with \`level: "conflict"\` shows as "Conflicts with the
 line above"; \`"question"\` or no level as "Compare with the line above". Proof lines with \`fact\` show as a table
 of name, value, chain and block (read from the line's text and re-run steps), all in one table under On chain.
-The Overview's key facts table shows \`infobox\` rows, each with a badge the site works out only from the kinds
+The Overview's The basics list (the Key facts) shows \`infobox\` rows, each with a badge the site works out only from the kinds
 of the lines the row rests on: "Proven on chain" if any is a proof, else "Stated by <channel name>" for a
 statement, else "Reported by <who>" for a claim. When a claim's \`by\` is missing or generic ("an outside source",
 "a news site", "Unknown", "Anonymous" and the like), the badge names the host of the line's first source instead,

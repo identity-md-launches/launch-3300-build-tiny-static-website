@@ -32,19 +32,89 @@ the export works under an IPFS gateway subpath or an ENS name. Routing is by has
 
 - `#/contributors` is **Top contributors**, linked in the header: the wallets that sent counted changes, ranked by
   notes added (see "Page contributors" below).
-- `#/` is **Home**: the headline, the one **Look it up** bar that both searches and adds, the three label cards,
-  the list of subjects found on chain and "How it works". `#/add/<id>` opens Home with the bar filled in (used by
+- `#/` is **Home**: the headline, the one **Look it up** bar that both searches and adds, the projects found on
+  chain (category chips, Cards | List, Sort by), then the three label cards (see "Current layout" below). `#/add/<id>` opens Home with the bar filled in (used by
   "Add this project" under Related).
 - `#/s/<subject id>` is a subject's page with the five tabs, `#/s/<id>/overview` (default), `/record`,
   `/sources`, `/activity`, `/contribute`, plus `/line-…` and `/source-N` deep links.
 - Old links open imd.fun: `#record`, `#actions`, `#add-sources`, `#activity`, `#line-…` and `#source-N` go to the
   same place under `#/s/imd.fun/…`.
 
-## Revision 33: data for the next layout (2026-11-26)
+## Current layout (revision 36)
 
-This round adds data to the page file; the layout that shows it comes in the next job. New instruction files with new
-hashes: `rebuild-2d329d7d77e8.txt` and `changes-6f7e0f27ff1a.txt` (`npx vite-node scripts/instructions.ts`). Every
-earlier file stays served and is still accepted.
+**Home** (`#/`). The heading "Find new projects: what they promise, what they do, and what people say." with the line
+about IMD under it, then the one search bar and "Look it up". The search field's label is for screen readers only;
+its placeholder carries the same words, and no label text is visible. Under it comes **Projects**: the filter buttons
+(All, Needs a rebuild, Saved), and beside "Sort by" a **Cards | List** switch. Cards is the default, and the choice is
+kept in this browser (`localStorage` key `swarmpedia.homeView`). Above both views are category chips: "All" and one
+chip per category that has at least one project, each with its count. A chip filters both views. "All" stays visible
+while a category is chosen, and a search that leaves no project in the chosen category clears it, so the search's
+matches show under All.
+- A **card** shows the first screenshot cropped from the top at 16 by 10 (with no screenshot, the logo centred on a
+  light tinted tile), then the logo and name, one_line, the category chip, a small outlined play button that opens
+  the app in a new tab (the app label is its tooltip) and "Dive in", which opens the project page. A card shows no
+  counts of kinds and nothing about disputes.
+- A **List row** shows the logo, name, one_line, category, the play button and "Last built <date>". The date is the
+  completion of the page job that built the page shown, the same date About this page gives. The "Recently changed"
+  sort still uses the newest result of any kind. The existing sort options stay.
+- Logos: when a stored or published digest names a logo hash this browser has not read, Home downloads
+  `api.imd.fun/artifacts/<hash>`, checks the bytes against that hash and the PNG rules, and uses the same image for the
+  tile, the card heading and the List row. A project with no usable logo shows its initial.
+- The three example cards (proof, statement, claim) come after the directory, so a phone's first screen shows the
+  projects. At 390 pixels the filter buttons take one row, and Cards | List and Sort by share the next.
+
+**Overview** (`#/s/<id>`). One column, at most 760 pixels wide, with 40 pixels between sections, in this order. A
+section with no data is left out, so a page built before these keys existed still shows cleanly.
+1. **Header**: logo, name, one_line, a small category chip and the save star. On the right is a filled button with
+   `app.label` that opens `app.url` in a new tab. With no `app` there is no button.
+2. **Screenshots**: one large image (rounded corners, thin border), under it the caption, "1 of 4" and the address it
+   was captured from, then a row of thumbnails. A thumbnail or the left and right arrow keys change the image. Only
+   the first usable file is downloaded up front. Another file is downloaded when it is selected, and until then its
+   thumbnail shows its number. A 1 by 1 file, or one that fails a check, is skipped.
+3. **Summary**: the first paragraph only, then "Read more", which opens the rest with the legend. Clicking a sentence
+   opens "This rests on" (its lines) in place under the paragraph.
+4. **How it works**: `explained.how_it_works` as numbered steps. Clicking a step (or Enter) opens the same
+   "This rests on" list in place under the step, and each line in it links to Record. The step's kind is a small
+   quiet mark at its end, not a coloured label. A sentence with a missing or unknown kind shows no mark.
+5. **The basics**: the Key facts as a plain list, the label on the left and the value on the right. The order is
+   verified links (channels), tokens with their addresses and a copy button, runs on, founder or team, then the rest
+   behind "Show all". Each row keeps its pencil, and its status is a small mark at the end of the row. On phones the
+   mark is the status icon alone, and its words stay in the tooltip and for screen readers.
+6. **Ask the contract**: one card per `ask` entry with the question and "Ask now". The visitor's browser makes the
+   `eth_call` on a public RPC for that chain (a list by chain id in `src/ask.ts`, including Arbitrum Nova 42170), with
+   no wallet. It decodes the answer by `returns` and shows it with its unit, the block number and the block time,
+   beside the value recorded on the page ("On this page"). When they differ it says "Changed since this page was
+   built". A `string` is compared exactly (case counts), an `address` by its hex, a `bool` as true or false, and a
+   `uint` by its digits. On an RPC error it says so and offers "Try again".
+7. **Go deeper**: four rows that open in place. "The token" holds `explained.tokens`, one block per token (the label
+   stays "The token" for any number of tokens). "The contracts" holds `explained.contracts`, with the who_can_change
+   sentences under "Who can change it" and the what_it_means sentences under "What that means for you". "Not known
+   yet" holds the open questions, with their count. "Full record" holds the counts and a link to the Record tab.
+8. **Related** and **About this page** follow, as before.
+
+**Instruction changes (revision 35).** The current files are `rebuild-7351e67f471b.txt` and
+`changes-d73d152f1764.txt` (`src/instructions.json`). Every earlier file stays served and accepted. The rebuild file
+keeps every earlier sentence and adds five:
+- **ask**: "When the record holds a proof that fits, ask is never empty. Take the call from that line's rerun text;
+  you do not need to run it again. Prefer the price or cost a person pays, then a supply or count."
+- **tokens**: "At most 6 sentences per token in total. Never two sentences that say the same thing. Leave out 'how you
+  get it' unless a source names where. For whether more can be created or destroyed, read the token's verified
+  source: this sentence should rest on a proof. Do not write that it was not checked when the record already holds
+  lines on it."
+- **explained**: "A sentence's kind is the weakest kind among the lines it rests on: proof, statement, claim, or
+  not_checked when it rests on none. Use no other kind. A what_it_means sentence carries no kind."
+- **one_line**: "Say what a person can do there, in words a newcomer would use. Do not list what the project consists
+  of."
+- **screenshots**: "Capture the top of each page, 1280 by 960, after it has finished loading. Skip a page whose
+  capture is mostly empty."
+
+The job check and the page accept an explained sentence with a missing or unknown kind and show it with no mark.
+
+## Revision 33: data for the layout (2026-11-26)
+
+This round added data to the page file; revision 35 added the layout that shows it ("Current layout" above). Its
+instruction files, `rebuild-2d329d7d77e8.txt` and `changes-6f7e0f27ff1a.txt`, are superseded by the current
+`rebuild-7351e67f471b.txt` and `changes-d73d152f1764.txt`; every earlier file stays served and is still accepted.
 
 - **Screenshots (A).** The page request declares four more outputs, `shot-1` to `shot-4` at `artifacts/shot-1.png` to
   `artifacts/shot-4.png` (`image/png`), after `artifacts/logo.png` (`REBUILD_OUTPUTS` in `src/bodies.ts`), and the
@@ -217,7 +287,10 @@ job with its notes, and the subject's Overview shows "No project found" with the
 | `src/bodies.ts` | The exact request bodies (rebuild, sources, edit, the three oracle templates), `<SUBJECT>`, `<PRIOR>` and reading it back, the question matcher and the link rules |
 | `src/subject.ts` | Subject ids: domain or chain:contract, validation, `<SUBJECT>` text, the chain list |
 | `src/route.ts` | Hash routes: home, `#/s/<id>/<tab>`, old links to imd.fun |
-| `src/Home.tsx` | Home: headline, the Look it up bar and its add offer with chain picker, label cards, subject list with logo or letter tile, counts and last change, How it works |
+| `src/Home.tsx` | Home: headline, the Look it up bar and its add offer with chain picker, the project directory (filters, category chips, Cards or List, Sort by), then the label cards |
+| `src/HomeViews.tsx` | Home's Cards and List views, the Cards \| List switch (kept in localStorage), category chips, the play button, logos read by their hash |
+| `src/Overview.tsx` | The Overview's header, Screenshots (first image only up front), How it works (steps open their lines in place), Ask the contract and Go deeper |
+| `src/ask.ts` | Ask the contract: public RPCs by chain id, the walletless `eth_call`, decoding by return type and the comparison with the recorded value |
 | `src/lookup.ts` | Pure rules for the bar (link to host, contract index with chain ids, list filter), Record search, the repeat check, kind counts and the letter tile |
 | `src/Logo.tsx` | A subject's checked PNG logo (40px on its page, 28px on Home), or the first-letter tile when there is none or it does not decode |
 | `src/keyfacts.ts` | The key facts table: from `infobox`, or built from the page shown, with each row's badge |

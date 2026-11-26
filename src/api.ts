@@ -306,6 +306,24 @@ async function fetchPngFile(r: TaggedRequest, c: Completion, jobIdHint: string |
   return out;
 }
 
+/**
+ * A logo by the SHA-256 a published or stored digest names: downloaded from api.imd.fun/artifacts/<hash>, its bytes
+ * checked against that hash and the logo limits, and accepted only as a PNG that decodes. Home uses it for a project
+ * whose logo this browser has not read yet. Throws, saying why, for a file that fails a check.
+ */
+export async function fetchLogoByHash(hash: string): Promise<string> {
+  if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error("The logo's hash is not 64 hex characters");
+  const res = await fetch(`${API}/artifacts/${hash}`);
+  if (!res.ok) throw new Error(`The logo artifact answered ${res.status}`);
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > MAX_LOGO_BYTES) throw new Error("The logo is larger than 512 KiB");
+  if ((await sha256Hex(buf)) !== hash) throw new Error("The logo's bytes do not match its hash");
+  const bytes = new Uint8Array(buf);
+  if (!isPng(bytes)) throw new Error("The logo is not a whole PNG file");
+  if (!(await pngDecodes(bytes))) throw new Error("The logo's PNG data does not decode");
+  return pngDataUrl(bytes);
+}
+
 /** One artifact by its SHA-256, checked and cached: the files a rebuild was given. */
 export async function fetchArtifact(hash: string): Promise<string> {
   const key = `artifact:${hash}`;

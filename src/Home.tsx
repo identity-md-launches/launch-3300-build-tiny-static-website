@@ -14,7 +14,7 @@ import { SubjectLogo } from "./Logo";
 import { KindIcon, ToneMark } from "./KindIcon";
 import imdLogo from "./assets/imd-logo.png";
 import { HOME_HEADING } from "./config";
-import { CategoryChips, ProjectCard, ProjectRow, ViewSwitch, useHomeView } from "./HomeViews";
+import { CategoryChips, liveCategory, ProjectCard, ProjectRow, useHashLogos, ViewSwitch, useHomeView } from "./HomeViews";
 import type { Category } from "./page";
 import { LEADS_MAX, planLeads } from "./bodies";
 import type { Activity } from "./useActivity";
@@ -464,13 +464,14 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const [unsure, setUnsure] = useState<{ raw: string; q: Lookup } | null>(null);
   const [err, setErr] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const byHash = useHashLogos(items, digests, logos);
   const all = useMemo(() => {
-    const listed = subjectSummaries(items ?? [], digests, logos);
+    const listed = subjectSummaries(items ?? [], digests, logos).map((s) => (!s.logo && s.logoHash && byHash.get(s.logoHash) ? { ...s, logo: byHash.get(s.logoHash)! } : s));
     if (!unreadable?.size) return listed;
     const have = new Set(listed.map((s) => s.id));
     const marked = listed.map((s) => (!s.hasPage && unreadable.get(s.id) ? { ...s, unread: false, status: null, unreadable: unreadable.get(s.id) } : s));
     return [...marked, ...[...unreadable].filter(([id]) => !have.has(id)).map(([id, n]) => unreadableSummary(id, n))];
-  }, [items, digests, logos, unreadable]);
+  }, [items, digests, logos, unreadable, byHash]);
   const picked = useMemo(() => pickExample(digests), [digests]);
   const example = given ?? picked;
   const [view, setView] = useState<ListView>("all");
@@ -491,7 +492,12 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const [cat, setCat] = useState<Category | null>(null);
   const filteredAll = all.filter((s) => matchesNameOrDomain(s, q) && (view === "all" || (view === "stale" ? !!s.outdated : saved.includes(s.id))));
   // The chips count the projects the search and the filter buttons leave; a chip then filters both views.
-  const filtered = cat ? filteredAll.filter((s) => s.category === cat) : filteredAll;
+  // A search that leaves no project in the chosen category clears it: its matches then show under All.
+  const liveCat = liveCategory(filteredAll, cat);
+  useEffect(() => {
+    if (cat && !liveCat && items !== null) setCat(null);
+  }, [cat, liveCat, items]);
+  const filtered = liveCat ? filteredAll.filter((s) => s.category === liveCat) : filteredAll;
   const shown = sortProjects(filtered, sort, facts);
   // Reads still under way can add a contract to the list or mark a page out of date.
   const pendingReads = !!busy;
@@ -670,11 +676,6 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
         {offer && <AddOffer key={`${offer.kind}:${offerName}`} q={offer} shown={submitted!.raw} price={price} onAdd={add} />}
       </div>
 
-      <section className="example" aria-labelledby="example-title">
-        <h2 id="example-title" className="sr-only">The three kinds of line</h2>
-        <ExampleCards example={example} />
-      </section>
-
       {bad && <p className="warn" role="status">“{bad}” is not a project id. Ids are a domain, such as imd.fun, or chain and contract, such as 1:0x….</p>}
 
       <div className="home-list">
@@ -700,7 +701,7 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
                 <ListSort sort={sort} setSort={setSort} />
               </div>
             </div>
-            <CategoryChips rows={filteredAll} value={cat} set={(c) => { setCat(c); setLimit(PAGE_ROWS); }} />
+            <CategoryChips rows={filteredAll} value={liveCat} set={(c) => { setCat(c); setLimit(PAGE_ROWS); }} />
             {shown.length ? (
               <>
                 <p className="small list-note" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
@@ -735,6 +736,11 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
         )}
       </div>
 
+      {/* The three kinds of line, below the directory: the first phone screen shows the projects. */}
+      <section className="example" aria-labelledby="example-title">
+        <h2 id="example-title" className="sr-only">The three kinds of line</h2>
+        <ExampleCards example={example} />
+      </section>
     </section>
   );
 }

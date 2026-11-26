@@ -292,6 +292,18 @@ function EvidenceList({ mode, target, evidence, onOpenLines }: { mode: PanelMode
   );
 }
 
+/**
+ * The same "This rests on" list a summary sentence's panel opens with, on its own: How it works opens it under a step,
+ * in place, each line still opening that line in Record.
+ */
+export function RestsOn({ text, evidence, onOpenLines, id }: { text: string; evidence: Evidence[]; onOpenLines: (ids: string[]) => void; id?: string }) {
+  return (
+    <div className="cpanel rests-on" id={id} role="region" aria-label="What this step rests on">
+      <EvidenceList mode="sentence" target={{ kind: "sentence", key: `step:${text}`, lineId: "", text }} evidence={evidence} onOpenLines={onOpenLines} />
+    </div>
+  );
+}
+
 /** What the panel used to read from a line for "Ask a panel to check it" (hidden for now); still accepted. */
 export type SeedLine = { text: string; kind?: string; by?: string; rerun?: string; fact?: { value: string; unit?: string; chain?: string } | null };
 

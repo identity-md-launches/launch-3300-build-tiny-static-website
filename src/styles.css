@@ -1376,3 +1376,31 @@ a.x-open:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 
   .prow { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
   .prow-side { grid-column: 2; justify-content: start; }
 }
+
+/* ---------- Revision 36 review fixes ---------- */
+/* Home on phones: the filter buttons take the first row; Cards | List and "Sort by" share the second, the select
+   shrinking, so neither runs past the right edge. */
+@media (max-width: 29.99rem) {
+  .list-bar { flex-wrap: wrap; align-items: flex-end; }
+  .home-list .list-bar .filter { flex: 1 1 100%; min-width: 0; }
+  .list-tools { flex: 1 1 100%; flex-wrap: nowrap; justify-content: space-between; align-items: flex-end; min-width: 0; }
+  .list-tools .view-switch { flex: none; }
+  .list-tools .list-sort { flex: 0 1 11rem; min-width: 0; margin-inline-start: auto; }
+}
+/* A thumbnail not read yet shows its number; its file is read only once it is selected. */
+.g-thumb-num { display: grid; place-items: center; width: 100%; height: 100%; font-size: var(--text-small); color: var(--color-text-secondary); }
+/* How it works: a step's lines open in place under it, as under a summary sentence. */
+.steps .rests-on { margin-block: var(--space-2) 0; }
+/* The basics on phones: label on the left, the value on the right, then the pencil and the status as a small mark at
+   the trailing edge (its words stay for screen readers and in its tooltip; a status with no mark keeps its words). */
+@media (max-width: 30rem) {
+  .ov-page .basics .kf-row { grid-template-columns: minmax(4.5rem, 0.75fr) minmax(0, 1.35fr) 36px minmax(24px, auto); align-items: start; column-gap: var(--space-2); padding: var(--space-2) 0; }
+  .ov-page .basics .kf-row > th { grid-area: 1 / 1; min-width: 0; overflow-wrap: break-word; padding-top: 6px !important; }
+  .ov-page .basics .kf-row > .kf-value { grid-area: 1 / 2; text-align: start !important; font-size: var(--text-nav); padding-top: 6px !important; }
+  .ov-page .basics .kf-row > .kf-edit { grid-area: 1 / 3; width: 36px; }
+  .ov-page .basics .kf-row > .kf-badge { grid-area: 1 / 4; width: auto; padding-top: 6px !important; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .ov-page .basics .kf-badge .badge { min-height: 24px; min-width: 24px; justify-content: center; }
+  .ov-page .basics .kf-badge .badge:has(svg) .badge-text { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .ov-page .basics .kf-badge .badge:not(:has(svg)) { max-width: 4.5rem; font-size: 12px; line-height: 1.2; }
+  .ov-page .basics .kf-value .addr { display: inline-flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 var(--space-1); }
+}
