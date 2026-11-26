@@ -81,6 +81,21 @@ async function fetchVerified(file: ResultFile): Promise<string> {
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 export const MAX_LOGO_BYTES = 512 * 1024;
 
+/** The size limits a PNG is checked against: the logo keeps its own, a screenshot has others (SHOT_LIMITS). */
+export interface PngLimits {
+  maxBytes: number;
+  maxWidth: number;
+  maxHeight: number;
+}
+export const LOGO_LIMITS: PngLimits = { maxBytes: MAX_LOGO_BYTES, maxWidth: 4096, maxHeight: 4096 };
+/** Every screenshot the rebuild instructions ask for is a PNG exactly this many pixels wide. */
+export const SHOT_WIDTH = 1280;
+/**
+ * A screenshot: exactly 1280 wide (checked in shotOf), up to 32 MiB and 32,768 pixels tall, so a detailed or full-page
+ * capture is read. The logo limits stay on the logo path.
+ */
+export const SHOT_LIMITS: PngLimits = { maxBytes: 32 * 1024 * 1024, maxWidth: SHOT_WIDTH, maxHeight: 32768 };
+
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
@@ -97,8 +112,8 @@ function crc32(b: Uint8Array): number {
 }
 
 /** A PNG's chunks, or null when the file is not a whole PNG: bad signature, a cut-off chunk or a wrong CRC. */
-export function pngChunks(b: Uint8Array): { type: string; data: Uint8Array }[] | null {
-  if (b.length < 8 + 25 + 12 || b.length > MAX_LOGO_BYTES) return null;
+export function pngChunks(b: Uint8Array, maxBytes = MAX_LOGO_BYTES): { type: string; data: Uint8Array }[] | null {
+  if (b.length < 8 + 25 + 12 || b.length > maxBytes) return null;
   if (!PNG_SIGNATURE.every((x, i) => b[i] === x)) return null;
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
   const out: { type: string; data: Uint8Array }[] = [];
@@ -121,15 +136,15 @@ export function pngChunks(b: Uint8Array): { type: string; data: Uint8Array }[] |
  * depth), at least one IDAT, every chunk's CRC right, and IEND last with nothing after it. A truncated file, or
  * any other format, is refused. Whether the pixel data inflates is checked by pngDecodes.
  */
-export function isPng(b: Uint8Array): boolean {
-  const chunks = pngChunks(b);
+export function isPng(b: Uint8Array, limits: PngLimits = LOGO_LIMITS): boolean {
+  const chunks = pngChunks(b, limits.maxBytes);
   if (!chunks || chunks[0]?.type !== "IHDR" || chunks[0].data.length !== 13 || chunks.at(-1)?.type !== "IEND") return false;
   const end = chunks.reduce((n, c) => n + 12 + c.data.length, 8);
   if (end !== b.length || !chunks.some((c) => c.type === "IDAT")) return false;
   const { width, height } = pngSize(b);
   const h = chunks[0].data;
   const depths: Record<number, number[]> = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] };
-  return width > 0 && height > 0 && width <= 4096 && height <= 4096 && (depths[h[9]!] ?? []).includes(h[8]!) && h[10] === 0 && h[11] === 0 && h[12]! <= 1;
+  return width > 0 && height > 0 && width <= limits.maxWidth && height <= limits.maxHeight && (depths[h[9]!] ?? []).includes(h[8]!) && h[10] === 0 && h[11] === 0 && h[12]! <= 1;
 }
 
 const CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
@@ -138,8 +153,8 @@ const CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
  * True when a PNG that passed isPng also decodes: in a browser, createImageBitmap must succeed with a non-zero
  * size; elsewhere its IDAT data must inflate (zlib) to exactly the bytes its size and format call for.
  */
-export async function pngDecodes(b: Uint8Array): Promise<boolean> {
-  if (!isPng(b)) return false;
+export async function pngDecodes(b: Uint8Array, limits: PngLimits = LOGO_LIMITS): Promise<boolean> {
+  if (!isPng(b, limits)) return false;
   try {
     if (typeof createImageBitmap === "function") {
       const bmp = await createImageBitmap(new Blob([b as Uint8Array<ArrayBuffer>], { type: "image/png" }));
@@ -147,7 +162,7 @@ export async function pngDecodes(b: Uint8Array): Promise<boolean> {
       bmp.close();
       return ok;
     }
-    const chunks = pngChunks(b)!;
+    const chunks = pngChunks(b, limits.maxBytes)!;
     const idat = chunks.filter((c) => c.type === "IDAT");
     const joined = new Uint8Array(idat.reduce((n, c) => n + c.data.length, 0));
     let at = 0;
@@ -224,38 +239,69 @@ export async function fetchLogo(r: TaggedRequest, c: Completion, jobIdHint: stri
 /** A PNG's pixel width from its IHDR chunk (bytes 16 to 19), or 0. */
 export const pngWidth = (b: Uint8Array) => (b.length >= 24 ? ((b[16]! << 24) | (b[17]! << 16) | (b[18]! << 8) | b[19]!) >>> 0 : 0);
 
-/**
- * One screenshot slot of a completed page job: the result file named shot-<slot>, read and checked as the logo is.
- * A slot narrower than 320 pixels (the 1 by 1 placeholder a job writes for a slot it could not fill) reads as none.
- */
-export async function fetchShot(r: TaggedRequest, c: Completion, jobIdHint: string | null, slot: number): Promise<LogoRead> {
-  const read = await fetchPngFile(r, c, jobIdHint, `shot-${slot}`);
-  return read.url && read.width !== undefined && read.width < 320 ? { url: null, hash: null } : read;
+/** One screenshot slot as read: a checked PNG data: URL and its size, or url null for an empty slot. */
+export interface ShotRead extends LogoRead {
+  width?: number;
+  height?: number;
 }
 
-/** A named PNG result file of a completed job, checked against its listed SHA-256 and cached (see fetchLogo). */
-async function fetchPngFile(r: TaggedRequest, c: Completion, jobIdHint: string | null, name: string): Promise<LogoRead & { width?: number }> {
-  const key = name === "logo" ? `logo:${r.requestId}` : `${name}:${r.requestId}`;
-  const what = name === "logo" ? "logo" : "screenshot";
-  const cached = await kvGet<LogoRead & { width?: number }>("files", key);
+/**
+ * The screenshot rules on bytes whose hash already matched: a 1 by 1 PNG is the placeholder a job writes for a slot
+ * it could not fill and reads as an empty slot; anything else must be a whole PNG exactly 1280 pixels wide that
+ * decodes, within SHOT_LIMITS. Throws, saying why, for a file that breaks them (it is then not shown).
+ */
+export async function shotOf(bytes: Uint8Array, hash: string): Promise<ShotRead> {
+  if (!isPng(bytes, { ...SHOT_LIMITS, maxWidth: Number.MAX_SAFE_INTEGER })) throw new Error("The screenshot is not a whole PNG file within 32 MiB and 32,768 pixels tall");
+  const { width, height } = pngSize(bytes);
+  if (width === 1 && height === 1) return { url: null, hash: null };
+  if (width !== SHOT_WIDTH) throw new Error(`The screenshot is ${width} pixels wide, not ${SHOT_WIDTH}`);
+  if (!(await pngDecodes(bytes, SHOT_LIMITS))) throw new Error("The screenshot's PNG data does not decode");
+  return { url: pngDataUrl(bytes), hash, width, height };
+}
+
+/**
+ * One screenshot slot of a completed page job: the result file named shot-<slot> from api.imd.fun, its bytes checked
+ * against the listed SHA-256 and then by shotOf. Cached once read. Url null when the job wrote no such file or only
+ * the placeholder; throws when the file fails a check.
+ */
+export async function fetchShot(r: TaggedRequest, c: Completion, jobIdHint: string | null, slot: number): Promise<ShotRead> {
+  // "shot:v2": entries cached by the first reader (which took any width from 320) are never reused.
+  const key = `shot:v2:${slot}:${r.requestId}`;
+  const cached = await kvGet<ShotRead>("files", key);
   if (cached) return cached;
+  const bytes = await fetchResultPng(r, c, jobIdHint, `shot-${slot}`, "screenshot", SHOT_LIMITS.maxBytes);
+  const out = bytes ? await shotOf(bytes.bytes, bytes.hash) : { url: null, hash: null };
+  await kvSet("files", key, out);
+  return out;
+}
+
+/** A named result file's bytes, checked against its listed SHA-256; null when the job lists no such file. */
+async function fetchResultPng(r: TaggedRequest, c: Completion, jobIdHint: string | null, name: string, what: string, maxBytes: number): Promise<{ bytes: Uint8Array; hash: string } | null> {
   const { files } = await jobResult(r, c, jobIdHint);
   const file = files.find((f) => f.name === name);
+  if (!file) return null;
+  if (!/^[0-9a-f]{64}$/.test(file.hash)) throw new Error(`The ${what}'s listed hash is not 64 hex characters`);
+  const res = await fetch(`${API}/artifacts/${file.hash}`);
+  if (!res.ok) throw new Error(`${name} artifact answered ${res.status}`);
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > maxBytes) throw new Error(`The ${what} is larger than ${Math.round(maxBytes / 1024)} KiB`);
+  if ((await sha256Hex(buf)) !== file.hash) throw new Error(`The ${what}'s bytes do not match the listed hash`);
+  return { bytes: new Uint8Array(buf), hash: file.hash };
+}
+
+/** The logo result file of a completed job, checked against its listed SHA-256 and the logo limits, and cached (see fetchLogo). */
+async function fetchPngFile(r: TaggedRequest, c: Completion, jobIdHint: string | null, name: "logo"): Promise<LogoRead> {
+  const key = `${name}:${r.requestId}`;
+  const cached = await kvGet<LogoRead>("files", key);
+  if (cached) return cached;
+  const read = await fetchResultPng(r, c, jobIdHint, name, "logo", Number.MAX_SAFE_INTEGER);
   let url: string | null = null;
-  let width: number | undefined;
-  if (file) {
-    if (!/^[0-9a-f]{64}$/.test(file.hash)) throw new Error(`The ${what}'s listed hash is not 64 hex characters`);
-    const res = await fetch(`${API}/artifacts/${file.hash}`);
-    if (!res.ok) throw new Error(`${name} artifact answered ${res.status}`);
-    const buf = await res.arrayBuffer();
-    if ((await sha256Hex(buf)) !== file.hash) throw new Error(`The ${what}'s bytes do not match the listed hash`);
-    const bytes = new Uint8Array(buf);
-    if (!isPng(bytes)) throw new Error(`The ${what} is not a whole PNG file`);
-    if (!(await pngDecodes(bytes))) throw new Error(`The ${what}'s PNG data does not decode`);
-    url = pngDataUrl(bytes);
-    if (name !== "logo") width = pngWidth(bytes);
+  if (read) {
+    if (!isPng(read.bytes)) throw new Error("The logo is not a whole PNG file");
+    if (!(await pngDecodes(read.bytes))) throw new Error("The logo's PNG data does not decode");
+    url = pngDataUrl(read.bytes);
   }
-  const out: LogoRead & { width?: number } = { url, hash: file && url ? file.hash : null, ...(width !== undefined ? { width } : {}) };
+  const out: LogoRead = { url, hash: read && url ? read.hash : null };
   await kvSet("files", key, out);
   return out;
 }

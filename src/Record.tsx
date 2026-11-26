@@ -40,7 +40,8 @@ import {
 import { localDate, readDate } from "./dates";
 import { cleanQuestion } from "./questions";
 import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, type PageJobs, isInstructionsUnavailable, statusText, unreadableText, type FirstPageStatus, type RecordModel } from "./model";
-import type { Activity } from "./useActivity";
+import type { Activity, ShotRef } from "./useActivity";
+import { fetchShot } from "./api";
 import { OutdatedNote, ReaderNote, StillReading } from "./Home";
 import { ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest, startAnswer } from "./Suggest";
 import { formatNumbers } from "./numbers";
@@ -1220,11 +1221,17 @@ export function ContributorTable({ rows, labelledBy, ranked = false, pages = tru
  * The page's first screenshot, above the Summary: the job's real capture of the project's live app or site (page
  * screenshots[0], read and checked as a PNG). Its caption names the screen; the link opens the page captured.
  */
-export function FirstShot({ shot, name }: { shot: NonNullable<Activity["shot"]>; name: string }) {
+export interface ShownShot extends ShotRef {
+  url: string;
+  /** The PNG's own size, from its header: the box keeps the capture's shape while it scales down. */
+  width?: number;
+  height?: number;
+}
+export function FirstShot({ shot, name }: { shot: ShownShot; name: string }) {
   const href = shot.source ? safeHref(shot.source) : null;
   return (
     <figure className="shot">
-      <img src={shot.url} alt={shot.caption ? `${name}: ${shot.caption}` : `A screen of ${name}`} width={1280} decoding="async" />
+      <img src={shot.url} alt={shot.caption ? `${name}: ${shot.caption}` : `A screen of ${name}`} width={shot.width ?? 1280} height={shot.height} decoding="async" />
       {(shot.caption || href) && (
         <figcaption className="small">
           {shot.caption}
@@ -1238,6 +1245,48 @@ export function FirstShot({ shot, name }: { shot: NonNullable<Activity["shot"]>;
       )}
     </figure>
   );
+}
+
+/**
+ * Reads the first screenshot of the page shown after the page itself is on screen: the Overview never waits for it.
+ * Undefined while it is being read; null when there is none, the slot is empty or the file fails a check (the reason
+ * goes to the console).
+ */
+export function useFirstShot(latest: Activity | undefined): ShownShot | null | undefined {
+  const ref = latest?.shotRef ?? null;
+  const req = latest?.req;
+  const completion = latest?.completion;
+  const jobId = latest?.via?.jobId ?? latest?.jobId ?? null;
+  const key = ref && req && completion ? `${req.requestId}:${ref.slot}` : "";
+  const [shot, setShot] = useState<{ key: string; shot: ShownShot | null }>({ key: "", shot: null });
+  useEffect(() => {
+    if (!key || !ref || !req || !completion) return;
+    let live = true;
+    fetchShot(req, completion, jobId, ref.slot).then(
+      (s) => live && setShot({ key, shot: s.url ? { ...ref, url: s.url, width: s.width, height: s.height } : null }),
+      (e: unknown) => {
+        if (live) setShot({ key, shot: null });
+        console.warn("The screenshot could not be read:", e instanceof Error ? e.message : e);
+      },
+    );
+    return () => {
+      live = false;
+    };
+    // The key names the request and slot; the objects behind it are replaced on every refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  if (!key) return null;
+  return shot.key === key ? shot.shot : undefined;
+}
+
+/**
+ * The first screenshot above the Summary. While it is read, a quiet box of a common screen shape holds its place so
+ * the Summary does not jump when it arrives; nothing shows for a page without one.
+ */
+export function LatestShot({ latest, name }: { latest: Activity | undefined; name: string }) {
+  const shot = useFirstShot(latest);
+  if (shot === undefined) return <div className="shot-wait" aria-hidden="true" />;
+  return shot ? <FirstShot shot={shot} name={name} /> : null;
 }
 
 const hostLabel = (href: string) => {
@@ -1351,7 +1400,7 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       {(page || m.summary.length > 0) && (
         <div className="overview">
           <div className="summary-col">
-            {page && latest?.shot && <FirstShot shot={latest.shot} name={name} />}
+            {page && latest?.shotRef && <LatestShot latest={latest} name={name} />}
             <Summary m={m} ui={ui} />
             {page && !m.summary.length && (
               <p className="small">

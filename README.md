@@ -80,13 +80,13 @@ earlier file stays served and is still accepted.
   the same object. `app` is kept only on the subject's own domain or under a listed channel, with a label of 1 to 3
   words. A screenshot entry needs a file `artifacts/shot-1.png` to `shot-4.png`, one entry per slot, at most 4. `explained`
   is capped at the brief's counts (6, 6 per token, 3 contracts of 5). An `ask` entry needs a question of at most 10 words, a
-  proof line id the page has, a chain id, a contract address, hex calldata (a 4-byte selector and whole bytes) and one of
+  proof line id the page has, a chain id, a contract address, hex calldata (0x and whole bytes, bare 0x included, kept byte for byte; longer than 64 KiB is refused, never cut) and one of
   `uint`, `address`, `bool`, `string`.
 - **What shows (E15).** Only the first listed screenshot, above the Summary on Overview (`FirstShot` in
   `src/Record.tsx`). It is read like the logo (`fetchShot` in `src/api.ts`): the result file `shot-<n>` from
-  api.imd.fun, its bytes checked against the listed SHA-256, a whole PNG that decodes, and at least 320 pixels wide
-  (so a 1 by 1 placeholder never shows). It is cached in IndexedDB, full width of the reading column, at most 480 px
-  tall (a tall capture shows its top), with its caption and a link to the host it was captured from. Pages without a
+  api.imd.fun, its bytes checked against the listed SHA-256, a whole PNG that decodes, exactly 1280 pixels wide and up
+  to 32 MiB (`shotOf`, `SHOT_LIMITS`; revision 34). A 1 by 1 PNG is the empty slot and never shows. It is cached in IndexedDB, full width of the reading column, at most 480 px
+  tall (scaled down whole, never cropped; revision 34), with its caption and a link to the host it was captured from. Pages without a
   screenshot look as they did. The new rebuild file means every existing page reads "Built with older instructions"
   under Page upkeep and About this page, as after every earlier instruction change. Readers get no new note.
 - `/agents.md` (`scripts/agents-md.ts`) documents the six outputs, the new keys and the explained patches.
@@ -860,7 +860,7 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-2d329d7d77e8.txt` and `changes-6f7e0f27ff1a.txt`; still served: `rebuild-1cb3032ca031.txt`, `changes-76bb018d8c8b.txt`, `rebuild-59cb466af103.txt`, `changes-a7ea2f0a9c20.txt`, `rebuild-d3414e5807fc.txt`, `changes-e7afaac38d03.txt`, `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-7d51ee3b35d9.txt` and `changes-d73d152f1764.txt`; still served: `rebuild-2d329d7d77e8.txt`, `changes-6f7e0f27ff1a.txt`, `rebuild-1cb3032ca031.txt`, `changes-76bb018d8c8b.txt`, `rebuild-59cb466af103.txt`, `changes-a7ea2f0a9c20.txt`, `rebuild-d3414e5807fc.txt`, `changes-e7afaac38d03.txt`, `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
@@ -892,10 +892,10 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreibngkox257iuaghf2obxgc7ebhttabjf2tqgoerwhxgxjr7p6duoq?filename=rebuild-2d329d7d77e8.txt`,
-  sha256 `2d329d7d77e8a00c72e9c1b985f204f3980292ea7033891b1ee6ba63f7f87474`
-- changes: `https://ipfs.filebase.io/ipfs/bafkreidppyhsp7y2iby4glbv7sfxubjjant5w2ztqum5l7rztkn4xy3t6y?filename=changes-6f7e0f27ff1a.txt`,
-  sha256 `6f7e0f27ff1a4071c32c35fc8b7a05290367db6b338519d5fe399a9bcbe373f6`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreid5khxdwnozsxjyrj3hlucxxsru26zzp2eo3dtuzh64um3kbaokoq?filename=rebuild-7d51ee3b35d9.txt`,
+  sha256 `7d51ee3b35d995d388a7675d057bca34d7b397e88ed8e74c9fdca336a081ca74`
+- changes: `https://ipfs.filebase.io/ipfs/bafkreigxhuks6f3ea3i7h7sc7gzb5rz5r4kibq6xvnlquztptdnveo5aau?filename=changes-d73d152f1764.txt`,
+  sha256 `d73d152f176406d1f3fe42f9b21ec73d8f1480c3d7ab570a666f98db523ba005`
 <!-- instructions:end -->
 
 The rebuild file is new in revision 16 and the changes file in revision 15 (the revision 15 rebuild file,

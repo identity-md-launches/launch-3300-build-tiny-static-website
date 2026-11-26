@@ -207,10 +207,11 @@ describe("E15. the first screenshot, above the Summary", () => {
     const head = new Uint8Array(24);
     head.set([0, 0, 5, 0], 16);
     expect(pngWidth(head)).toBe(1280);
-    expect(read("src/api.ts")).toContain("read.width < 320 ? { url: null, hash: null } : read");
+    // Revision 34: a 1 by 1 PNG is the empty slot, and any other width but 1280 is refused (tests/revision34.test.ts).
+    expect(read("src/api.ts")).toContain("if (width === 1 && height === 1) return { url: null, hash: null };");
   });
   it("renders the capture with its caption and the host it was captured from", () => {
-    const h = renderToStaticMarkup(createElement(FirstShot, { shot: { url: "data:image/png;base64,AA==", caption: "The job form", source: "https://www.app.imd.fun/jobs", capturedAt: "" }, name: "IMD" }));
+    const h = renderToStaticMarkup(createElement(FirstShot, { shot: { slot: 1, url: "data:image/png;base64,AA==", caption: "The job form", source: "https://www.app.imd.fun/jobs", capturedAt: "" }, name: "IMD" }));
     expect(h).toContain('<figure class="shot"><img src="data:image/png;base64,AA==" alt="IMD: The job form" width="1280"');
     expect(h).toContain("The job form");
     expect(h).toContain('href="https://www.app.imd.fun/jobs"');
@@ -218,7 +219,7 @@ describe("E15. the first screenshot, above the Summary", () => {
   });
   it("sits above the Summary, only when the page job gave one, and nothing else new is shown", () => {
     const rec = read("src/Record.tsx");
-    expect(rec).toContain('{page && latest?.shot && <FirstShot shot={latest.shot} name={name} />}\n            <Summary m={m} ui={ui} />');
+    expect(rec).toContain('{page && latest?.shotRef && <LatestShot latest={latest} name={name} />}\n            <Summary m={m} ui={ui} />');
     const ui = ["src/Record.tsx", "src/Home.tsx", "src/App.tsx", "src/ActivityList.tsx"].map(read).join("\n");
     for (const k of ["page.explained", "page.ask", "page.category", "page.app", "page.screenshots", "explainedPatches"]) expect(ui).not.toContain(k);
     expect(read("src/useActivity.ts")).toContain("const first = page.screenshots?.[0];");

@@ -9,13 +9,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Hex } from "viem";
 import { fromStored, loadTaggedRequests, stateOf, getBlockTime, toStored, type Completion, type ScanState, type TaggedRequest } from "./chain";
 import { dropOldFileCache, kvGet, kvSet } from "./store";
-import { cacheGet, cacheSet, fetchLogo, fetchOracle, fetchShot, fetchResearchPage, fetchResultHash, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
+import { cacheGet, cacheSet, fetchLogo, fetchOracle, fetchResearchPage, fetchResultHash, getIntakeEntry, oracleIdFrom, refusalOf, type OracleRead, type Refusal } from "./api";
 import { ACTIONS } from "./config";
 import { kindOfRequest, resultFileOf, resultNamesOf } from "./requests";
 import { parseChanges, parseEdit, parseLines, parsePage, rejectionOf, type ChangesResult, type EditResult, type Page, type SourceLines } from "./page";
 import { publicClient } from "./reads";
 import { domainOfId } from "./subject";
 import { countedOf, firstNamedBlock, NOT_READ, notReadText, shapeOf, WHY } from "./counts";
+
+/** The first screenshot a page lists, by slot, with what the page says about it (not its bytes). */
+export interface ShotRef {
+  slot: number;
+  caption: string;
+  source: string;
+  capturedAt: string;
+}
 
 export interface Activity {
   req: TaggedRequest;
@@ -56,11 +64,11 @@ export interface Activity {
   /** The logo file's SHA-256, for the home digest. */
   logoHash?: string | null;
   /**
-   * The page's first listed screenshot (page.screenshots[0]) as a checked PNG data: URL with its caption, or null
-   * when the page lists none, the job declared no such output or the slot holds only the placeholder.
+   * The page's first listed screenshot (page.screenshots[0]), when the job declared that slot as an output: its slot,
+   * caption, captured url and time. Its bytes are not read here, so a slow image never holds back the page: the
+   * Overview reads them on its own (useFirstShot in src/Record.tsx, fetchShot in src/api.ts).
    */
-  shot?: { url: string; caption: string; source: string; capturedAt: string } | null;
-  shotError?: string | null;
+  shotRef?: ShotRef | null;
   /**
    * True when this request's result files were read (or it has none to read). The home list follows every request
    * without its files; only the open subject's requests are read in full. Undefined counts as read.
@@ -174,8 +182,7 @@ export async function follow(req: TaggedRequest, completion: Completion | undefi
   let logo: string | null = null;
   let logoError: string | null = null;
   let logoHash: string | null = null;
-  let shot: Activity["shot"] = null;
-  let shotError: string | null = null;
+  let shotRef: ShotRef | null = null;
   const name = resultNameOf(req);
   const research = name !== null;
   // The objective is checked before any result byte is read: a job not sent through this record's instructions is
@@ -215,14 +222,10 @@ export async function follow(req: TaggedRequest, completion: Completion | undefi
         } catch (e) {
           logoError = e instanceof Error ? e.message : "The logo could not be read";
         }
-        // The first screenshot the page lists, read only when the job declared that slot as an output.
+        // The first screenshot the page lists, named only when the job declared that slot as an output. Its bytes are
+        // read by the Overview after the page shows (useFirstShot), never here.
         const first = page.screenshots?.[0];
-        if (first && resultNamesOf(req.kind).includes(`shot-${first.slot}`)) try {
-          const s = await fetchShot(req, completion, f.jobId ?? jobId, first.slot);
-          if (s.url) shot = { url: s.url, caption: first.caption, source: first.url, capturedAt: first.capturedAt };
-        } catch (e) {
-          shotError = e instanceof Error ? e.message : "The screenshot could not be read";
-        }
+        if (first && resultNamesOf(req.kind).includes(`shot-${first.slot}`)) shotRef = { slot: first.slot, caption: first.caption, source: first.url, capturedAt: first.capturedAt };
       } else if (name === "lines") sources = parseLines(f.text);
       jobId ??= f.jobId;
     } catch (e) {
@@ -233,7 +236,7 @@ export async function follow(req: TaggedRequest, completion: Completion | undefi
   // A completed panel request's answer is read like a result file: the out-of-date count needs it.
   const hasAnswer = req.action.startsWith("oracle.") && state === "completed" && !!oracleId;
   const read = mode === "meta" ? !hasFiles : !(hasFiles || hasAnswer) || withFiles;
-  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, shot, shotError, filesRead: read, notRead };
+  return { req, completion, state, time, ens, jobId, oracle, refusal, sources, sourcesError, edit, changes, fileHash, page, via, rejected, doneTime, logo, logoError, logoHash, shotRef, filesRead: read, notRead };
 }
 
 /**
@@ -257,7 +260,7 @@ export function scannedActivity(req: TaggedRequest, completion: Completion | und
     refusal: cacheGet<Refusal>(`why:${req.requestId}`) ?? null,
     sources: null, sourcesError: null, edit: null, changes: null, fileHash: null, page: null, via: null, rejected: null,
     doneTime: ended ?? null,
-    logo: null, logoError: null, logoHash: null, shot: null, shotError: null,
+    logo: null, logoError: null, logoHash: null, shotRef: null,
     filesRead: !(hasFiles || hasAnswer),
     notRead,
     metaPending: true,

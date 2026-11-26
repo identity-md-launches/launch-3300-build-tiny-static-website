@@ -236,8 +236,8 @@ project's live public app or site, each a PNG 1280 pixels wide (no wallet connec
 personal; never generated, drawn or edited), fills the slots in order and lists each in
 \`screenshots[{file,caption,url,captured_at}]\` (\`file\` is \`artifacts/shot-<n>.png\`, the caption at most 8 words).
 A slot it cannot fill holds a 1 by 1 transparent PNG and is left out of the list. The site reads only the first
-listed screenshot, checks it like the logo (listed SHA-256, whole PNG that decodes, at least 320 pixels wide) and
-shows it above the Summary with its caption and the host it was captured from. A page job sent with a rebuild file
+listed screenshot, checks it (listed SHA-256, a whole PNG that decodes, exactly 1280 pixels wide, up to 32 MiB; a 1 by 1
+PNG is an empty slot) and shows it above the Summary, scaled down whole, with its caption and the host it was captured from. A page job sent with a rebuild file
 published before the screenshots (\`templates/rebuild-v2.txt\`, the hashes in \`LOGO_ONLY_HASHES\` of
 \`src/openings.ts\`) names only page.json and logo.png and is checked against that wording.
 

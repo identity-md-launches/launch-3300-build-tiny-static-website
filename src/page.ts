@@ -269,7 +269,7 @@ export interface Page {
   sources: Source[];
   related: Related[];
   logo: LogoSource | null;
-  /* Parts added with the screenshot instructions (rebuild-2d329d7d77e8.txt). Each is present only when the page file
+  /* Parts added with the screenshot instructions (rebuild-2d329d7d77e8.txt and since). Each is present only when the page file
    * gives a valid one, so a page built before them parses exactly as it did. */
   /** subject.category: what the product mainly is. */
   category?: Category;
@@ -819,6 +819,10 @@ export function parseExplained(v: unknown): Explained | null {
   return howItWorks.length || tokens.length || contracts.length ? { howItWorks, tokens, contracts } : null;
 }
 
+/** An eth_call's input: 0x and whole bytes in hex, bare 0x included (a call with no input, such as a precompile's). */
+const ASK_DATA = /^0x(?:[0-9a-fA-F]{2})*$/;
+/** Longer calldata is refused, never shortened: 64 KiB of input, as hex characters with the 0x. */
+const MAX_ASK_DATA = 2 + 2 * 65536;
 /**
  * page.ask: at most 3, each a question of at most 10 words, a proof line the page has, and one eth_call a browser can
  * send as given: a chain id, a contract address, hex calldata, one return type of four, its decimals and unit.
@@ -833,11 +837,12 @@ export function parseAsk(v: unknown, lineIds: Set<string>): Ask[] {
       const c = obj(o.call);
       const chainId = typeof c.chain_id === "number" ? c.chain_id : /^\d{1,12}$/.test(str(c.chain_id, 16)) ? Number(str(c.chain_id, 16)) : NaN;
       const to = str(c.to, 64).trim();
-      const data = str(c.data, 2000).trim();
+      // The calldata exactly as the page gives it: never cut or trimmed, so the browser re-runs the proof's own call.
+      const data = typeof c.data === "string" && c.data.length <= MAX_ASK_DATA ? c.data : "";
       const returns = str(c.returns, 16).trim().toLowerCase();
       const d = typeof c.decimals === "number" ? c.decimals : /^\d{1,2}$/.test(str(c.decimals, 4)) ? Number(str(c.decimals, 4)) : null;
       if (!question || words(question) > 10 || !lineIds.has(line)) return [];
-      if (!Number.isInteger(chainId) || chainId < 1 || !/^0x[0-9a-fA-F]{40}$/.test(to) || !/^0x(?:[0-9a-fA-F]{8})(?:[0-9a-fA-F]{2})*$/.test(data)) return [];
+      if (!Number.isInteger(chainId) || chainId < 1 || !/^0x[0-9a-fA-F]{40}$/.test(to) || !ASK_DATA.test(data)) return [];
       if (!(ASK_RETURNS as readonly string[]).includes(returns)) return [];
       const decimals = d !== null && Number.isInteger(d) && d >= 0 && d <= 77 ? d : null;
       return [{ question, line, call: { chainId, to, data, returns: returns as AskCall["returns"], decimals, unit: str(c.unit, 40).trim() } }];

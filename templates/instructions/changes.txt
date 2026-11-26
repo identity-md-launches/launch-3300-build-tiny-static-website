@@ -22,6 +22,6 @@ A link on a new line says what the new line does to its target, an existing line
 
 Output exactly one file, artifacts/changes.json. Carried lines: a line carried over from an earlier result keeps a field origin: the earlier line's origin if it has one, else that earlier file's address with the line's id. A merged line keeps the oldest origin and lists the others in also.
 
-A patch may name an explained sentence, the same way it names a summary sentence. Its kind is explained, its target the sentence's exact text, and it always has op set and the sentence's new text.
+A patch may name an explained sentence, the same way it names a summary sentence. Its kind is explained, its target the sentence's exact text, and it always has op set and the sentence's new text. A patch's kind is therefore infobox, summary or explained.
 
 JSON keys: tag, found, items[{n,type,target,verdict,why,lines[],final_text}], sources[{id,url,type,publisher,published_at,read_at,could_open,read_via,about_subject}], lines[{id,source,section,text,kind,by,quote,rerun,fact{name,value,unit},status,links[{type,target}]}], affects[{kind,target,type,by_line}], patches[{kind,target,op,value,lines[]}], questions[{target,op,text,lines[]}], notes.

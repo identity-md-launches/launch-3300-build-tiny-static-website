@@ -320,12 +320,16 @@ Tokens, type scale and colours are unchanged; every new rule uses the existing v
 ## Revision 33: the first screenshot (from `src/styles.css` after `.summary-col .prose`, `src/Record.tsx` `FirstShot`)
 
 - **Component.** `figure.shot` is the first child of `.summary-col`, above the Summary. It is drawn only when the page
-  job listed a screenshot and its PNG passed the checks. It holds an `img` (`width="1280"`, alt "<name>: <caption>")
+  job listed a screenshot and its PNG passed the checks (`LatestShot` reads it after the page shows; while it is read a
+  `div.shot-wait` box, 16:9 of the column and at most 480px tall in `--color-bg-subtle`, holds its place). It holds an
+  `img` (`width` and `height` from the PNG header, alt "<name>: <caption>")
   and a `figcaption.small`: the caption, a middle dot and a link to the captured host (www. dropped), opening in a new tab.
 - **Tokens used, none added.** Border `1px solid var(--color-border)`, radius `var(--radius-control)` (10px), placeholder
   background `var(--color-bg-subtle)`, gap `var(--space-2)` (8px). The caption uses `--text-small` (13px) in
   `--color-text-secondary`; the link inherits that colour and keeps its underline.
-- **Responsive.** The image is `width: 100%; height: auto` of the reading column, which is at most `--read-max` (760px).
-  It is capped at `max-height: 480px` with `object-fit: cover; object-position: top`, so a tall capture shows its top and
-  is never squeezed sideways. Measured: 288 x 449 at 320, 358 x 480 at 390, 760 x 480 at 1440, with no horizontal scroll.
+- **Responsive.** The image is `width: auto; height: auto; max-width: 100%; max-height: 480px`, start-aligned in the
+  reading column (at most `--read-max`, 760px): it scales down whole to fit both, keeping its shape, and is never
+  cropped or squeezed. Measured in Chromium with the built CSS, border included: a 1280 x 720 capture is 288 x 163 at 320,
+  358 x 202 at 390 and 760 x 428 at 1440; a 1280 x 2000 capture is 288 x 449 at 320 and 308 x 480 at 390 and 1440, its
+  bottom rows visible. No horizontal scroll.
 - No other visual change. category, app, explained and ask are parsed but not drawn until the next job.
