@@ -58,7 +58,8 @@ function png(width: number, height: number, noise = false): Uint8Array {
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
 describe("41a30fb5: an explained patch has a destination in the next rebuild", () => {
-  const rebuild = INSTRUCTIONS.rebuild.text;
+  // The file this revision published; revision 36 publishes a newer one and this stays served byte for byte.
+  const rebuild = read("public/instructions/rebuild-7d51ee3b35d9.txt");
   const changes = INSTRUCTIONS.changes.text;
   const RULE = "For a patch with kind explained, use the explained sentence with that exact text as its target. Apply the new text and supporting line ids to that sentence, unless newer evidence says otherwise.";
   it("the rebuild file adds the rule at the end, before the JSON keys line, and changes nothing else", () => {
@@ -72,7 +73,7 @@ describe("41a30fb5: an explained patch has a destination in the next rebuild", (
     expect(changes).toBe(prev.replace(intro, `${intro} A patch's kind is therefore infobox, summary or explained.`));
   });
   it("both are new files with new hashes; the files they replace stay served", () => {
-    expect(INSTRUCTIONS.rebuild.file).toBe("rebuild-7d51ee3b35d9.txt");
+    expect(INSTRUCTIONS.rebuild.file).toBe("rebuild-7351e67f471b.txt"); // revision 36
     expect(INSTRUCTIONS.changes.file).toBe("changes-d73d152f1764.txt");
     for (const f of [INSTRUCTIONS.rebuild.file, INSTRUCTIONS.changes.file]) expect(sha(readFileSync(`public/instructions/${f}`)).slice(0, 12)).toBe(f.slice(-16, -4));
     const published = JSON.parse(read("src/instructions.published.json")) as { file: string }[];

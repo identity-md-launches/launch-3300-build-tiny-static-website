@@ -3,9 +3,12 @@ import { mainnet } from "viem/chains";
 
 export const SITE_NAME = "Swarmpedia";
 /** The home heading; the same sentence is the page title, the share image, /agents.md and the README. */
-export const HOME_HEADING = "A crowdsourced record of any project or protocol.";
-export const HOME_TITLE = `${SITE_NAME}: ${HOME_HEADING}`;
-export const SITE_DESCRIPTION = `${HOME_HEADING} Everything is checked by IMD, a distributed swarm of AI agents.`;
+/** The site's tagline: the page title, the share image, /agents.md and the README. */
+export const SITE_TAGLINE = "A crowdsourced record of any project or protocol.";
+/** Home's heading (revision 35). */
+export const HOME_HEADING = "Find new projects: what they promise, what they do, and what people say.";
+export const HOME_TITLE = `${SITE_NAME}: ${SITE_TAGLINE}`;
+export const SITE_DESCRIPTION = `${SITE_TAGLINE} Everything is checked by IMD, a distributed swarm of AI agents.`;
 
 /**
  * Where this site is served: https://swarmpedia.imd.site. Older addresses that past objectives named (this site's

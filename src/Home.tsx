@@ -14,6 +14,8 @@ import { SubjectLogo } from "./Logo";
 import { KindIcon, ToneMark } from "./KindIcon";
 import imdLogo from "./assets/imd-logo.png";
 import { HOME_HEADING } from "./config";
+import { CategoryChips, ProjectCard, ProjectRow, ViewSwitch, useHomeView } from "./HomeViews";
+import type { Category } from "./page";
 import { LEADS_MAX, planLeads } from "./bodies";
 import type { Activity } from "./useActivity";
 import type { Example as Lines3 } from "./example";
@@ -485,7 +487,11 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
   const facts = useMemo(() => rowFacts(items ?? [], digests), [items, digests]);
   const needs = all.filter((s) => s.outdated).length;
   const savedRows = all.filter((s) => saved.includes(s.id)).length;
-  const filtered = all.filter((s) => matchesNameOrDomain(s, q) && (view === "all" || (view === "stale" ? !!s.outdated : saved.includes(s.id))));
+  const [layout, setLayout] = useHomeView();
+  const [cat, setCat] = useState<Category | null>(null);
+  const filteredAll = all.filter((s) => matchesNameOrDomain(s, q) && (view === "all" || (view === "stale" ? !!s.outdated : saved.includes(s.id))));
+  // The chips count the projects the search and the filter buttons leave; a chip then filters both views.
+  const filtered = cat ? filteredAll.filter((s) => s.category === cat) : filteredAll;
   const shown = sortProjects(filtered, sort, facts);
   // Reads still under way can add a contract to the list or mark a page out of date.
   const pendingReads = !!busy;
@@ -689,15 +695,26 @@ export function Home({ items, error, loading, retrying, cached, digests, logos, 
             {/* One row: the filter buttons on the left, "Sort by" on the right. */}
             <div className="list-bar">
               <ListFilter all={all.length} needs={needs} saved={savedRows} view={view} set={(v) => { setView(v); setLimit(PAGE_ROWS); }} checking={pendingReads} />
-              <ListSort sort={sort} setSort={setSort} />
+              <div className="list-tools">
+                <ViewSwitch view={layout} set={setLayout} />
+                <ListSort sort={sort} setSort={setSort} />
+              </div>
             </div>
+            <CategoryChips rows={filteredAll} value={cat} set={(c) => { setCat(c); setLimit(PAGE_ROWS); }} />
             {shown.length ? (
               <>
                 <p className="small list-note" aria-live="polite">{onlyStale && pendingReads ? "Checking which pages need a rebuild…" : listNote(shown.length, all.length, q.trim(), onlyStale)}</p>
-                <ul className="subjects">
-                  {shown.slice(0, limit).map((s) => (
-                    <SubjectItem key={s.id} s={s} reading={!!reading?.has(s.id)} failed={failed?.get(s.id) ?? ""} retry={retry} figure={figureOf(s, sort, facts.get(s.id))} />
-                  ))}
+                <ul className={layout === "cards" ? "pcards" : "prows"}>
+                  {shown.slice(0, limit).map((s) =>
+                    // A row still being read (or whose read failed) keeps its placeholder, with its retry.
+                    s.unread && !s.unreadable && (reading?.has(s.id) || failed?.get(s.id)) ? (
+                      <SubjectItem key={s.id} s={s} reading={!!reading?.has(s.id)} failed={failed?.get(s.id) ?? ""} retry={retry} figure={figureOf(s, sort, facts.get(s.id))} />
+                    ) : layout === "cards" ? (
+                      <ProjectCard key={s.id} s={s} items={items} />
+                    ) : (
+                      <ProjectRow key={s.id} s={s} />
+                    ),
+                  )}
                 </ul>
                 {shown.length > limit && (
                   <p className="show-more">

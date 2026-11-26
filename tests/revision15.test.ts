@@ -156,7 +156,7 @@ describe("A / C6 / E8. the Overview a reader sees", () => {
   const { html, m } = render([pageJob("0xa1", "proj.example", page)], "proj.example");
   it("stacks Summary, then Key facts, then Related, with no side column", () => {
     const sum = html.indexOf('class="summary-col"');
-    const kf = html.indexOf('class="keyfacts"');
+    const kf = html.indexOf('class="keyfacts basics ov-sec"');
     const rel = html.indexOf('class="related"');
     expect(sum).toBeGreaterThan(0);
     expect(kf).toBeGreaterThan(sum);
@@ -170,7 +170,9 @@ describe("A / C6 / E8. the Overview a reader sees", () => {
     expect(html).toContain("0x1f98…F984");
     expect(html).toContain(`aria-label="Copy address ${UNI}"`);
     expect(html).toContain(`href="https://etherscan.io/address/${UNI}"`);
-    expect(html).toContain('<span class="tok-name"><strong>UNI</strong>: 1 billion</span>');
+    // Revision 36: Supply is not one of the basics; it is behind "Show all".
+    expect(html).not.toContain('<span class="tok-name"><strong>UNI</strong>: 1 billion</span>');
+    expect(html).toContain("Show all");
   });
   it("keys the dots under the summary in one line", () => {
     const key = html.slice(html.indexOf('class="small dot-key"'));

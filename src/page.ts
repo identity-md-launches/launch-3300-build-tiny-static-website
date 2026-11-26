@@ -303,10 +303,20 @@ export interface Screenshot {
 export interface ExplainedSentence {
   text: string;
   lines: string[];
-  /** not_checked: the job did not read enough to say it is absent. */
-  kind?: "not_checked";
+  /**
+   * The weakest kind among the lines it rests on (proof, statement, claim), or not_checked when it rests on none. A
+   * missing or unknown kind is left out: the sentence is shown with no mark, never refused.
+   */
+  kind?: ExplainedKind;
   /** In contracts: who can change it, or what that means for a user's funds. */
   part?: "who_can_change" | "what_it_means";
+}
+export const EXPLAINED_KINDS = ["proof", "statement", "claim", "not_checked"] as const;
+export type ExplainedKind = (typeof EXPLAINED_KINDS)[number];
+/** An explained sentence's kind when it is one of the four; anything else (missing, misspelt, another word) is none. */
+export function explainedKind(v: unknown): ExplainedKind | null {
+  const k = (typeof v === "string" ? v : "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return (EXPLAINED_KINDS as readonly string[]).includes(k) ? (k as ExplainedKind) : null;
 }
 export interface Explained {
   howItWorks: ExplainedSentence[];
@@ -784,12 +794,13 @@ function parseExplainedSentences(v: unknown, max: number, parts: boolean): Expla
   return arr(v)
     .map((s): ExplainedSentence => {
       const o = obj(s);
-      const kind = str(o.kind, 32).trim().toLowerCase();
+      const kind = explainedKind(str(o.kind, 32));
       const part = str(o.part, 32).trim().toLowerCase();
       return {
         text: str(o.text, 600).trim(),
         lines: arr(o.lines).map((x) => str(x, 64).trim()).filter(Boolean),
-        ...(kind === "not_checked" ? { kind: "not_checked" as const } : {}),
+        // A what_it_means sentence carries no kind (rebuild instructions); any kind it is given is not shown.
+        ...(kind && !(parts && part === "what_it_means") ? { kind } : {}),
         ...(parts && (part === "who_can_change" || part === "what_it_means") ? { part } : {}),
       };
     })

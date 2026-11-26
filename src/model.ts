@@ -38,6 +38,8 @@ import {
 } from "./page";
 import { chainIdOf, contractFromObjective, domainOfId, refFromId, type SubjectRef } from "./subject";
 import { isChangesJob, isEditJob, isPageJob, isSourceJob, type Activity } from "./useActivity";
+import { resultNamesOf } from "./requests";
+import type { AppLink, Category } from "./page";
 import { applyChangeLinks, applySentenceChanges, carriedOf, disputesOf, repairedJobs, lineInFile, type Disputes, type LineScope, type Reworded } from "./changeResult";
 import { mergeRepeats, type KnownContract } from "./lookup";
 import { dropUnresolvedAnswers, type UnresolvedRef } from "./settle";
@@ -536,6 +538,10 @@ export interface SubjectSummary {
   logoHash: string | null;
   /** For a subject with no page: why, in the words Home shows. Null when it has a page. */
   status: FirstPageStatus | null;
+  /** Home's card: the page's category, its app link and its first screenshot (the request and slot to read). */
+  category?: Category;
+  app?: AppLink;
+  shot?: CardShot;
   /** Result files (other than the page shown) that could not be read: its counts may be short. */
   incomplete?: number;
   /** Finished results that could not be read when none of its finished page jobs is read (unreadableCount). */
@@ -649,6 +655,11 @@ export interface Digest {
   logo: "none" | "ok" | "failed";
   /** The request that produced the page shown: Home compares its objective with the current template. */
   pageReq: string | null;
+  /** 1 once the digest carries Home's card fields (category, app, shot); an older digest is read again once. */
+  card?: 1;
+  category?: Category;
+  app?: AppLink;
+  shot?: CardShot;
   /** Three lines of this record that state one fact, for Home's example; null when it has none. */
   example: Example | null;
   /** How many questions are open now (questionsOf: the page shown, less those a counted changes job closed): Home's Most open questions. Unknown in a digest of an older shape. */
@@ -660,6 +671,19 @@ export interface Digest {
    * leaves them out of its figures and of what the digest is compared with.
    */
   uncounted?: string[];
+}
+
+/** The first screenshot a card shows: the page request that wrote it and its slot. */
+export interface CardShot {
+  req: string;
+  slot: number;
+}
+/** The card fields of a page: category, app and the first listed screenshot whose slot the job declared. */
+export function cardOf(page: Page | null | undefined, latest: Pick<Activity, "req"> | undefined): Pick<SubjectSummary, "category" | "app" | "shot"> {
+  if (!page) return {};
+  const names = latest ? resultNamesOf(latest.req.kind) : [];
+  const first = page.screenshots?.find((s) => names.includes(`shot-${s.slot}`));
+  return { ...(page.category ? { category: page.category } : {}), ...(page.app ? { app: page.app } : {}), ...(first && latest ? { shot: { req: latest.req.requestId, slot: first.slot } } : {}) };
 }
 
 /** The completed page, sources, edit and changes results and panel answers of a subject, as one string: what a digest was taken from. */
@@ -683,7 +707,7 @@ export function digestOf(id: string, list: Activity[], uncounted: string[] = [])
   const failedReads = list.filter((a) => a !== core.latest && a.sourcesError).length;
   const logo = core.page?.logo ? (s.logoHash ? "ok" : "failed") : "none";
   const example = core.page ? exampleOf(core.sections.flatMap((x) => x.rows.map((r) => r.line))) : null;
-  return { type: "digest", v: 9, open: core.page ? questionsOf(list, core.latest).open.length : 0, launched: launchedNow(core.page, core.after), example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo, ...(uncounted.length ? { uncounted } : {}) };
+  return { type: "digest", v: 9, open: core.page ? questionsOf(list, core.latest).open.length : 0, launched: launchedNow(core.page, core.after), example, id, sig: resultSig(list), name: s.name, oneLine: s.oneLine, counts: s.counts!, logoHash: s.logoHash, changed: s.changed, hasPage: s.hasPage, main: s.main, contracts: s.contracts, ranked: s.ranked ?? [], status: s.status, unfolded: core.page ? unfoldedCount(core) : 0, pageReq: core.page ? core.latest?.req.requestId ?? null : null, failedReads, logo, ...(uncounted.length ? { uncounted } : {}), card: 1, ...cardOf(core.page, core.latest) };
 }
 
 /** The Launched fact of a page as a time: its first full date, month and year, or year; null without one. */
@@ -706,7 +730,7 @@ export const unfoldedCount = (core: Pick<Core, "unfolded" | "unfoldedAnswers">) 
   ((repaired) => core.unfolded.filter((a) => !repaired.has(a)).length)(repairedJobs(core.unfolded)) + core.unfoldedAnswers.length;
 
 /** Why a subject's digest should be read again on this visit although nothing new completed: a read that failed. */
-export const needsRetry = (d: Digest | undefined) => !!d && (d.failedReads > 0 || d.logo === "failed");
+export const needsRetry = (d: Digest | undefined) => !!d && (d.failedReads > 0 || d.logo === "failed" || (d.hasPage && d.card !== 1));
 
 /** An address and the chain written right after it ("0x… on Base", "0x… Ethereum"), else the fallback chain. */
 const ADDRESS_AT = /(0x[0-9a-fA-F]{40})\b(?:\)?,?\s+(?:on\s+)?([A-Za-z][A-Za-z]*(?: [A-Za-z]+)?))?/g;
@@ -810,6 +834,7 @@ function summaryOf(id: string, list: Activity[], core = coreOf(list)): SubjectSu
     logo: core.page?.logo ? core.latest?.logo ?? null : null,
     logoHash: core.page?.logo ? core.latest?.logoHash ?? null : null,
     status: core.page ? null : firstPageStatus(list),
+    ...cardOf(core.page, core.latest),
     outdated: outdatedOf(core),
     incomplete: list.filter((a) => a !== core.latest && a.sourcesError).length,
   };
@@ -856,6 +881,9 @@ export function subjectSummaries(items: Activity[], digests: Map<string, Digest>
       logo: d.logoHash ? logos.get(d.logoHash) ?? null : null,
       logoHash: d.logoHash,
       status: d.hasPage ? null : d.status && isCurrent(d, list) ? d.status : own.status,
+      category: d.category,
+      app: d.app,
+      shot: d.shot,
       outdated: digestOutdated(d, list),
       incomplete: d.failedReads,
     };

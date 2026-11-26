@@ -31,7 +31,7 @@ describe("A3: objective openings", () => {
     for (const b of [rebuildBody({ files: [], answers: [] }, ref), rebuildBody({ files: [], answers: [] }, { ...ref, address: "0x" + "cd".repeat(20), chainId: 8453 })]) expect(shapeOf(req("add", b)).ok).toBe(true);
     expect(hasV1Opening(INSTRUCTIONS.rebuild.sha256)).toBe(false);
     expect(V1_OPENING_HASHES.size).toBe(24);
-    expect(PUBLISHED_INSTRUCTIONS.length).toBe(40);
+    expect(PUBLISHED_INSTRUCTIONS.length).toBe(41); // revision 36 adds rebuild-7351e67f471b.txt
   });
   it("an older file sent with the new opening, or a new file with the old opening, does not count", () => {
     const old = PUBLISHED_INSTRUCTIONS.find((p) => p.file === "rebuild-153b2cd5869b.txt")!;

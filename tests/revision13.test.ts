@@ -62,7 +62,7 @@ describe("A. Overview order", () => {
   const { html } = render([pageJob("0xa1", "proj.example", page, h("1"))], "proj.example");
   it("puts the Summary before Key facts and Related after both, above the footer links", () => {
     const sum = html.indexOf('class="summary-col"');
-    const kf = html.indexOf('class="keyfacts"');
+    const kf = html.indexOf('class="keyfacts basics ov-sec"');
     const rel = html.indexOf('class="related"');
     const foot = html.indexOf('class="ov-foot"');
     expect(sum).toBeGreaterThan(html.indexOf('class="lead"'));
@@ -70,9 +70,8 @@ describe("A. Overview order", () => {
     expect(rel).toBeGreaterThan(kf);
     expect(foot).toBeGreaterThan(rel);
   });
-  it("shows the first 8 Key facts rows and Show all N", () => {
+  it("shows the basics first and Show all N (revision 36: the other rows wait behind it)", () => {
     expect(KEY_FACTS_SHOWN).toBe(8);
-    expect(html).toContain("Value 8");
     expect(html).not.toContain("Value 9");
     expect(html).toContain("Show all 10");
   });

@@ -42,6 +42,7 @@ import { cleanQuestion } from "./questions";
 import { firstPageStatus, INSTRUCTIONS_UNAVAILABLE, type PageJobs, isInstructionsUnavailable, statusText, unreadableText, type FirstPageStatus, type RecordModel } from "./model";
 import type { Activity, ShotRef } from "./useActivity";
 import { fetchShot } from "./api";
+import { AskTheContract, GoDeeper, Gallery, HowItWorks, ProjectHeader } from "./Overview";
 import { OutdatedNote, ReaderNote, StillReading } from "./Home";
 import { ChangePanel, evidenceOf, Pencil, PendingTag, useSuggest, startAnswer } from "./Suggest";
 import { formatNumbers } from "./numbers";
@@ -526,8 +527,23 @@ const rowAddresses = (r: KeyRow, chain = ""): { address: string; chain: string }
 const allNames = (n: string[]) => (n.length < 2 ? n[0] ?? "" : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`);
 /** A row opens details when it has full addresses, more speakers than its badge names, or a patch from a change. */
 const hasRowDetails = (r: KeyRow) => rowAddresses(r).length > 0 || (r.speakers?.length ?? 0) > 0 || !!r.updatedBy;
-/** Rows shown before "Show all N". */
+/** Rows shown before "Show all N" in the earlier layout (kept for the tests that name it). */
 export const KEY_FACTS_SHOWN = 8;
+
+/**
+ * The basics' order: verified links (Website, Official accounts), tokens, what it runs on, founder or team; every other
+ * row comes after them, in the order Key facts gives, behind "Show all". Pure, for tests.
+ */
+export const BASICS_REST = 4;
+export function basicsRank(label: string): number {
+  const l = label.trim().toLowerCase();
+  if (/^(?:website|official accounts?|channels?|verified links?|links?)$/.test(l)) return 0;
+  if (/^tokens?$/.test(l)) return 1;
+  if (/^(?:chains?|runs on|networks?|test networks)$/.test(l)) return 2;
+  if (/^(?:founder|founders|founder or creator|creator|team|run by|founded by|people|contributors)$/.test(l)) return 3;
+  return BASICS_REST;
+}
+export const basicsOrder = <T extends { label: string }>(rows: T[]): T[] => rows.map((r, i) => ({ r, i, k: basicsRank(r.label) })).sort((a, b) => a.k - b.k || a.i - b.i).map((x) => x.r);
 
 function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
   const { rows } = useKeyFacts(m);
@@ -538,11 +554,14 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
   // An address with no chain written beside it is on the main contract's chain.
   const mainC = m.page?.contracts.find((c) => c.main) ?? m.page?.contracts[0];
   const mainChain = mainC?.chain ? chainTag(String(mainC.chain)) : "";
-  // A row opened by a link or a suggestion stays visible even while the list is folded.
-  const shown = all || rows.length <= KEY_FACTS_SHOWN ? rows : rows.filter((r, i) => i < KEY_FACTS_SHOWN || r.label === openRow);
+  // The basics first (verified links, tokens, runs on, founder or team), the rest behind "Show all N". A row opened by
+  // a link or a suggestion stays visible even while the list is folded.
+  const ordered = basicsOrder(rows);
+  const first = Math.max(1, ordered.filter((r) => basicsRank(r.label) < BASICS_REST).length);
+  const shown = all || ordered.length <= first ? ordered : ordered.filter((r, i) => i < first || r.label === openRow || s.open === keyFactTarget(r.label, r.value || r.accounts.map((a) => a.name).join(", "), r.lines.map((l) => l.id), r.lines[0]?.id ? originOfLine(r.lines[0].id, m.scope) : null).key);
   return (
-    <section className="keyfacts" aria-labelledby="keyfacts-title">
-      <h2 id="keyfacts-title">Key facts</h2>
+    <section className="keyfacts basics ov-sec" aria-labelledby="keyfacts-title">
+      <h2 id="keyfacts-title">The basics</h2>
       {/* Phones lay each row out as a small grid (label, badge and pencil over the value); the roles keep the table. */}
       <table role="table">
         <tbody role="rowgroup">
@@ -567,11 +586,11 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
                     <KeyValue row={r} chain={mainChain} />
                     <PendingTag targetKey={target.key} />
                   </td>
-                  <td className="kf-badge" role="cell">
-                    {!r.perAccount && <RowBadge r={r} ui={ui} />}
-                  </td>
                   <td className="kf-edit" role="cell">
                     <Pencil target={target} label={`Suggest a change`} />
+                  </td>
+                  <td className="kf-badge" role="cell">
+                    {!r.perAccount && <RowBadge r={r} ui={ui} />}
                   </td>
                 </tr>
                 {openRow === r.label && hasRowDetails(r) && (
@@ -628,7 +647,7 @@ function KeyFacts({ m, ui }: { m: RecordModel; ui: Ui }) {
           })}
         </tbody>
       </table>
-      {rows.length > KEY_FACTS_SHOWN && (
+      {ordered.length > first && (
         <button type="button" className="linklike kf-more" aria-expanded={all} onClick={() => setAll(!all)}>
           {all ? "Show fewer" : `Show all ${rows.length}`}
         </button>
@@ -833,12 +852,18 @@ function ChangeNote({ id, changes, refs, ui }: { id: string; changes: SentenceCh
 function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
   const sg = useSuggest();
   const [note, setNote] = useState<string | null>(null);
+  const [more, setMore] = useState(false);
   if (!m.summary.length) return null;
   const changed = m.summary.filter((s) => sentenceChanges(s).length > 0).length;
+  const paras = paragraphsOf(m.summary);
+  // The first paragraph only, then "Read more" for the rest and the legend. A sentence opened from a link or a pencil in
+  // a later paragraph opens the rest by itself.
+  const later = paras.slice(1).some((p) => p.some((s) => sg.open === sentenceTarget(s.text).key || note === sentenceTarget(s.text).key));
+  const opened = more || later || paras.length < 2;
   return (
-    <div className="summary">
+    <div className="summary ov-sec">
       <h2>Summary</h2>
-      {paragraphsOf(m.summary).map((p, i) => {
+      {(opened ? paras : paras.slice(0, 1)).map((p, i) => {
         const openHere = p.find((s) => sg.open === sentenceTarget(s.text).key);
         const noteHere = p.find((s) => note === sentenceTarget(s.text).key && sentenceChanges(s).length);
         return (
@@ -867,6 +892,25 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
           </Fragment>
         );
       })}
+      {!opened && (
+        <button type="button" className="linklike read-more" aria-expanded={false} onClick={() => setMore(true)}>
+          Read more
+        </button>
+      )}
+      {opened && <SummaryRest changed={changed} m={m} />}
+      {opened && paras.length > 1 && !later && (
+        <button type="button" className="linklike read-more" aria-expanded={true} onClick={() => setMore(false)}>
+          Show less
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** What "Read more" opens under the paragraphs: the corrected count, the legend and an edit's credit. */
+function SummaryRest({ changed, m }: { changed: number; m: RecordModel }) {
+  return (
+    <>
       {changed > 0 && (
         <p className="small changed-count">
           {changed === 1 ? "1 sentence" : `${changed} sentences`} corrected by visitors since the last rebuild.
@@ -890,7 +934,7 @@ function Summary({ m, ui }: { m: RecordModel; ui: Ui }) {
           Edited by <PayerLink name={payerName(m.edit.activity)} address={m.edit.activity.req.payer} /> and checked by a research job.
         </p>
       )}
-    </div>
+    </>
   );
 }
 
@@ -1309,13 +1353,8 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
   const first: FirstPageStatus | null = !page && items !== null ? firstPageStatus(items) : null;
   const rejectedCard = !page && !!m.rejected && items !== null && !(latest && !error) && first?.kind !== "pending";
   return (
-    <section className="tab" aria-labelledby="record-title">
-      <div className="title-row">
-        <SubjectLogo name={name} logo={latest?.logo} size={40} />
-        <h1 id="record-title" tabIndex={-1}>{name}</h1>
-        {page && <SaveStar id={m.subject.id} name={name} />}
-      </div>
-      <p className="lead">{page?.oneLine || `Public sources and checks for ${m.subject.id}.`}</p>
+    <section className="tab ov-page" aria-labelledby="record-title">
+      <ProjectHeader m={m} name={name} latest={latest} />
       <ReaderNote o={m.outdated} href={to("rebuild")} />
       <DisputedNote m={m} />
       {rejectedCard && (first?.kind === "instructions" || isInstructionsUnavailable(m.rejected!.rejected)) && (
@@ -1402,8 +1441,8 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
       )}
       {(page || m.summary.length > 0) && (
         <div className="overview">
+          {page && <Gallery m={m} latest={latest} name={name} />}
           <div className="summary-col">
-            {page && latest?.shotRef && <LatestShot latest={latest} name={name} />}
             <Summary m={m} ui={ui} />
             {page && !m.summary.length && (
               <p className="small">
@@ -1411,7 +1450,10 @@ export function OverviewTab({ m, ui, items, subjects, chainError = null, retryin
               </p>
             )}
           </div>
+          {page && <HowItWorks m={m} openLines={ui.openLines} />}
           <KeyFacts m={m} ui={ui} />
+          {page && <AskTheContract m={m} />}
+          {page && <GoDeeper m={m} openLines={ui.openLines} />}
         </div>
       )}
       {page && <Related m={m} subjects={subjects} />}

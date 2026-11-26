@@ -862,7 +862,7 @@ Everything in the rebuild and changes templates that does not change from reques
 file on this site, `public/instructions/<name>-<first 12 hex characters of its sha256>.txt` (written by
 `scripts/instructions.ts` from `templates/instructions/<name>.txt`, recorded in `src/instructions.json`). A file
 never changes once published: a new wording gets a new file, and every old file stays in `public/instructions/`.
-Current files: `rebuild-7d51ee3b35d9.txt` and `changes-d73d152f1764.txt`; still served: `rebuild-2d329d7d77e8.txt`, `changes-6f7e0f27ff1a.txt`, `rebuild-1cb3032ca031.txt`, `changes-76bb018d8c8b.txt`, `rebuild-59cb466af103.txt`, `changes-a7ea2f0a9c20.txt`, `rebuild-d3414e5807fc.txt`, `changes-e7afaac38d03.txt`, `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
+Current files: `rebuild-7351e67f471b.txt` and `changes-d73d152f1764.txt`; still served: `rebuild-7d51ee3b35d9.txt`, `rebuild-2d329d7d77e8.txt`, `changes-6f7e0f27ff1a.txt`, `rebuild-1cb3032ca031.txt`, `changes-76bb018d8c8b.txt`, `rebuild-59cb466af103.txt`, `changes-a7ea2f0a9c20.txt`, `rebuild-d3414e5807fc.txt`, `changes-e7afaac38d03.txt`, `rebuild-52b9d4be7f53.txt`, `changes-f6f33a2bae51.txt`, `rebuild-2bc2ecf2ae61.txt`, `changes-35723721d814.txt`, `rebuild-034069da4891.txt`, `changes-2ba6312f6e71.txt`, `rebuild-153b2cd5869b.txt`, `changes-e469ba6f33e4.txt`, `rebuild-a81f2fe15b9f.txt`, `changes-96e6afd8f00d.txt`, `rebuild-b6493be79132.txt`, `changes-cbb133e479ca.txt`, `rebuild-bb2a3c8834d1.txt`, `rebuild-323385aa01ae.txt`, `changes-c7a1725279f5.txt`, `rebuild-936893c77936.txt`, `rebuild-8ba8632e27f2.txt`,
 `changes-74f6ac6095c4.txt`, `rebuild-77f7165b2051.txt`, `changes-059436ca0814.txt`, `rebuild-5c84552b327e.txt`,
 `changes-275c3c26682c.txt`, `rebuild-ede1a5e23b01.txt`, `changes-053f706852a0.txt`, `rebuild-8d7dfbc27d07.txt`,
 `changes-0571b29e932d.txt`, `rebuild-aede2eb36737.txt`, `changes-b1e42e455312.txt`, `rebuild-b280294bd61b.txt` and
@@ -894,8 +894,8 @@ bytes (`INSTRUCTIONS_GATEWAY` in `src/config.ts`, `fetchUrlOf` and `rawCid` in `
 `https://ipfs.filebase.io/ipfs/<raw CIDv1 of the file's sha256>?filename=<name>-<hash12>.txt`
 
 <!-- instructions:start -->
-- rebuild: `https://ipfs.filebase.io/ipfs/bafkreid5khxdwnozsxjyrj3hlucxxsru26zzp2eo3dtuzh64um3kbaokoq?filename=rebuild-7d51ee3b35d9.txt`,
-  sha256 `7d51ee3b35d995d388a7675d057bca34d7b397e88ed8e74c9fdca336a081ca74`
+- rebuild: `https://ipfs.filebase.io/ipfs/bafkreidtkhth6ry3gfi2qi5cqtnhszrufhw4tluv4uja2ypx6tjetygdy4?filename=rebuild-7351e67f471b.txt`,
+  sha256 `7351e67f471b3151a823a284da79663429edc9ae95e5120d61f7f4d249e0c3c7`
 - changes: `https://ipfs.filebase.io/ipfs/bafkreigxhuks6f3ea3i7h7sc7gzb5rz5r4kibq6xvnlquztptdnveo5aau?filename=changes-d73d152f1764.txt`,
   sha256 `d73d152f176406d1f3fe42f9b21ec73d8f1480c3d7ab570a666f98db523ba005`
 <!-- instructions:end -->

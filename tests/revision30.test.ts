@@ -79,7 +79,8 @@ describe("A: the save star", () => {
   });
   it("on a project page it ends the title line; the separate Save row is gone", () => {
     const rec = src("src/Record.tsx");
-    expect(rec).toContain('<h1 id="record-title" tabIndex={-1}>{name}</h1>\n        {page && <SaveStar id={m.subject.id} name={name} />}\n      </div>');
+    // Revision 36: the header moved to ProjectHeader (src/Overview.tsx); the star still ends the title line.
+    expect(src("src/Overview.tsx")).toContain('<h1 id="record-title" tabIndex={-1}>{name}</h1>\n          {page && <SaveStar id={m.subject.id} name={name} />}\n        </div>');
     expect(rec).not.toContain("ov-save");
     expect(src("src/styles.css")).toContain(".title-row .save-star { margin-inline-start: auto; }");
   });
