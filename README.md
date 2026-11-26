@@ -80,13 +80,15 @@ earlier file stays served and is still accepted.
   the same object. `app` is kept only on the subject's own domain or under a listed channel, with a label of 1 to 3
   words. A screenshot entry needs a file `artifacts/shot-1.png` to `shot-4.png`, one entry per slot, at most 4. `explained`
   is capped at the brief's counts (6, 6 per token, 3 contracts of 5). An `ask` entry needs a question of at most 10 words, a
-  proof line id the page has, a chain id, a contract address, hex calldata (0x and whole bytes, bare 0x included, kept byte for byte; longer than 64 KiB is refused, never cut) and one of
+  proof line id the page has, a chain id, a contract address, hex calldata (0x and whole bytes, bare 0x included, kept byte for byte at any length; only its form is checked, revision 35) and one of
   `uint`, `address`, `bool`, `string`.
 - **What shows (E15).** Only the first listed screenshot, above the Summary on Overview (`FirstShot` in
   `src/Record.tsx`). It is read like the logo (`fetchShot` in `src/api.ts`): the result file `shot-<n>` from
   api.imd.fun, its bytes checked against the listed SHA-256, a whole PNG that decodes, exactly 1280 pixels wide and up
-  to 32 MiB (`shotOf`, `SHOT_LIMITS`; revision 34). A 1 by 1 PNG is the empty slot and never shows. It is cached in IndexedDB, full width of the reading column, at most 480 px
-  tall (scaled down whole, never cropped; revision 34), with its caption and a link to the host it was captured from. Pages without a
+  to 32 MiB (`shotOf`, `SHOT_LIMITS`; revision 34). A 1 by 1 PNG is the empty slot and never shows. It is cached in IndexedDB and shown in a fixed frame,
+  the full width of the reading column at 16:9 and at most 480 px tall, the whole PNG fitted inside (`object-fit:
+  contain`, never cropped). The same frame and caption hold its place while it is read, so the Summary does not move
+  when it arrives (revision 35). It carries its caption and a link to the host it was captured from. Pages without a
   screenshot look as they did. The new rebuild file means every existing page reads "Built with older instructions"
   under Page upkeep and About this page, as after every earlier instruction change. Readers get no new note.
 - `/agents.md` (`scripts/agents-md.ts`) documents the six outputs, the new keys and the explained patches.
@@ -1036,6 +1038,39 @@ full body is shown before any wallet prompt, and `agents.md` tells agents to run
 pins the site's bodies to them.
 
 ## Validation results
+
+### 2026-11-26, review fixes to revision 34 (after the last source change)
+
+Two review findings, both reproduced from the source, both fixed:
+
+- **ab1093ee (Ask dropped calldata above 64 KiB).** `parseAsk` (`src/page.ts`) had a `MAX_ASK_DATA` cutoff of 65,536
+  bytes. It is gone: the call's `data` string is kept as given at any length, and only its form is checked (`0x`, then
+  hex pairs, so an even number of digits; `0X`, odd digits, non-hex and surrounding whitespace are refused). New cases in
+  `tests/revision35.test.ts`: the reviewer's 65,537-byte fixture through `parsePage` (one Ask entry, all 131,076
+  characters kept), 65,536 bytes and 1 MiB with mixed-case hex kept unchanged, and the malformed forms refused.
+- **12c82aab (a tall screenshot pushed the Summary down).** While the PNG was read, a 16:9 box held its place, but the
+  loaded image took its own shape up to 480 px and added a caption. Now `FirstShot` (`src/Record.tsx`) always draws the
+  same `figure.shot` with a `div.shot-frame` (16:9 of the column, at most 480 px, border and subtle background,
+  `src/styles.css`) and the caption. The caption comes from the page file, so it is there while the PNG is read
+  (`aria-busy="true"`, no image yet). The image is placed absolutely inside the frame with `object-fit: contain`,
+  so its size cannot change the frame. A tall 1280 × 2000 capture now shows whole and smaller, with its footer
+  visible, and letterboxed in the subtle background. Unit tests assert that the pending and loaded markup are
+  identical apart from the image, and they pin the frame's CSS.
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | passes |
+| `npm test` (vitest) | 46 files, 649 tests, all pass (5 new in `tests/revision35.test.ts`) |
+| `npm run build` | passes; `dist/` rebuilt after the last source change |
+| `tests/browser/shot-shift.mjs` (new; measures the Summary heading before and after the capture arrives) | **not run**: Playwright's Chromium aborts at launch in this sandbox (`bootstrap_check_in … MachPortRendezvousServer: Permission denied`), and WebKit too (`sandbox_extension_issue_file_to_process … Operation not permitted`) |
+| `taste.mjs` design probe | **not run**, same reason |
+
+Limitations: no rendered measurement or screenshot was made in this revision. The fix does not depend on how the
+image loads: the frame's height comes from its width and `aspect-ratio` alone, `overflow: hidden` removes the
+content-based minimum size, and the image is taken out of flow. The frame is 16:9 of the reading column at every
+width (at most 760 × 427.5 px), so the 480 px cap is a backstop. Better Interface: this revision touched only layout
+(the frame) and UI (the loading state). It adds no colour token, type size or copy, and the caption keeps its
+`--color-text-secondary` and `--text-small`. The rendered checks in all six domains were not performed.
 
 ### 2026-11-25, review fixes to revision 30 (after the last source change)
 

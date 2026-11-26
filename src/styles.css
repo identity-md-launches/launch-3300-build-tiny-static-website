@@ -128,11 +128,12 @@ section { display: grid; gap: var(--space-4); min-width: 0; }
 .overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); align-items: start; }
 .summary-col { display: grid; gap: var(--space-3); min-width: 0; align-content: start; max-width: var(--read-max); }
 .summary-col .prose { max-width: var(--read-max); }
-/* The first screenshot, above the Summary: a real capture, never cropped. It scales down to fit both the reading
-   column and 480px of height, keeping its shape (width and height attributes give the ratio before it decodes). */
-.shot { margin: 0; display: grid; gap: var(--space-2); min-width: 0; justify-items: start; }
-.shot img { display: block; width: auto; height: auto; max-width: 100%; max-height: 480px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg-subtle); }
-.shot-wait { width: 100%; max-height: 480px; aspect-ratio: 16 / 9; border-radius: var(--radius-control); background: var(--color-bg-subtle); }
+/* The first screenshot, above the Summary: a real capture, never cropped. One frame, 16:9 of the reading column and at
+   most 480px tall, the same while it is read and after it arrives (the caption is known before the image), so the
+   Summary below never moves. The whole PNG fits inside the frame (object-fit: contain), its footer visible. */
+.shot { margin: 0; display: grid; gap: var(--space-2); min-width: 0; }
+.shot-frame { position: relative; box-sizing: border-box; width: 100%; aspect-ratio: 16 / 9; max-height: 480px; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg-subtle); }
+.shot-frame img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
 .shot figcaption a { color: inherit; }
 /* The one-line key to the summary's dots. */
 .dot-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); }

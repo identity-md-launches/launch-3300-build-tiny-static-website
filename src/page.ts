@@ -821,8 +821,6 @@ export function parseExplained(v: unknown): Explained | null {
 
 /** An eth_call's input: 0x and whole bytes in hex, bare 0x included (a call with no input, such as a precompile's). */
 const ASK_DATA = /^0x(?:[0-9a-fA-F]{2})*$/;
-/** Longer calldata is refused, never shortened: 64 KiB of input, as hex characters with the 0x. */
-const MAX_ASK_DATA = 2 + 2 * 65536;
 /**
  * page.ask: at most 3, each a question of at most 10 words, a proof line the page has, and one eth_call a browser can
  * send as given: a chain id, a contract address, hex calldata, one return type of four, its decimals and unit.
@@ -837,8 +835,9 @@ export function parseAsk(v: unknown, lineIds: Set<string>): Ask[] {
       const c = obj(o.call);
       const chainId = typeof c.chain_id === "number" ? c.chain_id : /^\d{1,12}$/.test(str(c.chain_id, 16)) ? Number(str(c.chain_id, 16)) : NaN;
       const to = str(c.to, 64).trim();
-      // The calldata exactly as the page gives it: never cut or trimmed, so the browser re-runs the proof's own call.
-      const data = typeof c.data === "string" && c.data.length <= MAX_ASK_DATA ? c.data : "";
+      // The calldata exactly as the page gives it, of any length: never cut, trimmed or capped, so the browser re-runs
+      // the proof's own call. Only its form is checked (0x, then whole bytes in hex).
+      const data = typeof c.data === "string" ? c.data : "";
       const returns = str(c.returns, 16).trim().toLowerCase();
       const d = typeof c.decimals === "number" ? c.decimals : /^\d{1,2}$/.test(str(c.decimals, 4)) ? Number(str(c.decimals, 4)) : null;
       if (!question || words(question) > 10 || !lineIds.has(line)) return [];

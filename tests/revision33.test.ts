@@ -212,7 +212,7 @@ describe("E15. the first screenshot, above the Summary", () => {
   });
   it("renders the capture with its caption and the host it was captured from", () => {
     const h = renderToStaticMarkup(createElement(FirstShot, { shot: { slot: 1, url: "data:image/png;base64,AA==", caption: "The job form", source: "https://www.app.imd.fun/jobs", capturedAt: "" }, name: "IMD" }));
-    expect(h).toContain('<figure class="shot"><img src="data:image/png;base64,AA==" alt="IMD: The job form" width="1280"');
+    expect(h).toContain('<figure class="shot"><div class="shot-frame"><img src="data:image/png;base64,AA==" alt="IMD: The job form" width="1280"');
     expect(h).toContain("The job form");
     expect(h).toContain('href="https://www.app.imd.fun/jobs"');
     expect(h).toContain(">app.imd.fun</a>");

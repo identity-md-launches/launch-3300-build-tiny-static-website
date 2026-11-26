@@ -1222,7 +1222,8 @@ export function ContributorTable({ rows, labelledBy, ranked = false, pages = tru
  * screenshots[0], read and checked as a PNG). Its caption names the screen; the link opens the page captured.
  */
 export interface ShownShot extends ShotRef {
-  url: string;
+  /** Absent while the PNG is read: the frame and caption already hold their place. */
+  url?: string;
   /** The PNG's own size, from its header: the box keeps the capture's shape while it scales down. */
   width?: number;
   height?: number;
@@ -1230,8 +1231,10 @@ export interface ShownShot extends ShotRef {
 export function FirstShot({ shot, name }: { shot: ShownShot; name: string }) {
   const href = shot.source ? safeHref(shot.source) : null;
   return (
-    <figure className="shot">
-      <img src={shot.url} alt={shot.caption ? `${name}: ${shot.caption}` : `A screen of ${name}`} width={shot.width ?? 1280} height={shot.height} decoding="async" />
+    <figure className="shot" aria-busy={shot.url ? undefined : true}>
+      <div className="shot-frame">
+        {shot.url && <img src={shot.url} alt={shot.caption ? `${name}: ${shot.caption}` : `A screen of ${name}`} width={shot.width ?? 1280} height={shot.height} decoding="async" />}
+      </div>
       {(shot.caption || href) && (
         <figcaption className="small">
           {shot.caption}
@@ -1280,12 +1283,12 @@ export function useFirstShot(latest: Activity | undefined): ShownShot | null | u
 }
 
 /**
- * The first screenshot above the Summary. While it is read, a quiet box of a common screen shape holds its place so
- * the Summary does not jump when it arrives; nothing shows for a page without one.
+ * The first screenshot above the Summary. While it is read, the same frame and its caption (named by the page) hold
+ * their place, so the Summary does not move when it arrives; nothing shows for a page without one.
  */
 export function LatestShot({ latest, name }: { latest: Activity | undefined; name: string }) {
   const shot = useFirstShot(latest);
-  if (shot === undefined) return <div className="shot-wait" aria-hidden="true" />;
+  if (shot === undefined) return latest?.shotRef ? <FirstShot shot={latest.shotRef} name={name} /> : null;
   return shot ? <FirstShot shot={shot} name={name} /> : null;
 }
 

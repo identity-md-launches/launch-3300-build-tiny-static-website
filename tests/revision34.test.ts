@@ -133,7 +133,7 @@ describe("3487bb04: Ask keeps the proof's exact call", () => {
   });
   it("malformed calldata is refused, never altered", () => {
     for (const d of ["0x123", "ab12", "0xzz", " 0x12", "0x12 ", 12, null]) expect(parseAsk(ask(d), ids)).toEqual([]);
-    expect(parseAsk(ask("0x" + "00".repeat(65537)), ids)).toEqual([]);
+    // Revision 35: no length cutoff; 65,537 bytes and more are kept (tests/revision35.test.ts).
     expect(parseAsk(ask("0x" + "00".repeat(65536)), ids)[0]!.call.data.length).toBe(2 + 2 * 65536);
   });
 });
@@ -146,7 +146,8 @@ describe("37abf1a8: the page does not wait for its screenshot", () => {
   });
   it("Overview reads it on its own, holding a box in its place while it is read", () => {
     const latest = { req: { requestId: "0x1" }, completion: {}, jobId: "j", shotRef: { slot: 1, caption: "Home", source: "https://imd.fun/", capturedAt: "" } } as unknown as Activity;
-    expect(renderToStaticMarkup(createElement(LatestShot, { latest, name: "IMD" }))).toBe('<div class="shot-wait" aria-hidden="true"></div>');
+    // Revision 35: the pending state is the same frame and caption as the loaded one (tests/revision35.test.ts).
+    expect(renderToStaticMarkup(createElement(LatestShot, { latest, name: "IMD" }))).toContain('<figure class="shot" aria-busy="true"><div class="shot-frame"></div>');
     expect(renderToStaticMarkup(createElement(LatestShot, { latest: { ...latest, shotRef: null }, name: "IMD" }))).toBe("");
     expect(read("src/Record.tsx")).toContain("fetchShot(req, completion, jobId, ref.slot)");
   });
@@ -154,10 +155,11 @@ describe("37abf1a8: the page does not wait for its screenshot", () => {
 
 describe("3bdbc10b: a tall capture is scaled down whole, never cropped", () => {
   it("the image keeps its shape within the column and 480px", () => {
+    // Revision 35: the whole capture is fitted inside a fixed 16:9 frame (contain: scaled, never cropped).
     const css = read("src/styles.css");
-    const rule = css.slice(css.indexOf(".shot img {"), css.indexOf("}", css.indexOf(".shot img {")));
-    expect(rule).toContain("width: auto; height: auto; max-width: 100%; max-height: 480px;");
-    expect(rule).not.toContain("object-fit");
+    const rule = css.slice(css.indexOf(".shot-frame img {"), css.indexOf("}", css.indexOf(".shot-frame img {")));
+    expect(rule).toContain("object-fit: contain;");
+    expect(rule).not.toMatch(/object-fit: (cover|fill)/);
   });
   it("carries the PNG's own width and height", () => {
     const h = renderToStaticMarkup(createElement(FirstShot, { shot: { slot: 1, url: "data:image/png;base64,AA==", caption: "Tall", source: "", capturedAt: "", width: 1280, height: 2000 }, name: "IMD" }));
